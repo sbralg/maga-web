@@ -341,20 +341,34 @@ function allowRowsHtml(entries, kind){
 // after first paint, the same way muted-group names are: never blocking
 // the initial render, and never writing the resolved name back to the
 // store - it is a display aid, not a silent edit of what was configured.
+//
+// SEQUENTIAL on purpose, not Promise.all: this calls the person's own
+// WhatsApp bridge, a single process on a LAN box with no real concurrency
+// - firing every row at once needlessly piles requests onto it, and made
+// "still resolving" and "tried and found nothing" look identical on
+// screen (both just sat there as a bare number), which is exactly what
+// made a real problem here impossible to tell apart from normal delay.
+// "· verificando…" makes the in-flight state visible; a failure or a
+// zero-match result reverts to the plain number, never left showing
+// "verificando" forever.
 async function resolveAllowlistNamesLater(){
-  const unlabeled = [...document.querySelectorAll('.entry[data-kind="wa"]')]
+  const rows = [...document.querySelectorAll('.entry[data-kind="wa"]')]
     .filter(el => !el.querySelector(".who span"));
-  await Promise.all(unlabeled.map(async el => {
+  for(const el of rows){
     const number = el.dataset.value;
+    const who = el.querySelector(".who");
+    const original = who.textContent;
+    who.textContent = number + " · verificando…";
     try {
       const r = await lookupWhatsappContact(number);
       if(r.reachable && r.matches && r.matches.length === 1){
-        const who = el.querySelector(".who");
         who.textContent = r.matches[0].name;
         who.insertAdjacentHTML("beforeend", "<span>" + esc(number) + "</span>");
+        continue;
       }
-    } catch(_){ /* best effort - the bare number is still a usable fallback */ }
-  }));
+    } catch(_){ /* best effort */ }
+    who.textContent = original;
+  }
 }
 
 function allowValues(kind){
@@ -391,6 +405,16 @@ function wireAllowlists(){
   document.getElementById("wa-add").addEventListener("click", () => {
     const digits = waNew.value.replace(/\D/g, "");
     if(digits.length < 10){ waResolved.className = "resolved"; waResolved.textContent = "Número muito curto."; return; }
+    // Exact-string dedupe, matching how the server itself decides who is
+    // allowed (security/allowlist.js compares digit strings directly, with
+    // no country-code normalization) - so "the same as an existing entry"
+    // means the same digit string, not an attempt to guess that "5511..."
+    // and "11..." are the same underlying number.
+    if(allowValues("wa").some(e => e.value === digits)){
+      waResolved.className = "resolved";
+      waResolved.textContent = "Esse número já está na lista.";
+      return;
+    }
     const label = waResolved.className.includes("ok") ? waResolved.textContent.replace(/^É /, "").replace(/\.$/, "") : "";
     appendAllowEntry("wa-allow", "wa", digits, label);
     waNew.value = ""; waResolved.textContent = ""; waResolved.className = "resolved";
@@ -400,6 +424,10 @@ function wireAllowlists(){
     const input = document.getElementById("mail-new");
     const address = input.value.trim().toLowerCase();
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)){ fieldError("mailAllowlist", "Endereço inválido."); return; }
+    if(allowValues("mail").some(e => e.value === address)){
+      fieldError("mailAllowlist", "Esse endereço já está na lista.");
+      return;
+    }
     appendAllowEntry("mail-allow", "mail", address, "");
     input.value = "";
   });

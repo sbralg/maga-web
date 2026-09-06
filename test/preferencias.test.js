@@ -584,9 +584,50 @@ async function withPrefsFake(ctx, opts = {}) {
     const resolvedRow = await page.textContent('.entry[data-kind="wa"][data-value="5511900000000"] .who');
     check('a pre-existing allow-list entry with no stored label is resolved to a name on load, got: ' + resolvedRow,
       resolvedRow.includes('Mãe'));
+    // Resolution is SEQUENTIAL (one row at a time, deliberately - see the
+    // page's own comment on why), so the moment row 1 settles, row 2 may
+    // only just have started and briefly reads "verificando…" - wait for
+    // IT to settle too rather than reading it the instant row 1 finishes.
+    await page.waitForFunction(() => {
+      const row = document.querySelector('.entry[data-kind="wa"][data-value="5511911111111"] .who');
+      return row && !/verificando/.test(row.textContent);
+    }, null, { timeout: 6000 });
     const unresolvedRow = await page.textContent('.entry[data-kind="wa"][data-value="5511911111111"] .who');
     check('a number with no contact match still falls back to showing the bare number, got: ' + unresolvedRow,
       unresolvedRow.trim() === '5511911111111');
+    await ctx.close();
+  }
+
+  // --- 11c. Adicionar refuses an exact duplicate, for both lists ----------
+  // Regression test for a real bug: nothing stopped the same number/address
+  // from being added over and over, which is exactly how a live account
+  // ended up with the same WhatsApp number listed four times.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withPrefsFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#wa-new', { timeout: 6000 });
+
+    const waCountBefore = await page.$$eval('.entry[data-kind="wa"]', els => els.length);
+    await page.fill('#wa-new', '5511900000000'); // already present in makePrefs()'s fixture
+    await page.click('#wa-add');
+    const waCountAfter = await page.$$eval('.entry[data-kind="wa"]', els => els.length);
+    check('adding a WhatsApp number already on the list does not create a second row',
+      waCountAfter === waCountBefore);
+    const waMsg = await page.textContent('#wa-resolved');
+    check('adding a duplicate WhatsApp number says so, got: ' + waMsg, /já está na lista/i.test(waMsg));
+
+    const mailCountBefore = await page.$$eval('.entry[data-kind="mail"]', els => els.length);
+    await page.fill('#mail-new', 'someone@example.com'); // already present in makePrefs()'s fixture
+    await page.click('#mail-add');
+    const mailCountAfter = await page.$$eval('.entry[data-kind="mail"]', els => els.length);
+    check('adding an e-mail already on the list does not create a second row',
+      mailCountAfter === mailCountBefore);
+    const mailErr = await page.textContent('[data-field="mailAllowlist"] .err');
+    check('adding a duplicate e-mail says so, got: ' + mailErr, /já está na lista/i.test(mailErr));
     await ctx.close();
   }
 
