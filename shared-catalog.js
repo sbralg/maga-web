@@ -114,13 +114,13 @@ function ingredientModal(p, opts){
 
     function draw(){
       const term = qEl.value.trim();
-      const t = term.toLowerCase();
-      const shown = all.filter(i => !t || String(i.name).toLowerCase().indexOf(t) >= 0);
+      const t = foldSearchText(term);
+      const shown = all.filter(i => !t || foldSearchText(i.name).indexOf(t) >= 0);
       // A likely match floats to the top only while nothing has been typed —
       // once there is a filter, the user's own words rank the list.
       const ranked = t ? shown : shown.slice().sort((a, b) =>
         (looksLikely(b.name, p.name) ? 1 : 0) - (looksLikely(a.name, p.name) ? 1 : 0));
-      const exact = all.some(i => String(i.name).toLowerCase() === t);
+      const exact = all.some(i => foldSearchText(i.name) === t);
 
       let html = "";
       if(term && !exact){

@@ -252,6 +252,14 @@ function clienteOf(id) { return state.clientes.find(c => c.id === id); }
     () => document.querySelectorAll('.row[data-id]').length === 1, null, { timeout: 6000 });
   check('search also matches on organization',
     (await page.textContent('#list-card')).includes('Maria Silva'));
+  // Regression test for a real reported gap: a name typed WITHOUT its
+  // accent (or on a keyboard that can't produce one) must still find the
+  // real cliente — "associacao" must find "Associação".
+  await page.fill('#search', 'associacao');
+  await page.waitForFunction(
+    () => document.querySelectorAll('.row[data-id]').length === 1, null, { timeout: 6000 });
+  check('search is accent-insensitive: "associacao" still finds "Associação"',
+    (await page.textContent('#list-card')).includes('Clube Helvetia'));
   await page.fill('#search', 'ninguém tem esse nome');
   await page.waitForSelector('#no-match', { timeout: 6000 });
   check('an unmatched search shows the empty-match message', true);

@@ -254,9 +254,9 @@ async function loadEventos(){
 
 function matchesSearch(v, term){
   if(!term) return true;
-  const t = term.toLowerCase();
-  if(String(v.name || "").toLowerCase().indexOf(t) >= 0) return true;
-  if(String((v.cliente && v.cliente.name) || "").toLowerCase().indexOf(t) >= 0) return true;
+  const t = foldSearchText(term);
+  if(foldSearchText(v.name).indexOf(t) >= 0) return true;
+  if(foldSearchText(v.cliente && v.cliente.name).indexOf(t) >= 0) return true;
   return false;
 }
 
@@ -431,9 +431,9 @@ async function clientePickerModal(){
 
     function draw(){
       const term = qEl.value.trim();
-      const t = term.toLowerCase();
-      const shown = all.filter(c => !t || String(c.name).toLowerCase().indexOf(t) >= 0);
-      const exact = all.some(c => String(c.name).toLowerCase() === t);
+      const t = foldSearchText(term);
+      const shown = all.filter(c => !t || foldSearchText(c.name).indexOf(t) >= 0);
+      const exact = all.some(c => foldSearchText(c.name) === t);
       let html = "";
       if(term && !exact){
         html += '<button class="cli-opt create" data-create>➕ Criar "' + esc(term) + '"</button>';
@@ -522,8 +522,8 @@ async function produtoPickerModal(){
     };
 
     function draw(){
-      const t = qEl.value.trim().toLowerCase();
-      const shown = all.filter(p => !t || String(p.name).toLowerCase().indexOf(t) >= 0);
+      const t = foldSearchText(qEl.value.trim());
+      const shown = all.filter(p => !t || foldSearchText(p.name).indexOf(t) >= 0);
       let html = shown.map(p => '<button class="cli-opt" data-pick="' + esc(p.id) + '">' +
         '<span class="nm">' + esc(p.name) + '</span></button>').join("");
       if(!html) html = '<p class="msg small">Nenhum produto ainda.</p>';

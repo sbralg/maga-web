@@ -298,11 +298,11 @@ async function loadIngredientes(){
 function matchesFilters(i, term, kind){
   if(kind && (i.kind || "ingrediente") !== kind) return false;
   if(!term) return true;
-  const t = term.toLowerCase();
-  if(String(i.name).toLowerCase().indexOf(t) >= 0) return true;
+  const t = foldSearchText(term);
+  if(foldSearchText(i.name).indexOf(t) >= 0) return true;
   return insumosFor(i.id).some(p =>
-    String(p.name || "").toLowerCase().indexOf(t) >= 0 ||
-    String(p.brand || "").toLowerCase().indexOf(t) >= 0);
+    foldSearchText(p.name).indexOf(t) >= 0 ||
+    foldSearchText(p.brand).indexOf(t) >= 0);
 }
 
 function ingredienteRowHtml(i){

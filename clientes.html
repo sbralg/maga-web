@@ -203,9 +203,9 @@ async function loadClientes(){
 
 function matchesSearch(c, term){
   if(!term) return true;
-  const t = term.toLowerCase();
+  const t = foldSearchText(term);
   return [c.name, c.organization, c.phone, c.email].some(
-    v => String(v || "").toLowerCase().indexOf(t) >= 0);
+    v => foldSearchText(v).indexOf(t) >= 0);
 }
 
 function clienteRowHtml(c){

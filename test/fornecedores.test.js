@@ -208,6 +208,33 @@ function fornecedorOf(id) { return state.fornecedores.find(f => f.id === id); }
   check('the produto survives with fornecedor_id nulled',
     state.produtos[0].fornecedor_id === null);
 
+  // --- accent-insensitive search (foldSearchText): an unaccented typed
+  // term matches a fornecedor name stored WITH accents, and a genuinely
+  // different term still doesn't match (no over-matching) ---
+  await page.waitForSelector('#search', { timeout: 6000 });
+  await page.click('#new-fornecedor');
+  await page.waitForSelector('#forn-name-i', { timeout: 6000 });
+  await page.fill('#forn-name-i', 'José Ramírez');
+  await page.click('#forn-ok');
+  await page.waitForSelector('#forn-name', { timeout: 6000 });
+  check('the accented fornecedor was created',
+    state.fornecedores.length === 1 && state.fornecedores[0].name === 'José Ramírez');
+  await page.click('#back');
+  await page.waitForSelector('#search', { timeout: 6000 });
+
+  await page.fill('#search', 'jose ramirez');
+  await page.waitForFunction(
+    () => (document.getElementById('root').textContent || '').includes('José Ramírez'),
+    null, { timeout: 6000 });
+  check('unaccented search "jose ramirez" matches the accented fornecedor name "José Ramírez", got: ' +
+    await page.textContent('#root'),
+    (await page.textContent('#root')).includes('José Ramírez'));
+
+  await page.fill('#search', 'zzzznotfound');
+  await page.waitForFunction(() => document.getElementById('no-match') !== null, null, { timeout: 6000 });
+  check('an unrelated search term does not match the accented fornecedor (no over-matching)',
+    !(await page.textContent('#root')).includes('José Ramírez'));
+
   await page.screenshot({ path: path.join(SHOTS, 'fornecedor_detalhe.png'), fullPage: true });
   await browser.close();
   server.close();

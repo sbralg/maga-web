@@ -163,8 +163,8 @@ async function loadFornecedores(){
 
 function matchesSearch(f, term){
   if(!term) return true;
-  const t = term.toLowerCase();
-  return [f.name, f.phone, f.email].some(v => String(v || "").toLowerCase().indexOf(t) >= 0);
+  const t = foldSearchText(term);
+  return [f.name, f.phone, f.email].some(v => foldSearchText(v).indexOf(t) >= 0);
 }
 
 function fornecedorRowHtml(f){

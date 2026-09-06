@@ -196,9 +196,9 @@ function focusRow(gtin){
 
 function matchesSearch(p, term){
   if(!term) return true;
-  const t = term.toLowerCase();
-  if(String(p.name || "").toLowerCase().indexOf(t) >= 0) return true;
-  if(String(p.brand || "").toLowerCase().indexOf(t) >= 0) return true;
+  const t = foldSearchText(term);
+  if(foldSearchText(p.name).indexOf(t) >= 0) return true;
+  if(foldSearchText(p.brand).indexOf(t) >= 0) return true;
   // Barcode search only when digits were actually typed: stripping
   // non-digits out of a word leaves "", and indexOf("") matches everything.
   const digits = t.replace(/\D/g, "");
@@ -677,8 +677,8 @@ function fornecedorPickerModal(){
       resolve(result);
     };
     function draw(){
-      const t = qEl.value.trim().toLowerCase();
-      const shown = all.filter(f => !t || String(f.name).toLowerCase().indexOf(t) >= 0);
+      const t = foldSearchText(qEl.value.trim());
+      const shown = all.filter(f => !t || foldSearchText(f.name).indexOf(t) >= 0);
       let html = shown.map(f => '<button class="ing-opt" data-pick="' + esc(f.id) + '">' +
         '<span class="nm">' + esc(f.name) + '</span></button>').join("");
       if(!html) html = '<p class="msg small">Nenhum fornecedor cadastrado ainda.</p>';

@@ -303,6 +303,35 @@ function computeProdutoCost(id) {
     (await page.$('.totals-card')) === null);
   check('the warning explains why', (await page.textContent('.warn-card')).includes('custo não informado'));
 
+  // --- accent-insensitive search (foldSearchText): an unaccented typed
+  // term matches a produto name stored WITH accents, and a genuinely
+  // different term still doesn't match (no over-matching) ---
+  await page.click('#back');
+  await page.waitForSelector('#search', { timeout: 6000 });
+  await page.click('#new-produto');
+  await page.waitForSelector('#pr-name-i', { timeout: 6000 });
+  await page.fill('#pr-name-i', 'Café Especial');
+  await page.selectOption('#pr-kind', 'comprado');
+  await page.waitForSelector('#pr-cost', { timeout: 6000 });
+  await page.click('#pr-ok');
+  await page.waitForSelector('#prod-name', { timeout: 6000 });
+  check('the accented produto was created', state.produtos.some(p => p.name === 'Café Especial'));
+  await page.click('#back');
+  await page.waitForSelector('#search', { timeout: 6000 });
+
+  await page.fill('#search', 'cafe especial');
+  await page.waitForFunction(
+    () => (document.getElementById('root').textContent || '').includes('Café Especial'),
+    null, { timeout: 6000 });
+  check('unaccented search "cafe especial" matches the accented produto name "Café Especial", got: ' +
+    await page.textContent('#root'),
+    (await page.textContent('#root')).includes('Café Especial'));
+
+  await page.fill('#search', 'zzzznotfound');
+  await page.waitForFunction(() => document.getElementById('no-match') !== null, null, { timeout: 6000 });
+  check('an unrelated search term does not match the accented produto (no over-matching)',
+    !(await page.textContent('#root')).includes('Café Especial'));
+
   await page.screenshot({ path: path.join(SHOTS, 'produto_detalhe.png'), fullPage: true });
   await browser.close();
   server.close();

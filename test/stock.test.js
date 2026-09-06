@@ -438,6 +438,13 @@ function handleMove(body) {
   await page.waitForFunction(
     () => document.querySelectorAll('.row[data-gtin]').length === 1, null, { timeout: 6000 });
   check('search matches the brand', (await page.$(rowSel('7891234567895'))) !== null);
+  // Regression test for a real reported gap: typing the SAME brand WITHOUT
+  // its accents (no keyboard shortcut for ã/ç, say) must still find it.
+  await page.fill('#search', 'aviacao');
+  await page.waitForFunction(
+    () => document.querySelectorAll('.row[data-gtin]').length === 1, null, { timeout: 6000 });
+  check('search is accent-insensitive: "aviacao" still finds "AVIAÇÃO"',
+    (await page.$(rowSel('7891234567895'))) !== null);
   await page.fill('#search', '');
   await page.waitForFunction(
     () => document.querySelectorAll('.row[data-gtin]').length === 5, null, { timeout: 6000 });
@@ -532,6 +539,17 @@ function handleMove(body) {
   await page.waitForFunction(
     () => document.querySelectorAll('.row[data-gtin]').length === 1, null, { timeout: 6000 });
   check('the catalogue searches too', (await page.$(rowSel('7896004700236'))) !== null);
+  await page.fill('#search', '');
+  await page.waitForFunction(
+    () => document.querySelectorAll('.row[data-gtin]').length === 5, null, { timeout: 6000 });
+
+  // Same accent-insensitive rule on Insumos: NESTLÉ's own brand, typed
+  // without the accent.
+  await page.fill('#search', 'nestle');
+  await page.waitForFunction(
+    () => document.querySelectorAll('.row[data-gtin]').length === 1, null, { timeout: 6000 });
+  check('Insumos search is accent-insensitive: "nestle" still finds "NESTLÉ"',
+    (await page.$(rowSel('7891000100103'))) !== null);
   await page.fill('#search', '');
   await page.waitForFunction(
     () => document.querySelectorAll('.row[data-gtin]').length === 5, null, { timeout: 6000 });

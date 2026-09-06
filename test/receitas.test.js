@@ -406,6 +406,35 @@ function computeProdutoCost(id) {
   check('the linked produto was removed', linkedProdutoFor(outerId) === null);
   check('the receita itself still exists', receitaOf(outerId) !== undefined);
 
+  // --- accent-insensitive search (foldSearchText): an unaccented typed
+  // term matches a receita name stored WITH accents, and a genuinely
+  // different term still doesn't match (no over-matching) ---
+  await page.click('#back');
+  await page.waitForSelector('#new-receita', { timeout: 6000 });
+  await page.click('#new-receita');
+  await page.waitForSelector('#rec-name-i', { timeout: 6000 });
+  await page.fill('#rec-name-i', 'Café da Manhã');
+  await page.fill('#rec-yield', '1');
+  await page.selectOption('#rec-unit', 'un');
+  await page.click('#rec-ok');
+  await page.waitForSelector('#rec-name', { timeout: 6000 });
+  check('the accented receita was created', state.receitas.some(r => r.name === 'Café da Manhã'));
+  await page.click('#back');
+  await page.waitForSelector('#search', { timeout: 6000 });
+
+  await page.fill('#search', 'cafe da manha');
+  await page.waitForFunction(
+    () => (document.getElementById('root').textContent || '').includes('Café da Manhã'),
+    null, { timeout: 6000 });
+  check('unaccented search "cafe da manha" matches the accented receita name "Café da Manhã", got: ' +
+    await page.textContent('#root'),
+    (await page.textContent('#root')).includes('Café da Manhã'));
+
+  await page.fill('#search', 'zzzznotfound');
+  await page.waitForFunction(() => document.getElementById('no-match') !== null, null, { timeout: 6000 });
+  check('an unrelated search term does not match the accented receita (no over-matching)',
+    !(await page.textContent('#root')).includes('Café da Manhã'));
+
   await page.screenshot({ path: path.join(SHOTS, 'receita_detalhe.png'), fullPage: true });
   await browser.close();
   server.close();

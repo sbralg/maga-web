@@ -425,6 +425,39 @@ function clienteEmbed(id) {
   check('the evento renders "Sem cliente" after its cliente is deleted, no crash',
     (await page.textContent('.cli-block')).includes('Sem cliente'));
 
+  // --- accent-insensitive search (foldSearchText): an unaccented typed
+  // term matches a cliente/evento name stored WITH accents, and a
+  // genuinely different term still doesn't match (no over-matching) ---
+  await page.click('#back');
+  await page.waitForSelector('#new-evento', { timeout: 6000 });
+  await page.click('#new-evento');
+  await page.waitForSelector('#nv-cliente-btn', { timeout: 6000 });
+  await page.click('#nv-cliente-btn');
+  await page.waitForSelector('#cli-q', { timeout: 6000 });
+  await page.fill('#cli-q', 'José Ramírez');
+  await page.click('#cli-list [data-create]');
+  await page.waitForFunction(
+    () => document.getElementById('nv-cliente-btn').textContent.includes('José Ramírez'),
+    null, { timeout: 6000 });
+  await page.fill('#nv-name', 'Aniversário do Zé');
+  await page.click('#nv-ok');
+  await page.waitForSelector('.evento-head', { timeout: 6000 });
+  await page.click('#back');
+  await page.waitForSelector('#search', { timeout: 6000 });
+
+  await page.fill('#search', 'jose ramirez');
+  await page.waitForFunction(
+    () => (document.getElementById('root').textContent || '').includes('Aniversário do Zé'),
+    null, { timeout: 6000 });
+  check('unaccented search "jose ramirez" matches the accented cliente name "José Ramírez", got: ' +
+    await page.textContent('#root'),
+    (await page.textContent('#root')).includes('Aniversário do Zé'));
+
+  await page.fill('#search', 'zzzznotfound');
+  await page.waitForFunction(() => document.getElementById('no-match') !== null, null, { timeout: 6000 });
+  check('an unrelated search term does not match the accented evento (no over-matching)',
+    !(await page.textContent('#root')).includes('Aniversário do Zé'));
+
   await page.screenshot({ path: path.join(SHOTS, 'evento_detalhe.png'), fullPage: true });
   await browser.close();
   server.close();

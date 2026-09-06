@@ -212,7 +212,7 @@ async function loadReceitas(){
 
 function matchesSearch(r, term){
   if(!term) return true;
-  return String(r.name).toLowerCase().indexOf(term.toLowerCase()) >= 0;
+  return foldSearchText(r.name).indexOf(foldSearchText(term)) >= 0;
 }
 
 function receitaRowHtml(r){
@@ -409,8 +409,8 @@ async function receitaItemPickerModal(currentReceitaId){
       const source = kind === "ingrediente" ? ings : recs;
 
       function draw(){
-        const t = qEl.value.trim().toLowerCase();
-        const shown = source.filter(x => !t || String(x.name).toLowerCase().indexOf(t) >= 0);
+        const t = foldSearchText(qEl.value.trim());
+        const shown = source.filter(x => !t || foldSearchText(x.name).indexOf(t) >= 0);
         let html = shown.map(x => {
           const sub = kind === "ingrediente"
             ? (x.base_unit ? "por " + x.base_unit : "")

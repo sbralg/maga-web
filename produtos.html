@@ -194,7 +194,7 @@ async function loadProdutos(){
 
 function matchesSearch(p, term){
   if(!term) return true;
-  return String(p.name).toLowerCase().indexOf(term.toLowerCase()) >= 0;
+  return foldSearchText(p.name).indexOf(foldSearchText(term)) >= 0;
 }
 
 function produtoRowHtml(p){
@@ -278,8 +278,8 @@ async function pickFornecedorModal(){
       resolve(result);
     };
     function draw(){
-      const t = qEl.value.trim().toLowerCase();
-      const shown = fornecedorCache.filter(x => !t || String(x.name).toLowerCase().indexOf(t) >= 0);
+      const t = foldSearchText(qEl.value.trim());
+      const shown = fornecedorCache.filter(x => !t || foldSearchText(x.name).indexOf(t) >= 0);
       let html = shown.map(x => '<button class="pick-opt" data-id="' + esc(x.id) + '">' +
         '<span class="nm">' + esc(x.name) + '</span>' +
       '</button>').join("");
@@ -326,8 +326,8 @@ async function pickReceitaModal(){
       resolve(result);
     };
     function draw(){
-      const t = qEl.value.trim().toLowerCase();
-      const shown = receitaListCache.filter(x => !t || String(x.name).toLowerCase().indexOf(t) >= 0);
+      const t = foldSearchText(qEl.value.trim());
+      const shown = receitaListCache.filter(x => !t || foldSearchText(x.name).indexOf(t) >= 0);
       let html = shown.map(x => '<button class="pick-opt" data-id="' + esc(x.id) + '">' +
         '<span class="nm">' + esc(x.name) + '</span>' +
         '<span class="cnt">' + fmtStockQty(x.yield_qty) + ' ' + esc(x.yield_unit) + '</span>' +

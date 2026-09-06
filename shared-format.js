@@ -10,6 +10,20 @@
 // a small list-only floor-to-1 formatter that stays local to compras.html,
 // since it has exactly one caller and doesn't need to be "shared" at all.
 
+// Folds a string for SEARCH COMPARISON ONLY — never for display, and never
+// written back to storage. Lowercases and strips accents/diacritics, so
+// "Café"/"cafe" and "Iván"/"Ivan" match each other regardless of which
+// spelling was typed or which was stored. `.normalize("NFD")` splits a
+// precomposed accented character into its plain base letter plus a
+// separate combining mark (U+0300-U+036F); the regex then drops just the
+// marks, leaving the base letters untouched. Every page's own search/
+// filter function runs BOTH the typed term and the stored value through
+// this before comparing — a lone side folded (only the term, or only the
+// haystack) would silently stop matching the exact case it exists for.
+function foldSearchText(s){
+  return String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 function fmtMoney(v){
   return new Intl.NumberFormat("pt-BR", { style:"currency", currency:"BRL" }).format(Number(v) || 0);
 }

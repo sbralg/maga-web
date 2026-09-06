@@ -303,12 +303,12 @@ function matchesFilters(p, term, kind){
 
 function matchesSearch(p, term){
   if(!term) return true;
-  const t = term.toLowerCase();
-  if(String(p.name || "").toLowerCase().indexOf(t) >= 0) return true;
-  if(String(p.brand || "").toLowerCase().indexOf(t) >= 0) return true;
+  const t = foldSearchText(term);
+  if(foldSearchText(p.name).indexOf(t) >= 0) return true;
+  if(foldSearchText(p.brand).indexOf(t) >= 0) return true;
   // The ingredient matches too, so "leite" finds every brand of it — which
   // is the whole reason the link exists.
-  if(ingredientName(p).toLowerCase().indexOf(t) >= 0) return true;
+  if(foldSearchText(ingredientName(p)).indexOf(t) >= 0) return true;
   // Barcode search only when digits were actually typed: stripping
   // non-digits out of a word leaves "", and indexOf("") matches everything.
   const digits = t.replace(/\D/g, "");

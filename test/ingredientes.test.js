@@ -219,6 +219,19 @@ const ingredientOf = (id) => state.ingredients.find(i => i.id === id);
   await page.fill('#search', '');
   await page.waitForFunction(() => document.querySelectorAll('.row[data-id]').length === 3);
 
+  // --- search is accent-insensitive: "nestle" must find "Nestlé" ---
+  // Regression test for a real reported gap: a household member typing on
+  // a keyboard/habit without accents must still find "Café"-style names.
+  // Reuses the existing "Nestlé" brand fixture rather than adding a new
+  // ingredient, since this file's counts/badges are asserted in several
+  // places that would all need updating for one more row.
+  await page.fill('#search', 'nestle');
+  await page.waitForFunction(() => document.querySelectorAll('.row[data-id]').length === 1);
+  check('searching an unaccented "nestle" still finds the accented brand "Nestlé"',
+    (await page.textContent('.row[data-id]')).includes('Leite Condensado'));
+  await page.fill('#search', '');
+  await page.waitForFunction(() => document.querySelectorAll('.row[data-id]').length === 3);
+
   // --- the kind filter ---
   await page.click('.chip[data-kind="embalagem"]');
   await page.waitForFunction(() => document.querySelectorAll('.row[data-id]').length === 1);
