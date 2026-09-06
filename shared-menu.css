@@ -10,13 +10,20 @@
 .menu-btn:active{transform:scale(.9)}
 
 /* The small brand badge that sits at the right end of every page's header
-   row, opposite the hamburger. `align-self:center` because the header aligns
-   its <h1> on the baseline; `flex:none` so a long title never squashes it.
-   index.html uses the same asset large and centred, not this class. */
+   row, opposite the hamburger — also a link back to index.html (the
+   dashboard). `align-self:center` because the header aligns its <h1> on
+   the baseline; `flex:none` so a long title never squashes it. The class
+   is on the <a> (the flex item being sized/positioned); the img inside
+   just fills it. index.html uses the same asset large and centred, not
+   this class, and isn't itself a link since it's already home.
+   Hover/active feedback mirrors .menu-btn opposite it. */
 .brand-mark{
   width:30px;height:30px;flex:none;align-self:center;display:block;
-  margin-left:auto;
+  margin-left:auto;transition:opacity .15s ease,transform .1s ease;
 }
+.brand-mark:hover{opacity:.8}
+.brand-mark:active{transform:scale(.92)}
+.brand-mark img{width:100%;height:100%;display:block}
 .menu-backdrop{
   position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;
   animation:modalFadeIn .15s ease;

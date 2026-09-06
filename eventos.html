@@ -222,7 +222,7 @@ function navHeader(title, backAction){
   const topRow = '<header><div class="hleft">' +
     '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
     '<h1 style="flex:1">' + (backAction ? 'Eventos' : esc(title)) + '</h1>' +
-    '</div><img class="brand-mark" src="assets/logo-badge.svg" alt="Magá"></header>';
+    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
   if(!backAction) return topRow;
   return topRow + '<div class="subheader">' +
     '<button class="link" id="back">← Eventos</button>' +

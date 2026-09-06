@@ -281,7 +281,7 @@ function render(rows){
   const header = '<header><div class="hleft">' +
     '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
     '<h1>Tarefas pendentes</h1>' +
-    '</div><img class="brand-mark" src="assets/logo-badge.svg" alt="Magá"></header>';
+    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
   const addForm = '<div class="card addcard"><div class="addrow">' +
     '<input type="text" id="new-text" placeholder="Nova ação..." />' +
     '<button type="button" class="date-btn" id="new-due-btn" ' +
@@ -613,7 +613,7 @@ async function load(){
       '<header><div class="hleft">' +
         '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
         '<h1>Tarefas pendentes</h1>' +
-      '</div><img class="brand-mark" src="assets/logo-badge.svg" alt="Magá"></header>' +
+      '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>' +
       personalPageBlockedHtml();
     wireMenuButton();
     return;
