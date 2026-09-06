@@ -123,27 +123,31 @@ function deepMerge(target, patch) {
   return out;
 }
 
-// Watches for a top-level navigation towards `urlPrefix` and stops it via
-// the Chrome DevTools Protocol BEFORE it commits, returning the URL the page
-// tried to navigate to. This is the only technique found that works for
-// preferencias.html's two bare `location.assign`/`location.href` calls
-// (startOAuth() and startPreferencesReauth()): a real cross-origin
-// navigation to an unreachable host (MCP_BASE only exists as a mock in
-// these tests) destroys the current document once the browser commits to
-// it - confirmed to happen whether the request is aborted, fulfilled, or
-// left to time out via a plain ctx.route() handler, and in every case fast
-// enough to take the whole browser down with it if a test tries to keep
-// reading from the page afterward. Page.stopLoading, issued the instant the
-// CDP Network domain reports the request, halts the navigation attempt
-// before Chromium ever gets that far - the current document (and its
-// sessionStorage) stays alive and readable. Call this BEFORE triggering
-// whatever page action leads to the navigation.
 // Waits for the page to have ATTEMPTED a navigation to one of the two
-// MCP-server endpoints the fake answers with 204. Polls the fake's own
-// record rather than opening a CDP session: the route handler is the single
-// place every MCP_BASE request already passes through, so there is nothing
-// to keep in sync and no second event stream that can miss an intercepted
-// request.
+// MCP-server endpoints (`/authorize`, `/logout`) that startOAuth()/
+// startPreferencesReauth() drive via bare `location.href` assignment.
+//
+// Getting this right took two failed approaches, worth recording since a
+// future navigation-triggering test here will hit the same wall: a real
+// cross-origin navigation to an unreachable host (MCP_BASE only exists as a
+// mock in these tests) destroys the current document - and everything a
+// test still needs from it, like sessionStorage - the moment the browser
+// commits to it. That happened whether the request was aborted, fulfilled
+// with real content, or left to time out via a plain ctx.route() handler,
+// and in every case fast enough to occasionally take the whole browser
+// process down with it if a test kept reading from the page afterward
+// (confirmed empirically, not just reasoned about). A CDP `Page.stopLoading`
+// issued the instant the request was seen worked, but added a second event
+// stream (a raw CDP session) to keep in sync with everything else.
+//
+// The actual fix needed no client-side trickery at all: per the HTML
+// navigation spec, a top-level navigation whose response is 204 No Content
+// (or 205) is simply ABANDONED by the browser - nothing commits, the
+// current document is untouched. So the fake answers both endpoints with a
+// plain 204 (see withPrefsFake below) and records that the request
+// happened; this function just polls that record rather than opening a
+// second stream, since the route handler is already the one place every
+// MCP_BASE request passes through.
 async function waitForNav(otherCalls, pathname, timeoutMs = 6000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
