@@ -174,6 +174,7 @@ async function load(){
 
   render();
   loadGroupsLater();
+  resolveAllowlistNamesLater();
 }
 
 // The group list comes from this person's own WhatsApp bridge, which is on
@@ -330,6 +331,32 @@ function allowRowsHtml(entries, kind){
   }).join("");
 }
 
+// Muted groups always show a live-resolved name because groupsHtml() reads
+// it fresh from the person's own recent messages on every load, regardless
+// of how a group ended up muted. The WhatsApp allow-list did not get the
+// same treatment: a label is only ever captured at the moment an entry is
+// ADDED through "Verificar" + "Adicionar" here, so anything already in
+// people.json - which is every entry that existed before this page did -
+// has no label and rendered as a bare number forever. This resolves those
+// after first paint, the same way muted-group names are: never blocking
+// the initial render, and never writing the resolved name back to the
+// store - it is a display aid, not a silent edit of what was configured.
+async function resolveAllowlistNamesLater(){
+  const unlabeled = [...document.querySelectorAll('.entry[data-kind="wa"]')]
+    .filter(el => !el.querySelector(".who span"));
+  await Promise.all(unlabeled.map(async el => {
+    const number = el.dataset.value;
+    try {
+      const r = await lookupWhatsappContact(number);
+      if(r.reachable && r.matches && r.matches.length === 1){
+        const who = el.querySelector(".who");
+        who.textContent = r.matches[0].name;
+        who.insertAdjacentHTML("beforeend", "<span>" + esc(number) + "</span>");
+      }
+    } catch(_){ /* best effort - the bare number is still a usable fallback */ }
+  }));
+}
+
 function allowValues(kind){
   return [...document.querySelectorAll('.entry[data-kind="' + kind + '"]')].map(el => ({
     value: el.dataset.value,
@@ -482,6 +509,7 @@ function wireBackup(){
       // written into the FRESH element afterwards - writing it first put the
       // message on a node that was thrown away microseconds later.
       render();
+      resolveAllowlistNamesLater();
       const fresh = document.getElementById("saved-backup");
       if(fresh) fresh.textContent = "Restaurado: " + (r.imported.join(", ") || "nada");
     } catch(e){

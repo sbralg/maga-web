@@ -558,6 +558,38 @@ async function withPrefsFake(ctx, opts = {}) {
     await ctx.close();
   }
 
+  // --- 11b. pre-existing (bare-string) allow-list entries get their names
+  // resolved live, the same way muted groups always do - not just entries
+  // added through Verificar+Adicionar. Regression test for a real gap: only
+  // the "add" flow ever captured a label, so anything already in
+  // people.json (every entry that existed before this page did, per
+  // makePrefs()'s own default fixture of bare strings) rendered as a bare
+  // number forever.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const contactResult = number => ({
+      reachable: true,
+      matches: number === '5511900000000' ? [{ name: 'Mãe' }] : [],
+    });
+    await withPrefsFake(ctx, { contactResult });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#wa-allow', { timeout: 6000 });
+    await page.waitForFunction(() => {
+      const row = document.querySelector('.entry[data-kind="wa"][data-value="5511900000000"] .who');
+      return row && row.textContent.includes('Mãe');
+    }, null, { timeout: 6000 });
+    const resolvedRow = await page.textContent('.entry[data-kind="wa"][data-value="5511900000000"] .who');
+    check('a pre-existing allow-list entry with no stored label is resolved to a name on load, got: ' + resolvedRow,
+      resolvedRow.includes('Mãe'));
+    const unresolvedRow = await page.textContent('.entry[data-kind="wa"][data-value="5511911111111"] .who');
+    check('a number with no contact match still falls back to showing the bare number, got: ' + unresolvedRow,
+      unresolvedRow.trim() === '5511911111111');
+    await ctx.close();
+  }
+
   // --- 12. Verificar resolves a name; Adicionar + Salvar sends {number,label}
   {
     const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
