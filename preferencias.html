@@ -181,7 +181,12 @@ async function load(){
 // is perfectly usable. Fetched after the first paint, never blocking it.
 async function loadGroupsLater(){
   try { groups = await loadWhatsappGroups(); }
-  catch(_){ groups = { groups: [], reachable: false }; }
+  // The server itself never throws here - a dead bridge is a 200 carrying
+  // {reachable:false, reason}. This catch only fires if the request to the
+  // MCP SERVER failed (network/CORS/expired token), which is a different
+  // problem from the bridge being slow - keep the two reasons distinguishable
+  // rather than collapsing both into one silent guess.
+  catch(e){ groups = { groups: [], reachable: false, reason: e.message }; }
   const box = document.getElementById("groups-box");
   if(box) box.innerHTML = groupsHtml();
   wireGroupRows();
@@ -549,7 +554,13 @@ function groupsHtml(){
     // The bridge is on the LAN and the phone may be off it - saying which
     // groups are muted still lets someone UN-mute one, which is the edit
     // most likely to be urgent ("why didn't the summary mention that?").
-    return '<p class="hint">Não deu para listar os grupos agora (o WhatsApp da casa não respondeu). ' +
+    // The actual reason is shown, not guessed at: this call has genuinely
+    // timed out before on a perfectly healthy bridge, because it fetches
+    // every message in a 14-day window with no pagination - a real cost
+    // that scales with how much the household talks, not a sign anything
+    // is broken.
+    return '<p class="hint">Não deu para listar os grupos agora' +
+      (groups.reason ? ' (' + esc(groups.reason) + ')' : ' (o WhatsApp da casa não respondeu)') + '. ' +
       'Os que já estão silenciados continuam abaixo e podem ser liberados.</p>' + mutedOnlyList(muted);
   }
   const known = groups.groups.slice();
