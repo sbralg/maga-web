@@ -123,6 +123,30 @@ function deepMerge(target, patch) {
   return out;
 }
 
+// Applies one PUT the same two ways the real server's mergePerson() does:
+// the rich {number,label}/{jid,label} shape is kept VERBATIM in `overrides`
+// (what GET /preferences echoes back as the raw overlay), while `effective`
+// only ever gets the flat string form security code and every other render
+// path expects. A fake that only updated `effective` (the original version
+// of this helper) could never have caught the real "labels vanish on
+// reload" bug, because prefs.overrides would just stay an empty object
+// forever - the exact shape the client's own recovery logic depends on.
+function applyPutToPrefs(prefs, section, body) {
+  const overrides = { ...prefs.overrides, [section]: deepMerge(prefs.overrides[section] || {}, body) };
+  let effective = { ...prefs.effective };
+  if (section === 'whatsapp') {
+    effective.whatsapp = { ...effective.whatsapp };
+    if ('selfNumber' in body) effective.whatsapp.selfNumber = body.selfNumber;
+    if (body.excludedGroups) effective.whatsapp.excludedGroups = body.excludedGroups.map(g => g.jid);
+    if (body.sendAllowlist) effective.whatsapp.sendAllowlist = body.sendAllowlist.map(e => e.number);
+  } else if (section === 'mail' && body.sendAllowlist) {
+    effective.mail = { ...effective.mail, sendAllowlist: [...body.sendAllowlist] };
+  } else {
+    effective = deepMerge(effective, { [section]: body });
+  }
+  return { ...prefs, effective, overrides };
+}
+
 // Waits for the page to have ATTEMPTED a navigation to one of the two
 // MCP-server endpoints (`/authorize`, `/logout`) that startOAuth()/
 // startPreferencesReauth() drive via bare `location.href` assignment.
@@ -276,7 +300,7 @@ async function withPrefsFake(ctx, opts = {}) {
         await fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify(rateLimitsError) });
         return;
       }
-      prefs = { ...prefs, effective: deepMerge(prefs.effective, { [section]: body }) };
+      prefs = applyPutToPrefs(prefs, section, body);
       await fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify({ effective: prefs.effective, overrides: prefs.overrides }),
@@ -659,6 +683,32 @@ async function withPrefsFake(ctx, opts = {}) {
     const added = call && call.body.sendAllowlist.find(e => e.number === '5511922223333');
     check('the saved entry carries {number,label} with the resolved name as the label, got ' + JSON.stringify(added),
       !!added && added.label === 'Nice Person');
+
+    // --- 12b. reloading after that save shows the name immediately, with NO
+    // fresh lookup - regression test for a real reported bug: a label
+    // resolved via Verificar+Adicionar+Salvar vanished on every reload,
+    // because render() only ever read prefs.effective (always bare numbers
+    // post-merge) and never prefs.overrides (where the real {number,label}
+    // pair actually survives). otherCalls.length is checked BEFORE reload
+    // so the "no new lookup" assertion below can't be satisfied by a lookup
+    // that simply never ran in this test at all.
+    // Other pre-existing (still-unlabeled) rows on this fixture legitimately
+    // get looked up again on every reload - the assertion below only cares
+    // about the one number that was JUST resolved and saved, so it counts
+    // lookups for THAT number specifically rather than the endpoint's total.
+    const lookupsFor = num => otherCalls.filter(c => c.pathname === '/preferences/whatsapp/contact' && c.query === num).length;
+    const lookupsBeforeReload = lookupsFor('5511922223333');
+    await page.reload();
+    await page.waitForSelector('#wa-allow .entry', { timeout: 6000 });
+    const rowText = await page.textContent('.entry[data-kind="wa"][data-value="5511922223333"] .who');
+    check('the resolved name is shown on the very first render after reload, got: ' + rowText,
+      rowText.includes('Nice Person'));
+    // Give resolveAllowlistNamesLater() a moment to run (it always fires
+    // after render()) so a wrongly-triggered re-lookup has time to show up.
+    await page.waitForTimeout(300);
+    check('no fresh contact lookup ran for an already-labeled entry after reload, before=' +
+      lookupsBeforeReload + ' after=' + lookupsFor('5511922223333'),
+      lookupsFor('5511922223333') === lookupsBeforeReload);
     await ctx.close();
   }
 

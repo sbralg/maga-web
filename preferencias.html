@@ -236,7 +236,7 @@ function render(){
     '<p class="hint" style="margin:0 0 10px">Só estes contatos podem receber uma mensagem enviada pelo assistente. ' +
     'Alterar esta lista pede a sua senha de novo — é a proteção que impede uma mensagem recebida de virar um envio.</p>' +
     '<div class="field" data-field="sendAllowlist"><label>WhatsApp</label>' +
-    '<div id="wa-allow">' + allowRowsHtml(eff.whatsapp.sendAllowlist || [], "wa") + '</div>' +
+    '<div id="wa-allow">' + allowRowsHtml(withRecoveredLabels(eff.whatsapp.sendAllowlist || [], "wa"), "wa") + '</div>' +
     '<div class="addrow">' +
       '<input type="text" inputmode="numeric" id="wa-new" placeholder="Número com DDD">' +
       '<button class="link" id="wa-check">Verificar</button>' +
@@ -317,6 +317,41 @@ function render(){
 
 // --- allow-lists -------------------------------------------------------------
 
+// prefs.effective.whatsapp.sendAllowlist is ALWAYS a bare array of numbers —
+// mergePerson() collapses the richer {number,label} overlay shape down to
+// that on purpose, so security-sensitive code never has to trust a label a
+// person typed. But that means rendering straight from `effective` loses
+// every name ever resolved, on every single load. The real {number,label}
+// pairs are still sitting in prefs.overrides (the raw, unmerged overlay) —
+// this recovers them so a name resolved and saved last week doesn't need to
+// be looked up again just because the page reloaded.
+function allowlistLabelsFor(kind){
+  const map = new Map();
+  if(kind !== "wa") return map;
+  const overrideEntries = prefs.overrides && prefs.overrides.whatsapp && prefs.overrides.whatsapp.sendAllowlist;
+  if(Array.isArray(overrideEntries)){
+    overrideEntries.forEach(e => {
+      if(e && typeof e === "object" && e.number && e.label) map.set(e.number, e.label);
+    });
+  }
+  return map;
+}
+
+// Maps a bare-string allow-list (what `effective` always carries) through the
+// recovered label map, producing the {number,label} shape `allowRowsHtml`
+// already knows how to render. A number with no recovered label still comes
+// through as a bare string — the row falls back to showing the number itself,
+// exactly like a value that has genuinely never been resolved.
+function withRecoveredLabels(entries, kind){
+  const labels = allowlistLabelsFor(kind);
+  if(!labels.size) return entries;
+  return entries.map(e => {
+    const value = typeof e === "string" ? e : e.number;
+    const label = labels.get(value);
+    return label ? { number: value, label } : e;
+  });
+}
+
 // Entries are rendered from the DOM itself rather than from a parallel array:
 // the list is short, and one source of truth means an add or a remove cannot
 // disagree with what is on screen when Salvar is pressed.
@@ -325,7 +360,7 @@ function allowRowsHtml(entries, kind){
   return entries.map(e => {
     const value = typeof e === "string" ? e : e.number;
     const label = typeof e === "string" ? "" : (e.label || "");
-    return '<div class="entry" data-kind="' + kind + '" data-value="' + esc(value) + '">' +
+    return '<div class="entry" data-kind="' + kind + '" data-value="' + esc(value) + '" data-label="' + esc(label) + '">' +
       '<span class="who">' + esc(label || value) + (label ? '<span>' + esc(value) + '</span>' : '') + '</span>' +
       '<button class="icon-btn" title="Remover" data-remove>🗑</button></div>';
   }).join("");
@@ -351,9 +386,16 @@ function allowRowsHtml(entries, kind){
 // "· verificando…" makes the in-flight state visible; a failure or a
 // zero-match result reverts to the plain number, never left showing
 // "verificando" forever.
+//
+// Filters on the row's data-label ATTRIBUTE, never on whether a nested
+// <span> happens to be present - allowValues() used to infer "has a label"
+// from DOM text shape (one text node vs. two), which cannot tell "no label"
+// apart from "a label that happens to equal the number", and could bake a
+// self-referential fake label into a save. data-label is the one place
+// this is ever written or read.
 async function resolveAllowlistNamesLater(){
   const rows = [...document.querySelectorAll('.entry[data-kind="wa"]')]
-    .filter(el => !el.querySelector(".who span"));
+    .filter(el => !el.dataset.label);
   for(const el of rows){
     const number = el.dataset.value;
     const who = el.querySelector(".who");
@@ -362,6 +404,7 @@ async function resolveAllowlistNamesLater(){
     try {
       const r = await lookupWhatsappContact(number);
       if(r.reachable && r.matches && r.matches.length === 1){
+        el.dataset.label = r.matches[0].name;
         who.textContent = r.matches[0].name;
         who.insertAdjacentHTML("beforeend", "<span>" + esc(number) + "</span>");
         continue;
@@ -374,7 +417,7 @@ async function resolveAllowlistNamesLater(){
 function allowValues(kind){
   return [...document.querySelectorAll('.entry[data-kind="' + kind + '"]')].map(el => ({
     value: el.dataset.value,
-    label: el.querySelector(".who").firstChild.textContent,
+    label: el.dataset.label || "",
   }));
 }
 
@@ -438,7 +481,7 @@ function appendAllowEntry(boxId, kind, value, label){
   const empty = box.querySelector(".hint");
   if(empty) empty.remove();
   box.insertAdjacentHTML("beforeend",
-    '<div class="entry" data-kind="' + kind + '" data-value="' + esc(value) + '">' +
+    '<div class="entry" data-kind="' + kind + '" data-value="' + esc(value) + '" data-label="' + esc(label) + '">' +
     '<span class="who">' + esc(label || value) + (label ? '<span>' + esc(value) + '</span>' : '') + '</span>' +
     '<button class="icon-btn" title="Remover" data-remove>🗑</button></div>');
   const btn = box.lastElementChild.querySelector("[data-remove]");
@@ -532,7 +575,13 @@ function wireBackup(){
     status.textContent = "Restaurando…";
     try {
       const r = await importPreferences(payload);
-      prefs.effective = r.effective;
+      // /import only echoes back `effective`, never `overrides` (importing a
+      // password hash is refused server-side, so there is no equivalent
+      // concern there) - a plain GET right after is what actually recovers
+      // any allow-list labels the restored file brought back, the same way
+      // a page reload already does after a section save.
+      const reloaded = await loadPreferences();
+      prefs = reloaded.data;
       // render() rebuilds the whole page, so the confirmation has to be
       // written into the FRESH element afterwards - writing it first put the
       // message on a node that was thrown away microseconds later.
