@@ -123,61 +123,175 @@ function deepMerge(target, patch) {
   return out;
 }
 
+// Watches for a top-level navigation towards `urlPrefix` and stops it via
+// the Chrome DevTools Protocol BEFORE it commits, returning the URL the page
+// tried to navigate to. This is the only technique found that works for
+// preferencias.html's two bare `location.assign`/`location.href` calls
+// (startOAuth() and startPreferencesReauth()): a real cross-origin
+// navigation to an unreachable host (MCP_BASE only exists as a mock in
+// these tests) destroys the current document once the browser commits to
+// it - confirmed to happen whether the request is aborted, fulfilled, or
+// left to time out via a plain ctx.route() handler, and in every case fast
+// enough to take the whole browser down with it if a test tries to keep
+// reading from the page afterward. Page.stopLoading, issued the instant the
+// CDP Network domain reports the request, halts the navigation attempt
+// before Chromium ever gets that far - the current document (and its
+// sessionStorage) stays alive and readable. Call this BEFORE triggering
+// whatever page action leads to the navigation.
+// Waits for the page to have ATTEMPTED a navigation to one of the two
+// MCP-server endpoints the fake answers with 204. Polls the fake's own
+// record rather than opening a CDP session: the route handler is the single
+// place every MCP_BASE request already passes through, so there is nothing
+// to keep in sync and no second event stream that can miss an intercepted
+// request.
+async function waitForNav(otherCalls, pathname, timeoutMs = 6000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const hit = otherCalls.find(c => c.pathname === pathname);
+    if (hit) return new URL(hit.url);
+    await new Promise(r => setTimeout(r, 50));
+  }
+  throw new Error('no navigation to ' + pathname + ' within ' + timeoutMs + 'ms');
+}
+
 // Installs a fake for every /preferences* path under MCP_BASE. Returns
-// {calls, putCalls, getPrefs} so a test can inspect exactly what the page
-// requested and sent.
+// {calls, putCalls, otherCalls, getPrefs} so a test can inspect exactly what
+// the page requested and sent.
+//
+// New in the phase-2 extension: sessions/password/export/import/contact
+// routes, an optional `putOverride(section, body)` hook so a single save
+// (e.g. the allow-list PUT, not the muted-groups PUT that shares the same
+// section name) can be made to answer 428. The two bare-navigation targets
+// (`/authorize`, `/logout`) are NOT handled here in any special way - see
+// watchNav() above for how a test observes those safely.
 async function withPrefsFake(ctx, opts = {}) {
   let prefs = makePrefs(opts.prefsOverrides);
-  const calls = [];   // every request path hit, in order
-  const putCalls = []; // {section, body}
+  const calls = [];      // every request path hit, in order
+  const putCalls = [];   // {section, body}
+  const otherCalls = []; // {pathname, method, body?, query?} for the non-GET/PUT-person routes
   const groupsMode = opts.groupsMode || 'ok'; // 'ok' | 'fail' | 'unreachable'
   const groupsList = opts.groupsList || DEFAULT_GROUPS;
   const rateLimitsError = opts.rateLimitsError || null;
+  const putOverride = opts.putOverride || null; // (section, body) => {status, body} | null
+  const contactResult = opts.contactResult || (() => ({ reachable: true, matches: [] }));
+  const sessionsList = opts.sessionsList || [
+    { clientId: 'maga-web', current: true, signedInAt: '2026-09-01T10:00:00Z' },
+  ];
+  const revokedCount = opts.revokedCount != null ? opts.revokedCount : 2;
+  const passwordResult = opts.passwordResult || (() => ({ status: 200, body: { otherSessionsRevoked: 1 } }));
+  const exportResult = opts.exportResult || (() => ({ exportedAt: '2026-09-06T00:00:00Z', person: {} }));
+  const importResult = opts.importResult || (body => ({ status: 200, body: { imported: Object.keys(body || {}), effective: prefs.effective } }));
+
+  const CORS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization,content-type',
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS',
+  };
 
   await ctx.route(MCP_BASE + '/**', async route => {
-    const url = new URL(route.request().url());
+    const req = route.request();
+    const fulfill = (opts) => route.fulfill({ ...opts, headers: { ...CORS, ...(opts.headers || {}) } });
+    const url = new URL(req.url());
     const pathname = url.pathname;
     calls.push(pathname);
-    const method = route.request().method();
+    const method = req.method();
+    if (process.env.TRACE) console.log('      ROUTE ' + method + ' ' + pathname);
+    if (method === 'OPTIONS') { await fulfill({ status: 204 }); return; }
+
+    if (pathname === '/authorize' || pathname === '/logout') {
+      // Both are top-level navigations the page drives via location.href.
+      // Answering with 204 No Content is what makes them observable without
+      // being disruptive: a main-frame navigation that receives a 204 is
+      // ABANDONED by the browser, so the request is recorded here, nothing
+      // navigates, and the current document (and its sessionStorage) stays
+      // readable by the assertions that follow. Aborting instead commits a
+      // real cross-origin failure that destroys the document.
+      otherCalls.push({ pathname, method, url: req.url() });
+      await fulfill({ status: 204 });
+      return;
+    }
 
     if (pathname === '/preferences' && method === 'GET') {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(prefs) });
+      await fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(prefs) });
       return;
     }
     if (pathname === '/preferences/whatsapp/groups') {
-      if (groupsMode === 'fail') { await route.fulfill({ status: 500, body: 'oops' }); return; }
+      if (groupsMode === 'fail') { await fulfill({ status: 500, body: 'oops' }); return; }
       const reachable = groupsMode !== 'unreachable';
-      await route.fulfill({
+      await fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify({ groups: reachable ? groupsList : [], reachable }),
       });
       return;
     }
+    if (pathname === '/preferences/whatsapp/contact' && method === 'GET') {
+      const number = url.searchParams.get('number');
+      otherCalls.push({ pathname, method, query: number });
+      await fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(contactResult(number)) });
+      return;
+    }
+    if (pathname === '/preferences/sessions' && method === 'GET') {
+      otherCalls.push({ pathname, method });
+      await fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sessions: sessionsList }) });
+      return;
+    }
+    if (pathname === '/preferences/sessions/revoke-others' && method === 'POST') {
+      otherCalls.push({ pathname, method });
+      await fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ revoked: revokedCount }) });
+      return;
+    }
+    if (pathname === '/preferences/password' && method === 'POST') {
+      const body = JSON.parse(req.postData() || '{}');
+      otherCalls.push({ pathname, method, body });
+      const r = passwordResult(body);
+      await fulfill({ status: r.status, contentType: 'application/json', body: JSON.stringify(r.body) });
+      return;
+    }
+    if (pathname === '/preferences/export' && method === 'GET') {
+      otherCalls.push({ pathname, method });
+      await fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(exportResult()) });
+      return;
+    }
+    if (pathname === '/preferences/import' && method === 'POST') {
+      const body = JSON.parse(req.postData() || '{}');
+      otherCalls.push({ pathname, method, body });
+      const r = importResult(body);
+      await fulfill({ status: r.status, contentType: 'application/json', body: JSON.stringify(r.body) });
+      return;
+    }
     if (pathname.startsWith('/preferences/person/') && method === 'PUT') {
       const section = pathname.split('/').pop();
-      const body = JSON.parse(route.request().postData() || '{}');
+      const body = JSON.parse(req.postData() || '{}');
       putCalls.push({ section, body });
+      const override = putOverride && putOverride(section, body);
+      if (override) {
+        await fulfill({ status: override.status, contentType: 'application/json', body: JSON.stringify(override.body) });
+        return;
+      }
       if (section === 'rateLimits' && rateLimitsError) {
-        await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify(rateLimitsError) });
+        await fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify(rateLimitsError) });
         return;
       }
       prefs = { ...prefs, effective: deepMerge(prefs.effective, { [section]: body }) };
-      await route.fulfill({
+      await fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify({ effective: prefs.effective, overrides: prefs.overrides }),
       });
       return;
     }
-    await route.fulfill({ status: 404, body: 'not found' });
+    await fulfill({ status: 404, body: 'not found' });
   });
 
-  return { calls, putCalls, getPrefs: () => prefs };
+  return { calls, putCalls, otherCalls, getPrefs: () => prefs };
 }
 
 (async () => {
   const failures = [];
   let assertions = 0;
-  const check = (label, cond) => { assertions++; if (!cond) failures.push('FAIL: ' + label); };
+  // TRACE=1 streams each assertion and (below) each intercepted request as
+  // they happen. This file only prints a summary at the end, so without it a
+  // hang or a stall is invisible - which cost real time once already.
+  const check = (label, cond) => { assertions++; if (process.env.TRACE) console.log((cond?'ok   ':'FAIL ') + label.slice(0,70)); if (!cond) failures.push('FAIL: ' + label); };
   const server = await serve();
   const ORIGIN = 'http://127.0.0.1:' + server.address().port;
   const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
@@ -395,6 +509,339 @@ async function withPrefsFake(ctx, opts = {}) {
       menuLinks.length === menuCount + 1);
     check('Preferências is in the drawer and renders as the current page (inert label)',
       menuLinks.some(m => m.tag === 'SPAN' && m.text.includes('Preferências')));
+    await ctx.close();
+  }
+
+  // ==== Phase 2: allow-lists, password, sessions, backup ===================
+
+  // --- 10. allow-list rows: one per configured WhatsApp/e-mail recipient --
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withPrefsFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#wa-allow .entry', { timeout: 6000 });
+    const waRows = await page.$$eval('#wa-allow .entry', els => els.map(e => e.dataset.value));
+    check('one WhatsApp allow-list row per configured recipient, got ' + JSON.stringify(waRows),
+      waRows.length === 2 && waRows.includes('5511900000000') && waRows.includes('5511911111111'));
+    const mailRows = await page.$$eval('#mail-allow .entry', els => els.map(e => e.dataset.value));
+    check('one e-mail allow-list row per configured address, got ' + JSON.stringify(mailRows),
+      mailRows.length === 1 && mailRows[0] === 'someone@example.com');
+    await ctx.close();
+  }
+
+  // --- 11. removing a WhatsApp row, then saving, drops it from the PUT body
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const { putCalls } = await withPrefsFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#wa-allow .entry', { timeout: 6000 });
+    await page.click('#wa-allow .entry[data-value="5511900000000"] [data-remove]');
+    check('the removed row is gone from the DOM immediately',
+      await page.$('#wa-allow .entry[data-value="5511900000000"]') === null);
+    await page.click('[data-save="whatsappAllow"]');
+    await page.waitForFunction(() => (document.getElementById('saved-whatsappAllow') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
+    const waAllowCall = putCalls.filter(c => c.section === 'whatsapp' && c.body && c.body.sendAllowlist).pop();
+    check('a whatsapp PUT with sendAllowlist was sent', !!waAllowCall);
+    const numbers = waAllowCall && waAllowCall.body.sendAllowlist.map(e => e.number);
+    check('the removed number is gone from the saved sendAllowlist, got ' + JSON.stringify(numbers),
+      Array.isArray(numbers) && !numbers.includes('5511900000000') && numbers.includes('5511911111111'));
+    await ctx.close();
+  }
+
+  // --- 12. Verificar resolves a name; Adicionar + Salvar sends {number,label}
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const contactResult = number => ({ reachable: true, matches: number === '5511922223333' ? [{ name: 'Nice Person' }] : [] });
+    const { putCalls, otherCalls } = await withPrefsFake(ctx, { contactResult });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#wa-new', { timeout: 6000 });
+    await page.fill('#wa-new', '5511922223333');
+    await page.click('#wa-check');
+    await page.waitForFunction(() => (document.getElementById('wa-resolved') || {}).textContent.includes('Nice Person'), null, { timeout: 6000 });
+    check('a contact lookup request reached /preferences/whatsapp/contact with the typed number',
+      otherCalls.some(c => c.pathname === '/preferences/whatsapp/contact' && c.query === '5511922223333'));
+    check('the resolved contact name is shown on the page',
+      (await page.textContent('#wa-resolved')).includes('Nice Person'));
+
+    await page.click('#wa-add');
+    check('a new row was added for the added number',
+      await page.$('#wa-allow .entry[data-value="5511922223333"]') !== null);
+
+    await page.click('[data-save="whatsappAllow"]');
+    await page.waitForFunction(() => (document.getElementById('saved-whatsappAllow') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
+    const call = putCalls.filter(c => c.section === 'whatsapp' && c.body && c.body.sendAllowlist).pop();
+    const added = call && call.body.sendAllowlist.find(e => e.number === '5511922223333');
+    check('the saved entry carries {number,label} with the resolved name as the label, got ' + JSON.stringify(added),
+      !!added && added.label === 'Nice Person');
+    await ctx.close();
+  }
+
+  // --- 13. an unreachable bridge still lets a number be added -------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const contactResult = () => ({ reachable: false, matches: [] });
+    await withPrefsFake(ctx, { contactResult });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#wa-new', { timeout: 6000 });
+    await page.fill('#wa-new', '5511955556666');
+    await page.click('#wa-check');
+    // "Procurando…" is set SYNCHRONOUSLY before the lookup starts, so
+    // waiting for any non-empty text resolves instantly on the placeholder
+    // and reads it instead of the answer - the same stale-signal race this
+    // repo hit with .ins-head. Wait for the placeholder to be replaced.
+    await page.waitForFunction(() => {
+      const t = (document.getElementById('wa-resolved') || {}).textContent || '';
+      return t.length > 0 && !/procurando/i.test(t);
+    }, null, { timeout: 6000 });
+    const resolvedText = await page.textContent('#wa-resolved');
+    check('the page says it could not verify when the bridge is unreachable, got: ' + resolvedText,
+      /não deu para verificar/i.test(resolvedText));
+    await page.click('#wa-add');
+    check('the number can still be added despite the failed verification',
+      await page.$('#wa-allow .entry[data-value="5511955556666"]') !== null);
+    await ctx.close();
+  }
+
+  // --- 14. a 428 on the allow-list save shows confirmModal, and accepting
+  // it navigates to MCP_BASE/logout?return=...reauth=1... -----------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const reauthBody = { error: 'reauth_required', message: 'Confirme sua senha para alterar este ajuste.' };
+    const putOverride = (section, body) => (section === 'whatsapp' && body && body.sendAllowlist ? { status: 428, body: reauthBody } : null);
+    const { otherCalls } = await withPrefsFake(ctx, { putOverride });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('[data-save="whatsappAllow"]', { timeout: 6000 });
+    await page.click('[data-save="whatsappAllow"]');
+    await page.waitForSelector('.modal-backdrop', { timeout: 6000 });
+    const dialogText = await page.textContent('.modal-card p');
+    check('the 428 shows a confirmModal (not a native dialog) carrying the server message, got: ' + dialogText,
+      dialogText.includes('Confirme sua senha para alterar este ajuste.'));
+
+    // The click is dispatched via evaluate() rather than page.click():
+    // Playwright's click() waits for a navigation it sees starting, and the
+    // 204 means that navigation never commits, so the wait would outlast it.
+    await page.evaluate(() => document.getElementById('confirm-ok').click());
+    const navUrl = await waitForNav(otherCalls, '/logout');
+    check('accepting navigates to the MCP-server /logout endpoint, got: ' + navUrl.href,
+      navUrl.origin === MCP_BASE && navUrl.pathname === '/logout');
+    const ret = navUrl.searchParams.get('return');
+    check('the return= parameter carries reauth=1 so the page knows to resume the OAuth flow on the way back, got: ' + ret,
+      !!ret && ret.includes('reauth=1'));
+    await ctx.close();
+  }
+
+  // --- 15. the reauth=1 return hop: loop prevention ------------------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const { otherCalls } = await withPrefsFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html?reauth=1');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+
+    // load() is called directly rather than via page.reload(): the reauth
+    // branch navigates to /authorize during the document's initial script
+    // run, before "load" ever fires, so a reload's own wait would never
+    // resolve. The /authorize request is answered 204, so this document
+    // survives and its URL/sessionStorage are still readable below.
+    const state = await page.evaluate(() => {
+      load();
+      return {
+        hasSections: !!document.getElementById('f-displayName'),
+        url: location.href,
+        oauthState: (() => { try { return JSON.parse(sessionStorage.getItem('maga_oauth') || 'null'); } catch (_) { return null; } })(),
+      };
+    });
+    const navUrl = await waitForNav(otherCalls, '/authorize');
+
+    check('a reload with ?reauth=1 does NOT render the settings sections', !state.hasSections);
+    check('it navigates into the OAuth /authorize flow', navUrl.pathname === '/authorize');
+
+    // Loop-prevention: the reauth=1 param must be stripped from the URL
+    // BEFORE startOAuth() reads location.href as its returnTo, or the OAuth
+    // callback would bounce straight back into this same reauth branch
+    // forever.
+    check('the reauth=1 param is stripped from the page URL before starting OAuth, got: ' + state.url,
+      !state.url.includes('reauth=1'));
+    check('the stored OAuth returnTo does not itself carry reauth=1, got: ' + JSON.stringify(state.oauthState),
+      !!state.oauthState && !!state.oauthState.returnTo && !state.oauthState.returnTo.includes('reauth=1'));
+    await ctx.close();
+  }
+
+  // --- 16. password: mismatch shows an inline error and sends no request --
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const { otherCalls } = await withPrefsFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#pw-save', { timeout: 6000 });
+    await page.fill('#pw-current', 'oldpass123');
+    await page.fill('#pw-new', 'novaSenha1234');
+    await page.fill('#pw-confirm', 'novaSenhaDIFERENTE');
+    await page.click('#pw-save');
+    await page.waitForFunction(() => {
+      const el = document.querySelector('[data-field="confirmPassword"] .err');
+      return el && !el.hidden && el.textContent.length > 0;
+    }, null, { timeout: 6000 });
+    const msg = await page.textContent('[data-field="confirmPassword"] .err');
+    check('a mismatched confirm password shows an inline error, got: ' + msg,
+      msg.includes('não são iguais'));
+    check('no request was sent for a client-side-rejected mismatch',
+      !otherCalls.some(c => c.pathname === '/preferences/password'));
+    await ctx.close();
+  }
+
+  // --- 17. password: a field-named failure from the server ----------------
+  //
+  // This test found a real collision: mcpFetch() treats EVERY 401 as session
+  // expiry before it looks at the body, so a 401 carrying
+  // {error:"wrong_password", field:"currentPassword"} was indistinguishable
+  // from an expired token, and a mistyped password bounced the person out to
+  // the login form instead of naming the field. Fixed on the SERVER side -
+  // the bearer token was valid, only a submitted credential was wrong, so
+  // that is a 400 - which keeps 401 meaning exactly one thing for every
+  // client. This test now pins the fixed behaviour.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const passwordResult = () => ({ status: 400, body: { error: 'wrong_password', field: 'currentPassword', message: 'Senha atual incorreta.' } });
+    await withPrefsFake(ctx, { passwordResult });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#pw-save', { timeout: 6000 });
+    await page.fill('#pw-current', 'wrongpass');
+    await page.fill('#pw-new', 'novaSenha1234');
+    await page.fill('#pw-confirm', 'novaSenha1234');
+    await page.click('#pw-save');
+    await page.waitForFunction(() => {
+      const el = document.querySelector('[data-field="currentPassword"] .err');
+      return el && !el.hidden && (el.textContent || '').length > 0;
+    }, null, { timeout: 6000 });
+    const holder = await page.$('[data-field="currentPassword"] .err');
+    const inlineText = holder ? (await holder.textContent()) : null;
+    const inlineShown = holder !== null && !(await holder.evaluate(el => el.hidden)) && !!inlineText;
+    check('a wrong current password renders "Senha atual incorreta." under #pw-current rather than ' +
+      'bouncing to the login form, got holder text: ' + inlineText,
+      inlineShown && inlineText.includes('Senha atual incorreta.'));
+    await ctx.close();
+  }
+
+  // --- 18. password: a successful change reports how many sessions ended --
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const passwordResult = () => ({ status: 200, body: { otherSessionsRevoked: 3 } });
+    await withPrefsFake(ctx, { passwordResult });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#pw-save', { timeout: 6000 });
+    await page.fill('#pw-current', 'oldpass123');
+    await page.fill('#pw-new', 'novaSenha1234');
+    await page.fill('#pw-confirm', 'novaSenha1234');
+    await page.click('#pw-save');
+    await page.waitForFunction(() => {
+      const t = (document.getElementById('saved-password') || {}).textContent || '';
+      return t.length > 0 && !/salvando/i.test(t);
+    }, null, { timeout: 6000 });
+    const status = await page.textContent('#saved-password');
+    check('a successful password change reports how many other sessions were ended, got: ' + status,
+      status.includes('3') && status.toLowerCase().includes('sess'));
+    await ctx.close();
+  }
+
+  // --- 19. Sessões ativas: lists sessions, marks the current one, revokes -
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const sessionsList = [
+      { clientId: 'maga-web', current: true, signedInAt: '2026-09-01T10:00:00Z' },
+      { clientId: 'maga-web-outro-aparelho', current: false, signedInAt: '2026-08-20T08:00:00Z' },
+    ];
+    const { calls } = await withPrefsFake(ctx, { sessionsList, revokedCount: 1 });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForFunction(() => {
+      const box = document.getElementById('sessions-box');
+      return box && box.querySelectorAll('.entry').length > 0;
+    }, null, { timeout: 6000 });
+    const rows = await page.$$eval('#sessions-box .entry', els => els.map(e => e.textContent));
+    check('both configured sessions are listed, got ' + JSON.stringify(rows), rows.length === 2);
+    check('the current session is marked as such', rows.some(t => t.includes('maga-web') && t.includes('este dispositivo')));
+    check('the other session is not marked current', rows.some(t => t.includes('maga-web-outro-aparelho') && !t.includes('este dispositivo')));
+
+    await page.click('#revoke-others');
+    await page.waitForFunction(() => (() => { const t = (document.getElementById('saved-sessions') || {}).textContent || ''; return t.length > 0 && !/encerrando/i.test(t); })(), null, { timeout: 6000 });
+    const status = await page.textContent('#saved-sessions');
+    check('revoking reports the count returned by the server, got: ' + status, status.includes('1'));
+    const sessionGetCalls = calls.filter(c => c === '/preferences/sessions').length;
+    check('the session list was reloaded after revoking (fetched at least twice), got ' + sessionGetCalls,
+      sessionGetCalls >= 2);
+    await ctx.close();
+  }
+
+  // --- 20. Backup: export makes the GET request (a real file download is
+  // not observable in headless Chromium - see the report) -----------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 }, acceptDownloads: true });
+    const { otherCalls } = await withPrefsFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#export', { timeout: 6000 });
+    await page.click('#export');
+    await page.waitForFunction(() => {
+      const el = document.getElementById('saved-backup');
+      return el && el.textContent.length > 0;
+    }, null, { timeout: 6000 });
+    check('exporting called GET /preferences/export', otherCalls.some(c => c.pathname === '/preferences/export'));
+    await ctx.close();
+  }
+
+  // --- 21. Backup: import feeds a JSON file through the hidden file input -
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const importedPayload = { effective: { displayName: 'Restaurado' } };
+    const { otherCalls } = await withPrefsFake(ctx, {
+      importResult: body => ({ status: 200, body: { imported: Object.keys(body || {}), effective: Object.assign({}, makePrefs().effective, body.effective || {}) } }),
+    });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#import', { timeout: 6000 });
+    await page.setInputFiles('#import-file', {
+      name: 'maga-preferencias-2026-09-01.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify(importedPayload)),
+    });
+    await page.waitForSelector('.modal-backdrop', { timeout: 6000 });
+    await page.click('#confirm-ok');
+    await page.waitForFunction(() => (() => { const t = (document.getElementById('saved-backup') || {}).textContent || ''; return t.length > 0 && !/restaurando/i.test(t); })(), null, { timeout: 6000 });
+    const importCall = otherCalls.find(c => c.pathname === '/preferences/import');
+    check('a POST /preferences/import request was sent with the parsed file contents',
+      !!importCall && JSON.stringify(importCall.body) === JSON.stringify(importedPayload));
+    const backupStatus = await page.textContent('#saved-backup');
+    check('the page shows what was restored, got: ' + backupStatus, backupStatus.startsWith('Restaurado:') && backupStatus.includes('effective'));
     await ctx.close();
   }
 

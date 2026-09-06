@@ -472,9 +472,13 @@ function wireBackup(){
     status.textContent = "Restaurando…";
     try {
       const r = await importPreferences(payload);
-      status.textContent = "Restaurado: " + (r.imported.join(", ") || "nada");
       prefs.effective = r.effective;
+      // render() rebuilds the whole page, so the confirmation has to be
+      // written into the FRESH element afterwards - writing it first put the
+      // message on a node that was thrown away microseconds later.
       render();
+      const fresh = document.getElementById("saved-backup");
+      if(fresh) fresh.textContent = "Restaurado: " + (r.imported.join(", ") || "nada");
     } catch(e){
       status.textContent = "";
       if(await handledAuthFailure(e)) return;
