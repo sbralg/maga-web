@@ -104,6 +104,15 @@ async function lookupWhatsappContact(number){
   return await mcpFetch("/preferences/whatsapp/contact?number=" + encodeURIComponent(number));
 }
 
+/** Find a contact by name instead of a number - the other half of Verificar
+ *  for someone whose number you don't have memorized. Backed by whatsmeow's
+ *  own synced contacts, so it can only ever find someone the household has
+ *  already exchanged a phone-number-based JID with - not WhatsApp's newer
+ *  @username handles, which this stack has no way to resolve at all. */
+async function searchWhatsappContacts(name){
+  return await mcpFetch("/preferences/whatsapp/contact-search?name=" + encodeURIComponent(name));
+}
+
 async function changePassword(currentPassword, newPassword){
   return await mcpFetch("/preferences/password", {
     method: "POST",

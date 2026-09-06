@@ -54,9 +54,13 @@ async function seed(page, { pass = 'x', envId, defaultEnv, token } = {}) {
   }, { pass, envId, defaultEnv, token });
 }
 
+// Server order is already busiest-first (see maga-infra's own test for the
+// sorting itself) - Família intentionally comes first here with a higher
+// rate, so a test can catch the page re-sorting or dropping avgPerDay
+// without needing its own fixture.
 const DEFAULT_GROUPS = [
-  { jid: '120363111@g.us', label: 'Família' },
-  { jid: '120363222@g.us', label: 'Trabalho' },
+  { jid: '120363111@g.us', label: 'Família', avgPerDay: 3.5 },
+  { jid: '120363222@g.us', label: 'Trabalho', avgPerDay: 0.2 },
 ];
 
 function makePrefs(overrides = {}) {
@@ -202,6 +206,7 @@ async function withPrefsFake(ctx, opts = {}) {
   const rateLimitsError = opts.rateLimitsError || null;
   const putOverride = opts.putOverride || null; // (section, body) => {status, body} | null
   const contactResult = opts.contactResult || (() => ({ reachable: true, matches: [] }));
+  const contactSearchResult = opts.contactSearchResult || (() => ({ reachable: true, matches: [] }));
   const sessionsList = opts.sessionsList || [
     { clientId: 'maga-web', current: true, signedInAt: '2026-09-01T10:00:00Z' },
   ];
@@ -256,6 +261,12 @@ async function withPrefsFake(ctx, opts = {}) {
       const number = url.searchParams.get('number');
       otherCalls.push({ pathname, method, query: number });
       await fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(contactResult(number)) });
+      return;
+    }
+    if (pathname === '/preferences/whatsapp/contact-search' && method === 'GET') {
+      const name = url.searchParams.get('name');
+      otherCalls.push({ pathname, method, query: name });
+      await fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(contactSearchResult(name)) });
       return;
     }
     if (pathname === '/preferences/sessions' && method === 'GET') {
@@ -434,6 +445,34 @@ async function withPrefsFake(ctx, opts = {}) {
     check('excludedGroups is an array', Array.isArray(excluded));
     check('excludedGroups contains the ticked jid as {jid,label}, got ' + JSON.stringify(excluded),
       Array.isArray(excluded) && excluded.some(g => g.jid === '120363222@g.us' && g.label === 'Trabalho'));
+    await ctx.close();
+  }
+
+  // --- 6b. groups render in the server's order (busiest first) and show
+  // the messages/day rate, without the page re-sorting or dropping it -----
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withPrefsFake(ctx, {
+      prefsOverrides: { effective: Object.assign({}, makePrefs().effective, {
+        whatsapp: Object.assign({}, makePrefs().effective.whatsapp, { excludedGroups: ['999999@g.us'] }),
+      }) },
+    });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('.grouprow', { timeout: 6000 });
+    const rows = await page.$$eval('.grouprow', els => els.map(el => el.textContent.trim()));
+    check('Família (the busier group, 3.5/dia) renders before Trabalho, got: ' + JSON.stringify(rows),
+      rows[0].includes('Família') && rows[1].includes('Trabalho'));
+    check('the busier group shows its rate, got: ' + rows[0], /3,5\/dia/.test(rows[0]));
+    check('the quieter group shows its own (lower) rate, got: ' + rows[1], /0,2\/dia/.test(rows[1]));
+    // The muted group with no recent activity (appended because it's
+    // excludedGroups but absent from the 14-day fetch) must render with NO
+    // rate at all - "no data in this window" is not the same as "0,0/dia".
+    const mutedRow = rows.find(r => r.includes('999999@g.us'));
+    check('a muted-but-quiet group still renders, got rows: ' + JSON.stringify(rows), !!mutedRow);
+    check('it shows no fabricated rate, got: ' + mutedRow, !/\/dia/.test(mutedRow));
     await ctx.close();
   }
 
@@ -709,6 +748,78 @@ async function withPrefsFake(ctx, opts = {}) {
     check('no fresh contact lookup ran for an already-labeled entry after reload, before=' +
       lookupsBeforeReload + ' after=' + lookupsFor('5511922223333'),
       lookupsFor('5511922223333') === lookupsBeforeReload);
+    await ctx.close();
+  }
+
+  // --- 12c. Verificar searches BY NAME when what's typed has letters,
+  // shows a plain pick-list on multiple matches, and picking one behaves
+  // exactly like a resolved number lookup for Adicionar --------------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const contactSearchResult = name => {
+      if (name === 'facco') {
+        return { reachable: true, matches: [
+          { name: 'João Facco', phone: '5511900000001' },
+          { name: 'Facco Jr', phone: '5511900000002' },
+        ] };
+      }
+      if (name === 'ninguem') return { reachable: true, matches: [] };
+      if (name === 'quebrado') return { reachable: false };
+      return { reachable: true, matches: [] };
+    };
+    const { otherCalls } = await withPrefsFake(ctx, { contactSearchResult });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#wa-new', { timeout: 6000 });
+
+    await page.fill('#wa-new', 'facco');
+    await page.click('#wa-check');
+    await page.waitForSelector('#wa-resolved .pick-list button', { timeout: 6000 });
+    check('a name search reached /preferences/whatsapp/contact-search, not the number endpoint',
+      otherCalls.some(c => c.pathname === '/preferences/whatsapp/contact-search' && c.query === 'facco'));
+    const picks = await page.$$eval('#wa-resolved .pick-list button', els => els.map(el => el.textContent));
+    check('both matches are listed as a plain list, got: ' + JSON.stringify(picks),
+      picks.length === 2 && picks.some(p => p.includes('João Facco')) && picks.some(p => p.includes('Facco Jr')));
+
+    await page.click('#wa-resolved .pick-list button:has-text("Facco Jr")');
+    check('picking a match fills the number field', await page.$eval('#wa-new', el => el.value) === '5511900000002');
+    check('picking a match shows the resolved-name confirmation, same as a number lookup',
+      (await page.textContent('#wa-resolved')).includes('Facco Jr'));
+
+    await page.click('#wa-add');
+    check('the picked contact was added with the picked name as its label',
+      await page.$('#wa-allow .entry[data-value="5511900000002"][data-label="Facco Jr"]') !== null);
+
+    await page.fill('#wa-new', 'ninguem');
+    await page.click('#wa-check');
+    // "Procurando…" is set synchronously before the search starts (same
+    // race this file already avoids elsewhere) - wait for the SPECIFIC
+    // settled text, not just any non-empty content.
+    await page.waitForFunction(() => (document.getElementById('wa-resolved') || {}).textContent.includes('Nenhum contato encontrado'), null, { timeout: 6000 });
+    check('zero name matches says so plainly, got: ' + await page.textContent('#wa-resolved'),
+      (await page.textContent('#wa-resolved')).includes('Nenhum contato encontrado'));
+
+    await page.fill('#wa-new', 'quebrado');
+    await page.click('#wa-check');
+    await page.waitForFunction(() => (document.getElementById('wa-resolved') || {}).textContent.includes('não respondeu'), null, { timeout: 6000 });
+    check('an unreachable bridge during a name search says so, got: ' + await page.textContent('#wa-resolved'),
+      (await page.textContent('#wa-resolved')).includes('não respondeu'));
+
+    // A WhatsApp @username can't be resolved by this stack at all (whatsmeow
+    // has no username support) - typing one must be caught client-side with
+    // an explanation, never sent to the server as a doomed name search.
+    const searchCallsBefore = otherCalls.filter(c => c.pathname === '/preferences/whatsapp/contact-search').length;
+    await page.fill('#wa-new', '@ronaldoaoki');
+    await page.click('#wa-check');
+    await page.waitForFunction(() => (document.getElementById('wa-resolved') || {}).textContent.length > 0, null, { timeout: 6000 });
+    const usernameMsg = await page.textContent('#wa-resolved');
+    check('an @username is refused with a clear reason, got: ' + usernameMsg,
+      usernameMsg.includes('@ronaldoaoki') && /usuário do whatsapp/i.test(usernameMsg));
+    const searchCallsAfter = otherCalls.filter(c => c.pathname === '/preferences/whatsapp/contact-search').length;
+    check('no request was sent for the @username - it never had a chance of resolving',
+      searchCallsAfter === searchCallsBefore);
     await ctx.close();
   }
 

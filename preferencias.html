@@ -71,6 +71,8 @@
   }
   .resolved{font-size:12.5px;color:var(--muted);width:100%;margin:0}
   .resolved.ok{color:var(--ok, var(--accent))}
+  .pick-list{display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;margin-top:4px}
+  .pick-list button{font-size:13px;text-align:left}
   .actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:6px}
   .saved{font-size:12.5px;color:var(--muted)}
   .banner{
@@ -431,9 +433,15 @@ function wireAllowlists(){
 
   // Resolving the number to a NAME before it is committed is the whole
   // anti-typo affordance here: a wrong digit is otherwise invisible until a
-  // message reaches a stranger.
+  // message reaches a stranger. The same button also doubles as a name
+  // search when what's typed isn't a number at all - see searchByName()
+  // below for why a bare "@handle" is refused outright instead of running
+  // a search that would just silently find nothing.
   document.getElementById("wa-check").addEventListener("click", async () => {
-    const digits = waNew.value.replace(/\D/g, "");
+    const raw = waNew.value.trim();
+    if(!raw) return;
+    if(/[a-zA-Z]/.test(raw)){ await searchByName(raw); return; }
+    const digits = raw.replace(/\D/g, "");
     if(!digits) return;
     waResolved.className = "resolved";
     waResolved.textContent = "Procurando…";
@@ -444,6 +452,46 @@ function wireAllowlists(){
       else { waResolved.className = "resolved ok"; waResolved.textContent = "É " + r.matches.map(m => m.name).join(", ") + "."; }
     } catch(e){ waResolved.textContent = "Não deu para verificar (" + e.message + ")."; }
   });
+
+  // Searching by name only ever reaches whatsmeow's own synced-contact
+  // table (the same data /whatsapp/contact already reads for a number
+  // lookup) - it has no way to resolve a WhatsApp username (an @handle,
+  // rolled out by WhatsApp in 2026 as an alternative to sharing a phone
+  // number). The library this household's bridge is built on has
+  // explicitly closed username support as "not planned"
+  // (tulir/whatsmeow#1192), so an @handle is caught here and refused with
+  // a clear reason rather than running a search that would just come back
+  // empty and look like a bug.
+  async function searchByName(name){
+    if(name.startsWith("@")){
+      waResolved.className = "resolved";
+      waResolved.textContent = "Nomes de usuário do WhatsApp (" + name + ") ainda não podem ser adicionados por aqui — só números de telefone de contatos já conhecidos.";
+      return;
+    }
+    waResolved.className = "resolved";
+    waResolved.textContent = "Procurando…";
+    try {
+      const r = await searchWhatsappContacts(name);
+      if(!r.reachable){ waResolved.textContent = "Não deu para buscar agora (o WhatsApp da casa não respondeu)."; return; }
+      if(!r.matches.length){ waResolved.textContent = "Nenhum contato encontrado com esse nome."; return; }
+      waResolved.textContent = "";
+      const list = document.createElement("div");
+      list.className = "pick-list";
+      r.matches.forEach(m => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "link";
+        btn.textContent = m.name + " — " + m.phone;
+        btn.addEventListener("click", () => {
+          waNew.value = m.phone;
+          waResolved.className = "resolved ok";
+          waResolved.textContent = "É " + m.name + ".";
+        });
+        list.appendChild(btn);
+      });
+      waResolved.appendChild(list);
+    } catch(e){ waResolved.textContent = "Não deu para buscar (" + e.message + ")."; }
+  }
 
   document.getElementById("wa-add").addEventListener("click", () => {
     const digits = waNew.value.replace(/\D/g, "");
@@ -675,12 +723,26 @@ function groupsHtml(){
     if(!known.some(g => g.jid === jid)) known.push({ jid, label: jid });
   });
   if(!known.length) return '<p class="hint">Nenhum grupo encontrado nos últimos 14 dias.</p>';
+  // Server order is already busiest-first (avgPerDay descending) - that is
+  // the whole point of showing the rate at all: without it, why a noisy
+  // group landed at the top would just look arbitrary.
   return '<div class="grouplist">' + known.map(g =>
     '<label class="grouprow"><input type="checkbox" data-jid="' + esc(g.jid) + '"' +
     (muted.includes(g.jid) ? " checked" : "") + '>' +
     '<span class="label">' + esc(g.label) +
     (g.label === g.jid ? "" : '<span class="jid">' + esc(g.jid) + '</span>') +
+    fmtGroupRate(g.avgPerDay) +
     '</span></label>').join("") + '</div>';
+}
+
+// avgPerDay is absent for a muted group appended below because it hasn't
+// posted in the 14-day window at all (see groupsHtml() above) - that is
+// genuinely unknown-in-this-window, not measured-as-zero, so it renders no
+// rate rather than a misleading "0,0/dia". A group that DID appear in the
+// window with zero-ish activity still gets a real (tiny) number.
+function fmtGroupRate(avgPerDay){
+  if(avgPerDay == null) return "";
+  return '<span class="jid">≈' + esc(avgPerDay.toFixed(1).replace(".", ",")) + '/dia</span>';
 }
 
 function mutedOnlyList(muted){
