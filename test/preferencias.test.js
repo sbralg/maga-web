@@ -473,6 +473,22 @@ async function withPrefsFake(ctx, opts = {}) {
     const mutedRow = rows.find(r => r.includes('999999@g.us'));
     check('a muted-but-quiet group still renders, got rows: ' + JSON.stringify(rows), !!mutedRow);
     check('it shows no fabricated rate, got: ' + mutedRow, !/\/dia/.test(mutedRow));
+
+    // Regression test for direct feedback: the rate used to be a nested
+    // block inside .label, wrapping onto its OWN line below the name -
+    // check() on text content alone could not have caught that, since the
+    // text is identical either way. Measuring geometry is what actually
+    // proves it now shares the row's line and sits flush against its
+    // right edge, rather than trusting the markup structure by inspection.
+    const geometry = await page.$eval('.grouprow', el => {
+      const row = el.getBoundingClientRect();
+      const rate = el.querySelector('.rate').getBoundingClientRect();
+      return { rowRight: row.right, rateRight: rate.right, rowTop: row.top, rateTop: rate.top, rowBottom: row.bottom };
+    });
+    check('the rate is flush against the row\'s right edge, got ' + JSON.stringify(geometry),
+      Math.abs(geometry.rowRight - geometry.rateRight) <= 3);
+    check('the rate vertically overlaps the row (same line, not pushed below it), got ' + JSON.stringify(geometry),
+      geometry.rateTop >= geometry.rowTop - 1 && geometry.rateTop < geometry.rowBottom);
     await ctx.close();
   }
 
@@ -773,6 +789,15 @@ async function withPrefsFake(ctx, opts = {}) {
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
     await page.waitForSelector('#wa-new', { timeout: 6000 });
+
+    // Regression test for direct feedback: inputmode="numeric" opens a
+    // number-only virtual keyboard on a phone, making it impossible to
+    // type a name at all - a field this test file previously never
+    // inspected for its `inputmode` attribute, only its typed value, which
+    // is exactly why this shipped unnoticed.
+    const inputMode = await page.$eval('#wa-new', el => el.getAttribute('inputmode'));
+    check('the contact field is not locked to a numeric keyboard, got inputmode=' + inputMode,
+      inputMode !== 'numeric');
 
     await page.fill('#wa-new', 'facco');
     await page.click('#wa-check');
