@@ -482,6 +482,11 @@ function render(data){
 async function load(){
   root.innerHTML = '<p class="msg">Carregando…</p>';
   if(!getPass()){ showLogin(); return; }
+  if(!isDefaultEnv()){
+    root.innerHTML = headerHtml() + personalPageBlockedHtml();
+    wireMenuButton();
+    return;
+  }
   try{
     const data = await api("daily_report", currentDate ? { date: currentDate } : {});
     render(data);

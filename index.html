@@ -123,7 +123,11 @@ const GROUP_HINT = {
 function render(){
   let lastGroup = null;
   let body = "";
-  MENU_ITEMS.forEach(item => {
+  // visibleMenuItems() (shared-menu.js) drops the "dia" group (Hoje,
+  // Tarefas) while looking at a non-default environment - see its comment
+  // and isDefaultEnv() in shared-api.js. Same source the drawer reads, so
+  // the tiles and the hamburger menu can't disagree about what's on screen.
+  visibleMenuItems().forEach(item => {
     if(item.page === "home") return;
     if(item.group !== lastGroup){
       if(lastGroup !== null) body += '</div>';

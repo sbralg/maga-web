@@ -606,6 +606,18 @@ async function load(){
   root.innerHTML = '<p class="msg">Carregando…</p>';
   bar.style.display = "none";
   if(!getPass()){ showLogin(); return; }
+  if(!isDefaultEnv()){
+    // Same header markup as render()'s - not worth extracting into a
+    // shared headerHtml() for a single other call site.
+    root.innerHTML =
+      '<header><div class="hleft">' +
+        '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
+        '<h1>Tarefas pendentes</h1>' +
+      '</div><img class="brand-mark" src="assets/logo-badge.svg" alt="Magá"></header>' +
+      personalPageBlockedHtml();
+    wireMenuButton();
+    return;
+  }
   try{
     const data = await api("list");
     render(data.actions || []);

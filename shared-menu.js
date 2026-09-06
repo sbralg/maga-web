@@ -35,6 +35,17 @@ const MENU_ITEMS = [
   { page: "financeiro", href: "financeiro.html", emoji: "💰", label: "Financeiro", group: "negocio" },
 ];
 
+// The "dia" group (Hoje, Tarefas) is this account's own personal daily
+// data - the daily-summary triage and the task checklist - not something
+// that belongs on screen while looking at a DIFFERENT, non-default
+// environment (see shared-api.js's isDefaultEnv() comment: e.g. Bia opening
+// "dev", which is Alexandre's real household data reused as dev data).
+// Every menu-item consumer (the drawer here, index.html's dashboard tiles)
+// reads through this instead of MENU_ITEMS directly, so the two can't drift.
+function visibleMenuItems(){
+  return isDefaultEnv() ? MENU_ITEMS : MENU_ITEMS.filter(item => item.group !== "dia");
+}
+
 function wireMenuButton(){
   const btn = document.getElementById("menu-btn");
   if(btn) btn.addEventListener("click", openMenu);
@@ -45,7 +56,7 @@ function openMenu(){
   // .menu-item: every count and every query over the drawer's destinations
   // keys off that class.
   let lastGroup = null;
-  const itemsHtml = MENU_ITEMS.map(item => {
+  const itemsHtml = visibleMenuItems().map(item => {
     let head = "";
     if(item.group && item.group !== lastGroup){
       head = '<p class="menu-group">' + MENU_GROUPS[item.group] + '</p>';

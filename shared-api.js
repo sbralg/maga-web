@@ -25,6 +25,24 @@ const ENV_ID_KEY = "checklist_env";            // resolved env id, informational
 // reflects whichever account most recently completed the OAuth flow here.
 const ENV_CACHE_KEY = "checklist_envs_cache";
 
+// True unless we can positively tell the current login resolved to a
+// NON-default environment for this account. "Can't tell" (no ENV_ID_KEY at
+// all - the manual-passphrase "Opções avançadas" path never sets one, same
+// as shared-push.js's VAPID lookup - or no cached defaultEnv yet) reads as
+// default, on purpose: this only exists to keep one account's personal
+// Hoje/Tarefas data from surfacing while looking at a DIFFERENT account's
+// environment (e.g. Bia opening "dev", which is the household's real data
+// reused as dev data - see maga-infra's people.json comment on
+// webEnvironments), not to second-guess the household's own primary path.
+function isDefaultEnv(){
+  const envId = localStorage.getItem(ENV_ID_KEY);
+  if(!envId) return true;
+  let cache = null;
+  try { cache = JSON.parse(localStorage.getItem(ENV_CACHE_KEY) || "null"); } catch(_){ cache = null; }
+  if(!cache || !cache.defaultEnv) return true;
+  return envId === cache.defaultEnv;
+}
+
 // OAuth against the Magá MCP server: the front end runs the auth-code +
 // PKCE flow, then GET /web-config hands back {apiUrl, passphrase} for the
 // signed-in person + chosen environment. No secret lives here (public

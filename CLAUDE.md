@@ -9,6 +9,47 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-06): Hoje/Tarefas hidden and blocked while on a non-default environment
+
+The OAuth login (against the `maga-infra` MCP server — `shared-api.js`'s
+`startOAuth()`/`completeOAuth()`, `ENV_ID_KEY`/`ENV_CACHE_KEY`) lets an
+account switch between several `maga-api` environments via `GET
+/web-config`'s `webEnvironments` (see `mcp-server/people.json`: Alexandre's
+default is `dev`, which is the household's real personal data reused as
+dev data per `maga-infra`'s CLAUDE.md; Bia's is `prod`, her business).
+That machinery already existed but wasn't yet written up here. The gap the
+user flagged directly: nothing stopped an account from opening a
+NON-default environment and seeing the OTHER account's personal daily
+triage/tasks — e.g. Bia opening "dev" would see Alexandre's real
+`tarefas.html`/`hoje.html` data, since "dev" IS his household's real data.
+
+- **New `isDefaultEnv()` in `shared-api.js`**: true when there's no
+  resolved `checklist_env` at all (the manual-passphrase "Opções
+  avançadas" path never sets one, same as `shared-push.js`'s VAPID
+  lookup — can't tell, so it reads as default rather than hiding the
+  household's own primary login path) or when it matches the cached
+  account's `defaultEnv`; false only when it positively resolves to a
+  different, known environment.
+- **New `visibleMenuItems()` in `shared-menu.js`**: `MENU_ITEMS` with the
+  `"dia"` group (Hoje, Tarefas) dropped when `!isDefaultEnv()`. Both the
+  hamburger drawer (`openMenu()`) and `index.html`'s dashboard tiles read
+  through this one function instead of `MENU_ITEMS` directly, so the two
+  can't disagree about what's on screen.
+- **Direct-navigation guard**: `hoje.html`/`tarefas.html`'s `load()` now
+  checks `isDefaultEnv()` right after the passphrase check and, if false,
+  renders a blocked message ("Esta página não está disponível para esta
+  conta neste ambiente." + a link back to Início) instead of calling
+  `api()` at all — a bookmark or a typed URL can't leak personal data into
+  an environment it doesn't belong to. New shared
+  `personalPageBlockedHtml()` in `shared-ui.js` keeps the wording
+  identical on both pages. The header + hamburger button still render in
+  the blocked state, so the person can navigate elsewhere.
+- **`test/env-scope.test.js`** (new): the blocked message + zero `maga-api`
+  calls on a non-default env for both pages, normal loading on the default
+  env, the manual-passphrase (no env id) path still reading as default,
+  and the drawer/dashboard both dropping Hoje/Tarefas on a non-default env
+  while leaving every other page/tile alone. Full 13-suite run green.
+
 ## Status (2026-09-05): the "worth its own pass" `stock.test.js` flake — a test race, not an app bug
 
 Follow-up on the 2026-09-04 entry's loose end: "and the sheet redraws with

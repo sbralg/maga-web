@@ -9,6 +9,17 @@ function esc(s){
   return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 }
 
+// hoje.html and tarefas.html are personal (a household's daily triage and
+// task checklist) and refuse to load their data at all while the signed-in
+// account is looking at a NON-default environment - see isDefaultEnv() in
+// shared-api.js. Both pages render this instead of calling api(), so a
+// direct link/bookmark to either page can't leak personal data into an
+// environment it doesn't belong to.
+function personalPageBlockedHtml(){
+  return '<p class="msg">Esta página não está disponível para esta conta neste ambiente.</p>' +
+    '<p class="msg"><a class="link" href="index.html">Voltar ao início</a></p>';
+}
+
 function confirmModal(message, confirmLabel){
   return new Promise(resolve => {
     const backdrop = document.createElement("div");
