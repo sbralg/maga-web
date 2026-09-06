@@ -9,6 +9,199 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-06, latest): every search/filter box in the app is now accent-insensitive
+
+Reported directly: typing "cafe" against an ingrediente/insumo stored as
+"Café" found nothing, and a contact search for "Ivan" missed someone
+stored as "Iván" — a real, everyday gap for a Brazilian household app
+where nobody reliably types every accent on a phone keyboard.
+
+- **New shared `foldSearchText()` in `shared-format.js`**: lowercases and
+  strips Unicode combining diacritics via
+  `.normalize("NFD").replace(/[̀-ͯ]/g, "")` — NFD splits a
+  precomposed accented character into its plain base letter plus a
+  separate combining mark, which the regex then drops, leaving the base
+  letter untouched. Search-comparison only, never for display or storage.
+- **Applied to every search/filter site that existed** — nine of them,
+  each previously a bare `.toLowerCase()`: `clientes.html`, `estoque.html`
+  (list + fornecedor picker), `eventos.html` (list + cliente picker +
+  produto picker), `fornecedores.html`, `ingredientes.html`,
+  `insumos.html`, `produtos.html` (list + fornecedor picker + receita
+  picker), `receitas.html` (list + ingredient/sub-receita picker), and
+  `shared-catalog.js`'s ingredient picker. Both the typed term AND the
+  stored field are folded — folding only one side would silently stop
+  matching the exact case this exists for.
+  - **The picker's own "is this an exact match" check is folded too, on
+    purpose** — e.g. `shared-catalog.js`'s ingredient picker deciding
+    whether to offer "➕ Criar 'cafe'". Folding this means typing "cafe"
+    against an existing "Café" reads as already-exists, not as license to
+    create a second, redundant "cafe" ingredient a click away from the
+    real one.
+- **Regression tests in 7 files** (`clientes.test.js`, `ingredientes.test.js`,
+  `stock.test.js` written directly; `eventos.test.js`,
+  `fornecedores.test.js`, `produtos.test.js`, `receitas.test.js`
+  delegated to a Sonnet sub-agent given well-specified instructions —
+  purely mechanical, well-understood work, per this session's own
+  cost-optimization convention) — each creates or reuses a real accented
+  fixture, types the unaccented form, confirms the match, and checks a
+  genuinely different term does NOT match (no over-matching). Every new
+  assertion confirmed to fail against the pre-fix `.toLowerCase()`-only
+  code before being trusted — including the sub-agent's own four files,
+  independently re-verified (full suite re-run, a couple of the new
+  assertions spot-read) rather than taken on the agent's report alone.
+  **Full 14-suite regression green.**
+- **The matching real-world gap on the WhatsApp CONTACT side — "Iván"
+  found by "ivan" — lives one layer down, in `maga-infra`'s
+  `whatsapp-query-api` (a synced-contact name, not anything this repo
+  renders locally).** Fixed the same session; see that repo's own
+  CLAUDE.md entry.
+
+## Status (2026-09-06, later still): the WhatsApp allow-list — groups sorted by rate, search by name, and a real duplicate-number bug fixed
+
+Three more rounds of direct live testing against the phase-2 build below.
+
+- **Muted-groups list now sorts busiest-first** (`avgPerDay`, computed
+  server-side — see `maga-infra`'s own entry), each row showing its own
+  "≈X,X/dia" rate. **Fixed a real layout bug the first cut of this
+  shipped with**: the rate rendered nested inside `.label`, wrapping onto
+  its own line under the group name instead of sharing the row's line —
+  caught only by MEASURING geometry (`getBoundingClientRect()`), since the
+  text content was identical either way and no text-based assertion could
+  have told the difference. It's now a sibling of `.label` inside the
+  already-flex `.grouprow`, which puts it flush against the row's right
+  edge for free.
+- **"Verificar" now doubles as a name search** when what's typed contains
+  letters instead of digits — calls the new
+  `GET /preferences/whatsapp/contact-search?name=` (see `maga-infra`'s
+  entry) and renders every match as a plain pick-list (never auto-picking
+  on more than one match, same "ambiguous → list it" rule this app
+  follows everywhere else). Picking one fills the number+label exactly
+  like a resolved number check, so Adicionar is unchanged from there.
+  - **A bare `@handle` is caught client-side before any request goes
+    out.** The user flagged WhatsApp's 2026 username rollout directly
+    (`@ronaldoaoki`-style contacts) — confirmed via the actual
+    `tulir/whatsmeow` issue tracker that the underlying library has closed
+    username support as "not planned", so a search for one can only ever
+    come back empty. Refusing it up front, with the reason stated
+    plainly, beats a network round trip that was never going to work.
+  - `#wa-new` had `inputmode="numeric"` (real reported bug: makes typing a
+    name impossible on a phone — the field locks to a digits-only
+    keyboard) and a placeholder too long to read on screen. Dropped the
+    `inputmode`, shortened the hint to "Nome ou número com DDD".
+- **Real bug: the same phone number, typed with vs. without the 55
+  country code, could both end up on the allow-list as if they were two
+  different people** — reported directly, with a screenshot showing
+  "5511994452426" and "11994452426" both listed for the same person. The
+  dedupe check compared raw digit strings with no normalization, and
+  worse: the server's own allow-list check
+  (`security/allowlist.js` in `maga-infra`) ALSO has no normalization of
+  its own, so whichever spelling was missing the `55` would silently
+  never match a real send. New `normalizeWaNumber()` applies the exact
+  10/11-digit → prepend `"55"` rule `clientes.html`/`fornecedores.html`'s
+  own `waPhoneDigits()` already use for `wa.me` links, run on every path
+  that turns typed text into a stored/compared number: Adicionar,
+  Verificar, and picking a name-search result.
+  - **Same pass fixed a related rough edge**: Verificar on an obviously
+    too-short number (a real screenshot — "12345") reached the server and
+    came back as a bare "Erro 400" leaking straight onto the page.
+    Anything under 12 digits after normalization is now refused
+    client-side with "Número muito curto." before any request goes out.
+- `test/preferencias.test.js` grew from 69 to 93 assertions across these
+  three rounds; every new case confirmed to fail against the reverted
+  page first (including one genuinely surprising false failure caught and
+  fixed in the TEST itself — `resolveAllowlistNamesLater()`'s own
+  background lookups for pre-existing unlabeled fixture rows were being
+  miscounted as "a request for the number I just typed", fixed by scoping
+  the assertion to the specific query rather than the whole endpoint).
+  Full 14-suite regression green after each round.
+
+## Status (2026-09-06, later again): a real bug — a resolved WhatsApp contact name vanished on every page reload, plus duplicate entries and a silent race in name resolution
+
+Direct live testing against the phase-2 build below surfaced three related
+problems in the same allow-list feature, fixed together.
+
+- **The actual reported bug**: resolve a number to a name via Verificar,
+  save it, reload the page — the name is gone, back to a bare number.
+  **Root cause**: `mergePerson()` deliberately collapses the overlay's
+  rich `{number,label}` allow-list entries down to bare digit strings for
+  `prefs.effective` (security code must compare flat strings, not trust an
+  object a person could have hand-edited a label into) — but `render()`
+  only ever read allow-list rows from `prefs.effective`, never from
+  `prefs.overrides` (which `GET /preferences` already returns, and which
+  DOES retain the real `{number,label}` shape). Every save was therefore
+  invisible to the page on the very next load, even though the label was
+  sitting intact server-side the whole time.
+  - **Fix**: new `allowlistLabelsFor()`/`withRecoveredLabels()` read
+    `prefs.overrides.whatsapp.sendAllowlist` and map a bare number through
+    to its saved label before handing rows to `allowRowsHtml()`. Restoring
+    a backup (`/import`) never returned `overrides` at all, so that path
+    now does a plain follow-up `GET /preferences` instead of trusting the
+    import response's partial shape.
+  - A second, related correctness bug fixed in the same pass: a row's
+    label used to be inferred from DOM TEXT-NODE SHAPE
+    (`el.querySelector(".who").firstChild.textContent`) — unable to tell
+    "no label" apart from "a label that happens to equal the bare number",
+    risking a self-referential fake label being saved. Every allow-list
+    function now reads/writes an explicit `data-label` attribute instead.
+- **A live account ended up with the same WhatsApp number listed four
+  times, some resolved to a name and some not** — two separate causes:
+  (1) "Adicionar" never checked for an exact duplicate at all; (2) name
+  resolution for pre-existing bare-string entries ran via `Promise.all`
+  in parallel, and against a likely single-threaded LAN WhatsApp bridge,
+  "still resolving" and "found nothing" looked visually identical — so a
+  double-tap or a slow bridge response read as a dead end. Fixed with an
+  exact-string dedupe check on Adicionar, and by making
+  `resolveAllowlistNamesLater()` sequential with a visible
+  "· verificando…" in-flight state per row.
+- Test-file discipline note worth keeping: one of the new assertions'
+  own timing (reading a second row immediately after the first settled)
+  raced the page's now-sequential resolution and had to wait for that
+  row's OWN settled state, not just the first row's.
+
+## Status (2026-09-06, same day as phase 1): `preferencias.html` gains allow-lists, password, sessions and backup (phase 2 of 4)
+
+Front-end half of `maga-infra`'s phase 2 (`03b623c`) — the security-tier
+fields phase 1 (below) deliberately refused to save at all.
+
+- **Allow-list editors for WhatsApp and e-mail.** "Verificar" resolves a
+  typed number to a contact NAME before it is committed — a wrong digit is
+  otherwise invisible until a message reaches a stranger.
+- **Change-password form, active sessions ("sair dos outros
+  dispositivos"), and export/import for backup** — the jump host has no
+  backup of its own, so a person's overlay would otherwise be one bad edit
+  from being unrecoverable.
+- **A 428 from a security-tier save is handled as "type your password
+  again", never as a generic error.** It routes through
+  `/logout?return=...&reauth=1` — clearing the login cookie is what
+  actually makes the real password form appear again; without it
+  `/authorize` would silently re-approve from the existing session and
+  hand back a token exactly as stale (in `authTime`) as the one that was
+  just refused. The `reauth` query param is stripped before `startOAuth`
+  fires or the return trip would loop on itself forever.
+  Deliberately NOT `logoutMcpSession()` — that also drops the `maga-api`
+  passphrase and environment cache, signing the person out of the whole
+  app to change one setting.
+- **`test/preferencias.test.js` grew 31 → 61 assertions**, covering the
+  allow-list editors and their exact PUT bodies, contact-name resolution,
+  the 428 re-auth hop and its loop prevention, the password form,
+  sessions, export and import. **Two real bugs the tests caught**: an
+  import confirmation message was written and then destroyed microseconds
+  later by `render()` rebuilding the whole page out from under it (fixed
+  by writing it into the FRESH element after re-render); a wrong current
+  password came back as a 401, which `mcpFetch` treats as session expiry
+  before it even looks at the response body — a typo bounced the person to
+  the login form instead of naming the field (fixed server-side in
+  `maga-infra`, `64ab783`).
+- **The test suite itself hung indefinitely at first** — the 428 test
+  watched the `/logout` navigation over a CDP session that never fires for
+  a route-intercepted request. Fixed by answering both navigation targets
+  (`/authorize`, `/logout`) with a plain **204 No Content**, which the
+  browser ABANDONS per the HTML navigation spec: nothing commits, the
+  current document (and its `sessionStorage`) stays readable, and the
+  request is already recorded by the same fake that sees every other
+  `MCP_BASE` call — no second event stream needed. The fake also had to
+  start answering CORS preflights, since the real server does.
+
 ## Status (2026-09-06, later): `preferencias.html` — the settings frozen in `people.json` become editable (phase 1 of 4)
 
 Full plan of record, including the phases this one does NOT cover, lives in
