@@ -49,6 +49,17 @@ function isDefaultEnv(){
 // PKCE-only client). See the maga-web client in the mcp-server people.json.
 const MCP_BASE = "https://mcp-jump-host.duiker-ghost.ts.net";
 const OAUTH_CLIENT_ID = "maga-web";
+// The access token from the OAuth login, kept for the pages that talk to the
+// MCP server itself rather than to maga-api - today that is preferencias.html.
+// sessionStorage, deliberately NOT localStorage: this token carries mcp:send,
+// so it is a strictly bigger capability than the maga-api passphrase sitting
+// in localStorage, and it should not outlive the tab. The cost is one extra
+// login when the Preferências page is opened in a fresh tab, which is the
+// right trade for a screen used about once a month.
+const MCP_TOKEN_KEY = "maga_mcp_token";
+function getMcpToken(){
+  try { return sessionStorage.getItem(MCP_TOKEN_KEY) || ""; } catch(_){ return ""; }
+}
 const OAUTH_REDIRECT = new URL("oauth.html", location.href).href;
 
 function b64url(bytes){
@@ -171,6 +182,7 @@ function logoutMcpSession(){
   localStorage.removeItem(PASS_KEY);
   localStorage.removeItem(API_KEY);
   localStorage.removeItem(ENV_CHOICE_KEY);
+  try { sessionStorage.removeItem(MCP_TOKEN_KEY); } catch(_){}
   localStorage.removeItem(ENV_ID_KEY);
   localStorage.removeItem(ENV_CACHE_KEY);
   location.href = MCP_BASE + "/logout?return=" + encodeURIComponent(location.href);
@@ -244,6 +256,7 @@ async function completeOAuth(){
     });
     if(!tr.ok) throw new Error("token " + tr.status);
     const { access_token } = await tr.json();
+    try { sessionStorage.setItem(MCP_TOKEN_KEY, access_token); } catch(_){ /* private mode - the prefs page just asks for a fresh login */ }
     const cr = await fetch(MCP_BASE + "/web-config", { headers: { Authorization: "Bearer " + access_token } });
     if(!cr.ok) throw new Error("web-config " + cr.status);
     const cfg = await cr.json();

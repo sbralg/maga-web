@@ -17,6 +17,7 @@ const MENU_GROUPS = {
   dia: "Dia a dia",
   producao: "Produção",
   negocio: "Negócio",
+  conta: "Conta",
 };
 
 const MENU_ITEMS = [
@@ -33,6 +34,7 @@ const MENU_ITEMS = [
   { page: "clientes", href: "clientes.html", emoji: "👤", label: "Clientes", group: "negocio" },
   { page: "fornecedores", href: "fornecedores.html", emoji: "🚚", label: "Fornecedores", group: "negocio" },
   { page: "financeiro", href: "financeiro.html", emoji: "💰", label: "Financeiro", group: "negocio" },
+  { page: "preferencias", href: "preferencias.html", emoji: "⚙️", label: "Preferências", group: "conta" },
 ];
 
 // The "dia" group (Hoje, Tarefas) is this account's own personal daily

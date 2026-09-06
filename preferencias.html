@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Preferências">
+<meta name="theme-color" content="#17120f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#faf8f4" media="(prefers-color-scheme: light)">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<title>Preferências</title>
+<link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-menu.css">
+<link rel="stylesheet" href="shared-modal.css">
+<link rel="stylesheet" href="shared-toast.css">
+<style>
+  body{
+    padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
+  }
+  .wrap{width:100%;max-width:640px;margin:0 auto}
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
+  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
+  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
+  h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
+
+  .field{display:flex;flex-direction:column;gap:5px;margin:0 0 14px}
+  .field label{font-size:12.5px;font-weight:600;color:var(--muted)}
+  .field input[type=text]{
+    font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
+    border:1px solid var(--border-strong);background:var(--card);color:var(--text);
+    -webkit-appearance:none;width:100%;
+  }
+  .hint{font-size:12px;color:var(--muted);line-height:1.4;margin:0}
+  .field .hint{font-size:12px;color:var(--muted);line-height:1.4}
+  .field .err{font-size:12.5px;color:var(--danger)}
+
+  .limit{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+  .limit .err{width:100%;font-size:12.5px;color:var(--danger);margin:0}
+  .limit:last-child{border-bottom:none}
+  .limit .name{flex:1;min-width:0;font-size:14px}
+  .limit .name span{display:block;font-size:12px;color:var(--muted);line-height:1.35}
+  .limit input{
+    font:inherit;font-size:15px;width:74px;text-align:right;padding:8px 10px;border-radius:9px;
+    border:1px solid var(--border-strong);background:var(--card);color:var(--text);-webkit-appearance:none;
+  }
+
+  .grouplist{display:flex;flex-direction:column;max-height:290px;overflow-y:auto;margin:0 0 12px}
+  .grouprow{display:flex;align-items:center;gap:10px;padding:10px 2px;border-bottom:1px solid var(--border);cursor:pointer}
+  .grouprow:last-child{border-bottom:none}
+  .grouprow input{width:20px;height:20px;accent-color:var(--accent);flex:none}
+  .grouprow .label{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
+  .grouprow .jid{display:block;font-size:11px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
+
+  .locked{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13.5px}
+  .locked:last-child{border-bottom:none}
+  .locked .k{color:var(--muted);flex:none}
+  .locked .v{text-align:right;overflow-wrap:anywhere;font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
+  details.infra{margin-top:22px}
+  details.infra summary{cursor:pointer;font-size:14px;font-weight:650;color:var(--muted);padding:6px 0}
+  details.infra .note{font-size:12.5px;color:var(--muted);line-height:1.45;margin:2px 0 10px}
+
+  .actions{display:flex;align-items:center;gap:10px;margin-top:6px}
+  .saved{font-size:12.5px;color:var(--muted)}
+  .banner{
+    font-size:13px;line-height:1.45;padding:11px 13px;border-radius:10px;margin:0 0 16px;
+    background:rgba(127,127,127,.1);color:var(--muted);
+  }
+  .banner.warn{background:rgba(var(--gold-rgb),.14);color:var(--text)}
+</style>
+</head>
+<body>
+<div id="root" class="wrap"><p class="msg">Carregando…</p></div>
+
+<script>
+const root = document.getElementById("root");
+let prefs = null;        // the whole GET /preferences body
+let prefsStale = false;  // served from cache because the jump host was unreachable
+let groups = null;       // {groups:[{jid,label}], reachable}
+
+const PAGE_LOGIN = {
+  title: "Preferências",
+  subtitle: "Faça o seu login para acessar.",
+  onSuccess: () => load(),
+};
+</script>
+<script src="shared-api.js"></script>
+<script src="shared-menu.js"></script>
+<script src="shared-ui.js"></script>
+<script src="shared-prefs.js"></script>
+<script src="shared-pwa.js"></script>
+<script>
+
+const CURRENT_PAGE = "preferencias";
+
+function header(){
+  return '<header><div class="hleft">' +
+    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
+    '<h1 style="flex:1">Preferências</h1>' +
+    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
+}
+
+// Every exit path renders the header first, so a person who lands on a
+// blocked/failed state can still open the menu and go somewhere else -
+// same rule as the blocked personal pages on a non-default environment.
+function renderShell(inner){
+  root.innerHTML = header() + inner;
+  wireMenuButton();
+}
+
+async function load(){
+  if(!getPass()){ showLogin(); return; }
+
+  // These settings belong to whoever is SIGNED IN, not to the environment
+  // being looked at. On someone else's environment (Alexandre inside Bia's
+  // prod to help her) editing them here would silently change his own, so
+  // the page says so instead - same reasoning as hoje/tarefas being hidden
+  // there, and the same isDefaultEnv() check.
+  if(!isDefaultEnv()){
+    renderShell('<div class="banner warn">Estas preferências são da conta que fez login, não do ambiente que você está vendo agora. ' +
+      'Para evitar alterar as suas próprias configurações sem querer, esta página só abre no seu ambiente padrão.</div>' +
+      '<p><a class="link" href="index.html">← Início</a></p>');
+    return;
+  }
+
+  if(!getMcpToken()){
+    renderShell('<div class="banner">Para ver e alterar as preferências desta conta é preciso entrar de novo no assistente. ' +
+      'É a mesma senha do login de sempre.</div>' +
+      '<div class="actions"><button class="primary" id="signin">Entrar</button></div>');
+    document.getElementById("signin").addEventListener("click", () => startOAuth("padrao"));
+    return;
+  }
+
+  try {
+    const result = await loadPreferences();
+    prefs = result.data;
+    prefsStale = result.stale;
+  } catch(e){
+    if(e.name === "PrefsAuthError"){
+      renderShell('<div class="banner">Sua sessão expirou. Entre de novo para ver as preferências.</div>' +
+        '<div class="actions"><button class="primary" id="signin">Entrar</button></div>');
+      document.getElementById("signin").addEventListener("click", () => startOAuth("padrao"));
+      return;
+    }
+    renderShell('<p class="msg err">Não foi possível carregar as preferências (' + esc(e.message) + ').</p>' +
+      '<p><a class="link" href="index.html">← Início</a></p>');
+    return;
+  }
+
+  render();
+  loadGroupsLater();
+}
+
+// The group list comes from this person's own WhatsApp bridge, which is on
+// the household LAN - so it can be slow or absent while the rest of the page
+// is perfectly usable. Fetched after the first paint, never blocking it.
+async function loadGroupsLater(){
+  try { groups = await loadWhatsappGroups(); }
+  catch(_){ groups = { groups: [], reachable: false }; }
+  const box = document.getElementById("groups-box");
+  if(box) box.innerHTML = groupsHtml();
+  wireGroupRows();
+}
+
+function render(){
+  const eff = prefs.effective;
+  const writable = prefs.writable !== false;
+
+  let html = header();
+
+  if(prefsStale){
+    html += '<div class="banner warn">Mostrando os últimos valores conhecidos — o assistente não respondeu agora. ' +
+      'Dá para ler, mas não dá para salvar até ele voltar.</div>';
+  } else if(!writable){
+    html += '<div class="banner warn">' + esc(prefs.writableReason || "As preferências estão em modo somente leitura.") + '</div>';
+  }
+
+  // --- Conta ---
+  html += '<h3>Conta</h3>' +
+    field("displayName", "Como o assistente chama você", eff.displayName || "",
+      "Aparece no resumo diário e nos avisos.") +
+    saveRow("identity", "Salvar", writable && !prefsStale);
+
+  // --- WhatsApp ---
+  html += '<h3>WhatsApp</h3>' +
+    field("selfNumber", "Seu número (conversa com você mesmo)", eff.whatsapp.selfNumber || "",
+      "É por aqui que o resumo da manhã encontra os recados que você manda para si mesmo. Deixe em branco para não usar.") +
+    '<div class="field"><label>Grupos silenciados no resumo diário</label>' +
+    '<p class="hint">Grupos marcados aqui não entram no resumo da manhã. Uma busca comum continua enxergando todos.</p>' +
+    '<div id="groups-box">' + groupsHtml() + '</div></div>' +
+    saveRow("whatsapp", "Salvar", writable && !prefsStale);
+
+  // --- Limites ---
+  html += '<h3>Limites por hora</h3>' +
+    '<p class="hint" style="margin:0 0 10px">Quantas vezes o assistente pode fazer cada coisa. Zero desliga a ação para esta conta.</p>' +
+    limitRow("sendMessagePerHour", "Enviar WhatsApp", "mensagens enviadas diretamente por você") +
+    limitRow("draftMailPerHour", "Rascunhos de e-mail", "salvos na sua pasta de rascunhos") +
+    limitRow("extendedSearchContactsPerDay", "Buscas longas (por dia)", "contatos novos com histórico além de 30 dias") +
+    (eff.rateLimits.magaWritePerHour !== undefined
+      ? limitRow("magaWritePerHour", "Alterações no app", "tarefas, compras, estoque e eventos") : "") +
+    saveRow("rateLimits", "Salvar", writable && !prefsStale);
+
+  // --- Infraestrutura ---
+  html += '<details class="infra"><summary>Infraestrutura</summary>' +
+    '<p class="note">Estes valores não são editáveis por aqui — eles definem para onde o assistente se conecta e quem ele avisa quando ' +
+    'a tarefa da manhã falha. Um erro de digitação deixaria a conta fora do ar sem aviso, então eles são editados direto no ' +
+    '<code>people.json</code>, no servidor.</p>' +
+    lockedRow("Conta", eff.slug) +
+    lockedRow("Permissões", (eff.scopes || []).join(" ")) +
+    lockedRow("WhatsApp (consulta)", eff.whatsapp.queryApiUrl) +
+    lockedRow("WhatsApp (envio)", eff.whatsapp.bridgeApiUrl) +
+    lockedRow("IMAP", eff.mail.imapHost + ":" + eff.mail.imapPort) +
+    lockedRow("Usuário de e-mail", eff.mail.user) +
+    lockedRow("Agendas", (eff.calendar.labels || []).join(", ") || "nenhuma") +
+    lockedRow("Contatos permitidos (WhatsApp)", String((eff.whatsapp.sendAllowlist || []).length)) +
+    lockedRow("Contatos permitidos (e-mail)", String((eff.mail.sendAllowlist || []).length)) +
+    (eff.alerts ? lockedRow("Avisos de falha vão para", eff.alerts.ownerPhone) : "") +
+    (eff.maga ? lockedRow("Ambiente padrão", eff.maga.defaultWebEnvironment || "—") : "") +
+    '</details>';
+
+  root.innerHTML = html;
+  wireMenuButton();
+  wireGroupRows();
+  document.querySelectorAll("[data-save]").forEach(btn => {
+    btn.addEventListener("click", () => saveSection(btn.dataset.save, btn));
+  });
+}
+
+function field(name, label, value, hint){
+  return '<div class="field" data-field="' + name + '">' +
+    '<label for="f-' + name + '">' + esc(label) + '</label>' +
+    '<input type="text" id="f-' + name + '" value="' + esc(value) + '">' +
+    (hint ? '<p class="hint">' + esc(hint) + '</p>' : '') +
+    '<p class="err" hidden></p></div>';
+}
+
+function limitRow(key, label, hint){
+  const bounds = (prefs.bounds && prefs.bounds.rateLimits && prefs.bounds.rateLimits[key]) || { min: 0, max: 99 };
+  const value = prefs.effective.rateLimits[key];
+  return '<div class="limit" data-field="' + key + '">' +
+    '<span class="name">' + esc(label) + '<span>' + esc(hint) + ' · máximo ' + bounds.max + '</span></span>' +
+    '<input type="text" inputmode="numeric" id="f-' + key + '" value="' + esc(String(value ?? "")) + '">' +
+    '<p class="err" hidden></p>' +
+    '</div>';
+}
+
+function saveRow(section, label, enabled){
+  return '<div class="actions">' +
+    '<button class="primary" data-save="' + section + '"' + (enabled ? "" : " disabled") + '>' + esc(label) + '</button>' +
+    '<span class="saved" id="saved-' + section + '"></span></div>';
+}
+
+function lockedRow(k, v){
+  return '<div class="locked"><span class="k">' + esc(k) + '</span><span class="v">' + esc(v || "—") + '</span></div>';
+}
+
+function groupsHtml(){
+  const muted = prefs.effective.whatsapp.excludedGroups || [];
+  if(!groups){
+    return '<p class="hint">Procurando os seus grupos…</p>' + mutedOnlyList(muted);
+  }
+  if(!groups.reachable){
+    // The bridge is on the LAN and the phone may be off it - saying which
+    // groups are muted still lets someone UN-mute one, which is the edit
+    // most likely to be urgent ("why didn't the summary mention that?").
+    return '<p class="hint">Não deu para listar os grupos agora (o WhatsApp da casa não respondeu). ' +
+      'Os que já estão silenciados continuam abaixo e podem ser liberados.</p>' + mutedOnlyList(muted);
+  }
+  const known = groups.groups.slice();
+  // A muted group that hasn't spoken in two weeks won't be in the recent
+  // list - it must still render, or saving would silently un-mute it.
+  muted.forEach(jid => {
+    if(!known.some(g => g.jid === jid)) known.push({ jid, label: jid });
+  });
+  if(!known.length) return '<p class="hint">Nenhum grupo encontrado nos últimos 14 dias.</p>';
+  return '<div class="grouplist">' + known.map(g =>
+    '<label class="grouprow"><input type="checkbox" data-jid="' + esc(g.jid) + '"' +
+    (muted.includes(g.jid) ? " checked" : "") + '>' +
+    '<span class="label">' + esc(g.label) +
+    (g.label === g.jid ? "" : '<span class="jid">' + esc(g.jid) + '</span>') +
+    '</span></label>').join("") + '</div>';
+}
+
+function mutedOnlyList(muted){
+  if(!muted.length) return '<p class="hint">Nenhum grupo silenciado.</p>';
+  return '<div class="grouplist">' + muted.map(jid =>
+    '<label class="grouprow"><input type="checkbox" data-jid="' + esc(jid) + '" checked>' +
+    '<span class="label">' + esc(jid) + '</span></label>').join("") + '</div>';
+}
+
+function wireGroupRows(){ /* checkboxes are read at save time - nothing to wire yet */ }
+
+function collectSection(section){
+  if(section === "identity"){
+    return { displayName: document.getElementById("f-displayName").value.trim() };
+  }
+  if(section === "whatsapp"){
+    const checked = [...document.querySelectorAll("[data-jid]")].filter(c => c.checked);
+    const byJid = new Map((groups?.groups || []).map(g => [g.jid, g.label]));
+    return {
+      selfNumber: document.getElementById("f-selfNumber").value.trim(),
+      excludedGroups: checked.map(c => ({ jid: c.dataset.jid, label: byJid.get(c.dataset.jid) || "" })),
+    };
+  }
+  if(section === "rateLimits"){
+    const out = {};
+    Object.keys(prefs.bounds.rateLimits).forEach(key => {
+      const el = document.getElementById("f-" + key);
+      if(el) out[key] = Number(el.value.replace(/\D/g, "") || "0");
+    });
+    return out;
+  }
+  return {};
+}
+
+async function saveSection(section, btn){
+  const status = document.getElementById("saved-" + section);
+  document.querySelectorAll(".field .err, .limit .err").forEach(el => { el.hidden = true; });
+  btn.disabled = true;
+  status.textContent = "Salvando…";
+  try {
+    const data = await savePreferenceSection(section, collectSection(section));
+    prefs.effective = data.effective;
+    prefs.overrides = data.overrides;
+    status.textContent = "Salvo.";
+    setTimeout(() => { if(status) status.textContent = ""; }, 2500);
+  } catch(e){
+    status.textContent = "";
+    if(e.name === "PrefsAuthError"){
+      alert("Sua sessão expirou. Entre de novo para salvar.");
+      startOAuth("padrao");
+      return;
+    }
+    // A 400 names the exact field, so the message lands next to the input
+    // that caused it rather than as a generic failure at the top.
+    const field = e.body && e.body.field ? String(e.body.field).split(".").pop() : null;
+    const holder = field ? document.querySelector('[data-field="' + field + '"] .err') : null;
+    if(holder){ holder.textContent = e.message; holder.hidden = false; }
+    else alert("Não foi possível salvar: " + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+load();
+</script>
+</body>
+</html>

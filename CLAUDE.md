@@ -9,6 +9,57 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-06, later): `preferencias.html` — the settings frozen in `people.json` become editable (phase 1 of 4)
+
+Full plan of record, including the phases this one does NOT cover, lives in
+`maga-infra`'s `mcp-server/docs/PREFERENCES-PLAN.md`. Backend half is that
+repo's own entry; this is the front-end half.
+
+- **New `preferencias.html` + `shared-prefs.js`.** The page talks to the
+  MCP server (`MCP_BASE`), NOT to `maga-api` — preferences are per-person
+  and gated by the OAuth login, while the `maga-api` passphrase is one flat
+  per-environment secret. Two different authorities, two different
+  endpoints. Editable in phase 1: display name, notes-to-self number, muted
+  WhatsApp groups, the four per-hour limits. Everything else renders
+  read-only under a collapsed "Infraestrutura" section that says where it
+  IS edited (`people.json`, on the jump host) rather than leaving someone
+  hunting.
+- **Reads are cached in `localStorage`, writes are not.** The jump host is
+  a VM on a desktop that sleeps at night; a page that needed a live call to
+  know its own settings would break every evening. A cache-served render
+  says so in a banner instead of passing month-old values off as current.
+- **`shared-api.js` now keeps the OAuth access token — in `sessionStorage`,
+  deliberately not `localStorage`.** That token carries `mcp:send`, a
+  strictly bigger capability than the `maga-api` passphrase already sitting
+  in `localStorage`, so it should not outlive the tab. The cost is one
+  extra login when the page is opened in a fresh tab, which is the right
+  trade for a screen used about once a month.
+- **The page refuses to open on a non-default environment**, reusing
+  `isDefaultEnv()` — these settings belong to whoever SIGNED IN, so
+  editing them while looking at someone else's environment (Alexandre
+  inside Bia's prod to help her) would silently change his own. Same rule,
+  same function, as Hoje/Tarefas hiding there.
+- **Muted groups are ticked from a real list**, fetched from the person's
+  own WhatsApp bridge through the MCP server AFTER first paint, never
+  blocking it. Group display names are not unique, so the `@g.us` jid is
+  what gets stored and the name is only ever a label. A muted group the
+  bridge no longer lists still renders — otherwise saving would silently
+  un-mute it.
+- **A validation error lands under the input that caused it.** The server
+  names the offending field (`rateLimits.sendMessagePerHour`), so the page
+  puts the message there rather than in an `alert()`. The first cut got
+  this right for the text fields and wrong for the rate-limit rows, whose
+  markup had no error slot — caught by the new test, fixed in the markup,
+  and the test now asserts an alert does NOT fire.
+- `shared-menu.js` gained one entry under a new "Conta" group; `index.html`
+  its tile description and group hint; `sw.js` both new files in
+  `SHELL_FILES`.
+- **`test/preferencias.test.js`** (new, 31 assertions): the passphrase gate,
+  the no-token state, the non-default-environment refusal making ZERO calls
+  to the MCP server, the rendered values, both save paths and their exact
+  PUT bodies, the inline 400, and the page surviving an unreachable
+  WhatsApp bridge. Full 14-suite run green.
+
 ## Status (2026-09-06): Hoje/Tarefas hidden and blocked while on a non-default environment
 
 The OAuth login (against the `maga-infra` MCP server — `shared-api.js`'s
