@@ -16,6 +16,14 @@ class PrefsAuthError extends Error {
   constructor(message){ super(message); this.name = "PrefsAuthError"; }
 }
 
+// A 428 is NOT a failure and not a permissions problem: the request was
+// legitimate and well-formed, and the only thing missing is a step the
+// person can complete and retry. Typed separately so the page offers
+// "confirme sua senha" instead of an error.
+class PrefsReauthError extends Error {
+  constructor(message){ super(message); this.name = "PrefsReauthError"; }
+}
+
 function cachedPreferences(){
   try { return JSON.parse(localStorage.getItem(PREFS_CACHE_KEY) || "null"); } catch(_){ return null; }
 }
@@ -41,6 +49,7 @@ async function mcpFetch(path, options = {}){
   if(res.status === 401) throw new PrefsAuthError("Sessão expirada.");
   let body = null;
   try { body = await res.json(); } catch(_){ /* a proxy error page, not JSON */ }
+  if(res.status === 428) throw new PrefsReauthError((body && body.message) || "Confirme sua senha.");
   if(!res.ok){
     const err = new Error((body && body.message) || ("Erro " + res.status));
     err.status = res.status;
@@ -86,4 +95,46 @@ async function savePreferenceSection(section, body){
 
 async function loadWhatsappGroups(){
   return await mcpFetch("/preferences/whatsapp/groups");
+}
+
+/** Who a number belongs to, so an allow-list entry can be checked before it
+ *  is committed. A wrong digit is otherwise invisible until a message
+ *  reaches a stranger. */
+async function lookupWhatsappContact(number){
+  return await mcpFetch("/preferences/whatsapp/contact?number=" + encodeURIComponent(number));
+}
+
+async function changePassword(currentPassword, newPassword){
+  return await mcpFetch("/preferences/password", {
+    method: "POST",
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+async function loadSessions(){
+  return await mcpFetch("/preferences/sessions");
+}
+
+async function revokeOtherSessions(){
+  return await mcpFetch("/preferences/sessions/revoke-others", { method: "POST", body: "{}" });
+}
+
+async function exportPreferences(){
+  return await mcpFetch("/preferences/export");
+}
+
+async function importPreferences(payload){
+  return await mcpFetch("/preferences/import", { method: "POST", body: JSON.stringify(payload) });
+}
+
+// Forces the login form to appear again. /logout clears the short-lived
+// mcp_login bridge cookie, WITHOUT which /authorize would silently re-approve
+// from the existing session and hand back a token whose authTime is just as
+// old as the one that was refused. Deliberately not logoutMcpSession(): that
+// also drops the maga-api passphrase and environment cache, signing the
+// person out of the whole app to change one setting.
+function startPreferencesReauth(){
+  const back = new URL(location.href);
+  back.searchParams.set("reauth", "1");
+  location.href = MCP_BASE + "/logout?return=" + encodeURIComponent(back.href);
 }

@@ -60,7 +60,18 @@
   details.infra summary{cursor:pointer;font-size:14px;font-weight:650;color:var(--muted);padding:6px 0}
   details.infra .note{font-size:12.5px;color:var(--muted);line-height:1.45;margin:2px 0 10px}
 
-  .actions{display:flex;align-items:center;gap:10px;margin-top:6px}
+  .entry{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+  .entry:last-of-type{border-bottom:none}
+  .entry .who{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
+  .entry .who span{display:block;font-size:11.5px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
+  .addrow{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 0}
+  .addrow input{
+    flex:1;min-width:150px;font:inherit;font-size:15px;padding:9px 11px;border-radius:10px;
+    border:1px solid var(--border-strong);background:var(--card);color:var(--text);-webkit-appearance:none;
+  }
+  .resolved{font-size:12.5px;color:var(--muted);width:100%;margin:0}
+  .resolved.ok{color:var(--ok, var(--accent))}
+  .actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:6px}
   .saved{font-size:12.5px;color:var(--muted)}
   .banner{
     font-size:13px;line-height:1.45;padding:11px 13px;border-radius:10px;margin:0 0 16px;
@@ -87,6 +98,7 @@ const PAGE_LOGIN = {
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
 <script src="shared-ui.js"></script>
+<script src="shared-format.js"></script>
 <script src="shared-prefs.js"></script>
 <script src="shared-pwa.js"></script>
 <script>
@@ -110,6 +122,19 @@ function renderShell(inner){
 
 async function load(){
   if(!getPass()){ showLogin(); return; }
+
+  // Coming back from /logout, which cleared the login cookie so the password
+  // form will actually appear. The parameter is stripped BEFORE starting the
+  // flow, or startOAuth would capture it as the return URL and loop here
+  // forever.
+  const params = new URLSearchParams(location.search);
+  if(params.get("reauth") === "1"){
+    params.delete("reauth");
+    const clean = location.pathname + (params.toString() ? "?" + params : "");
+    history.replaceState(null, "", clean);
+    startOAuth("padrao");
+    return;
+  }
 
   // These settings belong to whoever is SIGNED IN, not to the environment
   // being looked at. On someone else's environment (Alexandre inside Bia's
@@ -200,6 +225,60 @@ function render(){
       ? limitRow("magaWritePerHour", "Alterações no app", "tarefas, compras, estoque e eventos") : "") +
     saveRow("rateLimits", "Salvar", writable && !prefsStale);
 
+  // --- Contatos permitidos (security tier) ---
+  html += '<h3>Quem o assistente pode contatar</h3>' +
+    '<p class="hint" style="margin:0 0 10px">Só estes contatos podem receber uma mensagem enviada pelo assistente. ' +
+    'Alterar esta lista pede a sua senha de novo — é a proteção que impede uma mensagem recebida de virar um envio.</p>' +
+    '<div class="field" data-field="sendAllowlist"><label>WhatsApp</label>' +
+    '<div id="wa-allow">' + allowRowsHtml(eff.whatsapp.sendAllowlist || [], "wa") + '</div>' +
+    '<div class="addrow">' +
+      '<input type="text" inputmode="numeric" id="wa-new" placeholder="Número com DDD">' +
+      '<button class="link" id="wa-check">Verificar</button>' +
+      '<button class="link" id="wa-add">Adicionar</button>' +
+      '<p class="resolved" id="wa-resolved"></p>' +
+    '</div><p class="err" hidden></p></div>' +
+    saveRow("whatsappAllow", "Salvar contatos do WhatsApp", writable && !prefsStale) +
+    '<div class="field" data-field="mailAllowlist" style="margin-top:18px"><label>E-mail</label>' +
+    '<div id="mail-allow">' + allowRowsHtml(eff.mail.sendAllowlist || [], "mail") + '</div>' +
+    '<div class="addrow">' +
+      '<input type="text" inputmode="email" id="mail-new" placeholder="endereco@exemplo.com">' +
+      '<button class="link" id="mail-add">Adicionar</button>' +
+    '</div><p class="err" hidden></p></div>' +
+    saveRow("mailAllow", "Salvar contatos de e-mail", writable && !prefsStale);
+
+  // --- Conta: senha e sessões ---
+  html += '<h3>Senha</h3>' +
+    '<div class="field" data-field="currentPassword">' +
+      '<label for="pw-current">Senha atual</label>' +
+      '<input type="password" id="pw-current" autocomplete="current-password">' +
+      '<p class="err" hidden></p></div>' +
+    '<div class="field" data-field="newPassword">' +
+      '<label for="pw-new">Nova senha</label>' +
+      '<input type="password" id="pw-new" autocomplete="new-password">' +
+      '<p class="hint">Pelo menos 10 caracteres. Ao trocar, as suas outras sessões são encerradas — só esta continua.</p>' +
+      '<p class="err" hidden></p></div>' +
+    '<div class="field" data-field="confirmPassword">' +
+      '<label for="pw-confirm">Repita a nova senha</label>' +
+      '<input type="password" id="pw-confirm" autocomplete="new-password">' +
+      '<p class="err" hidden></p></div>' +
+    '<div class="actions"><button class="primary" id="pw-save">Trocar senha</button>' +
+    '<span class="saved" id="saved-password"></span></div>';
+
+  html += '<h3>Sessões ativas</h3><div id="sessions-box"><p class="hint">Carregando…</p></div>' +
+    '<div class="actions"><button class="link danger" id="revoke-others">Sair dos outros dispositivos</button>' +
+    '<span class="saved" id="saved-sessions"></span></div>';
+
+  // --- Backup ---
+  html += '<h3>Backup</h3>' +
+    '<p class="hint" style="margin:0 0 10px">Estes ajustes ficam só no servidor de casa, que não tem backup automático. ' +
+    'Guarde uma cópia depois de mexer em algo.</p>' +
+    '<div class="actions">' +
+      '<button class="link" id="export">Baixar cópia</button>' +
+      '<button class="link" id="import">Restaurar de um arquivo</button>' +
+      '<input type="file" id="import-file" accept="application/json" hidden>' +
+      '<span class="saved" id="saved-backup"></span>' +
+    '</div>';
+
   // --- Infraestrutura ---
   html += '<details class="infra"><summary>Infraestrutura</summary>' +
     '<p class="note">Estes valores não são editáveis por aqui — eles definem para onde o assistente se conecta e quem ele avisa quando ' +
@@ -224,6 +303,209 @@ function render(){
   document.querySelectorAll("[data-save]").forEach(btn => {
     btn.addEventListener("click", () => saveSection(btn.dataset.save, btn));
   });
+  wireAllowlists();
+  wirePassword();
+  wireBackup();
+  loadSessionsLater();
+}
+
+// --- allow-lists -------------------------------------------------------------
+
+// Entries are rendered from the DOM itself rather than from a parallel array:
+// the list is short, and one source of truth means an add or a remove cannot
+// disagree with what is on screen when Salvar is pressed.
+function allowRowsHtml(entries, kind){
+  if(!entries.length) return '<p class="hint">Ninguém liberado — o assistente não consegue enviar nada.</p>';
+  return entries.map(e => {
+    const value = typeof e === "string" ? e : e.number;
+    const label = typeof e === "string" ? "" : (e.label || "");
+    return '<div class="entry" data-kind="' + kind + '" data-value="' + esc(value) + '">' +
+      '<span class="who">' + esc(label || value) + (label ? '<span>' + esc(value) + '</span>' : '') + '</span>' +
+      '<button class="icon-btn" title="Remover" data-remove>🗑</button></div>';
+  }).join("");
+}
+
+function allowValues(kind){
+  return [...document.querySelectorAll('.entry[data-kind="' + kind + '"]')].map(el => ({
+    value: el.dataset.value,
+    label: el.querySelector(".who").firstChild.textContent,
+  }));
+}
+
+function wireAllowlists(){
+  document.querySelectorAll("[data-remove]").forEach(btn => {
+    btn.addEventListener("click", () => btn.closest(".entry").remove());
+  });
+
+  const waNew = document.getElementById("wa-new");
+  const waResolved = document.getElementById("wa-resolved");
+
+  // Resolving the number to a NAME before it is committed is the whole
+  // anti-typo affordance here: a wrong digit is otherwise invisible until a
+  // message reaches a stranger.
+  document.getElementById("wa-check").addEventListener("click", async () => {
+    const digits = waNew.value.replace(/\D/g, "");
+    if(!digits) return;
+    waResolved.className = "resolved";
+    waResolved.textContent = "Procurando…";
+    try {
+      const r = await lookupWhatsappContact(digits);
+      if(!r.reachable) waResolved.textContent = "Não deu para verificar agora (o WhatsApp da casa não respondeu).";
+      else if(!r.matches.length) waResolved.textContent = "Número não encontrado nos seus contatos — confira antes de adicionar.";
+      else { waResolved.className = "resolved ok"; waResolved.textContent = "É " + r.matches.map(m => m.name).join(", ") + "."; }
+    } catch(e){ waResolved.textContent = "Não deu para verificar (" + e.message + ")."; }
+  });
+
+  document.getElementById("wa-add").addEventListener("click", () => {
+    const digits = waNew.value.replace(/\D/g, "");
+    if(digits.length < 10){ waResolved.className = "resolved"; waResolved.textContent = "Número muito curto."; return; }
+    const label = waResolved.className.includes("ok") ? waResolved.textContent.replace(/^É /, "").replace(/\.$/, "") : "";
+    appendAllowEntry("wa-allow", "wa", digits, label);
+    waNew.value = ""; waResolved.textContent = ""; waResolved.className = "resolved";
+  });
+
+  document.getElementById("mail-add").addEventListener("click", () => {
+    const input = document.getElementById("mail-new");
+    const address = input.value.trim().toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)){ fieldError("mailAllowlist", "Endereço inválido."); return; }
+    appendAllowEntry("mail-allow", "mail", address, "");
+    input.value = "";
+  });
+}
+
+function appendAllowEntry(boxId, kind, value, label){
+  const box = document.getElementById(boxId);
+  const empty = box.querySelector(".hint");
+  if(empty) empty.remove();
+  box.insertAdjacentHTML("beforeend",
+    '<div class="entry" data-kind="' + kind + '" data-value="' + esc(value) + '">' +
+    '<span class="who">' + esc(label || value) + (label ? '<span>' + esc(value) + '</span>' : '') + '</span>' +
+    '<button class="icon-btn" title="Remover" data-remove>🗑</button></div>');
+  const btn = box.lastElementChild.querySelector("[data-remove]");
+  btn.addEventListener("click", () => btn.closest(".entry").remove());
+}
+
+// --- password ----------------------------------------------------------------
+
+function wirePassword(){
+  document.getElementById("pw-save").addEventListener("click", async () => {
+    const current = document.getElementById("pw-current").value;
+    const next = document.getElementById("pw-new").value;
+    const confirm = document.getElementById("pw-confirm").value;
+    const status = document.getElementById("saved-password");
+    document.querySelectorAll('[data-field$="assword"] .err').forEach(el => { el.hidden = true; });
+
+    if(next !== confirm){ fieldError("confirmPassword", "As duas senhas não são iguais."); return; }
+    status.textContent = "Salvando…";
+    try {
+      const r = await changePassword(current, next);
+      status.textContent = r.otherSessionsRevoked
+        ? "Senha trocada. " + r.otherSessionsRevoked + " outra(s) sessão(ões) encerrada(s)."
+        : "Senha trocada.";
+      ["pw-current", "pw-new", "pw-confirm"].forEach(id => { document.getElementById(id).value = ""; });
+      loadSessionsLater();
+    } catch(e){
+      status.textContent = "";
+      if(await handledAuthFailure(e)) return;
+      const field = e.body && e.body.field ? e.body.field : null;
+      if(field) fieldError(field, e.message);
+      else alert("Não foi possível trocar a senha: " + e.message);
+    }
+  });
+
+  document.getElementById("revoke-others").addEventListener("click", async () => {
+    const status = document.getElementById("saved-sessions");
+    status.textContent = "Encerrando…";
+    try {
+      const r = await revokeOtherSessions();
+      status.textContent = r.revoked + " sessão(ões) encerrada(s).";
+      loadSessionsLater();
+    } catch(e){
+      status.textContent = "";
+      if(await handledAuthFailure(e)) return;
+      alert("Não foi possível encerrar as outras sessões: " + e.message);
+    }
+  });
+}
+
+async function loadSessionsLater(){
+  const box = document.getElementById("sessions-box");
+  if(!box) return;
+  try {
+    const r = await loadSessions();
+    if(!r.sessions.length){ box.innerHTML = '<p class="hint">Nenhuma sessão registrada.</p>'; return; }
+    box.innerHTML = r.sessions.map(sn =>
+      '<div class="entry"><span class="who">' + esc(sn.clientId) + (sn.current ? " (este dispositivo)" : "") +
+      '<span>entrou em ' + esc(sn.signedInAt ? fmtDateTime(sn.signedInAt) : "data desconhecida") + '</span></span></div>').join("");
+  } catch(_){
+    box.innerHTML = '<p class="hint">Não deu para listar as sessões agora.</p>';
+  }
+}
+
+// --- backup ------------------------------------------------------------------
+
+function wireBackup(){
+  document.getElementById("export").addEventListener("click", async () => {
+    const status = document.getElementById("saved-backup");
+    status.textContent = "Preparando…";
+    try {
+      const data = await exportPreferences();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "maga-preferencias-" + new Date().toISOString().slice(0, 10) + ".json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+      status.textContent = "Cópia baixada.";
+    } catch(e){ status.textContent = ""; alert("Não foi possível baixar: " + e.message); }
+  });
+
+  const file = document.getElementById("import-file");
+  document.getElementById("import").addEventListener("click", () => file.click());
+  file.addEventListener("change", async () => {
+    const status = document.getElementById("saved-backup");
+    if(!file.files || !file.files[0]) return;
+    let payload;
+    try { payload = JSON.parse(await file.files[0].text()); }
+    catch(_){ alert("Esse arquivo não é uma cópia válida."); file.value = ""; return; }
+    if(!await confirmModal("Restaurar preferências deste arquivo? Os valores atuais serão substituídos.")){ file.value = ""; return; }
+    status.textContent = "Restaurando…";
+    try {
+      const r = await importPreferences(payload);
+      status.textContent = "Restaurado: " + (r.imported.join(", ") || "nada");
+      prefs.effective = r.effective;
+      render();
+    } catch(e){
+      status.textContent = "";
+      if(await handledAuthFailure(e)) return;
+      alert("Não foi possível restaurar: " + e.message);
+    } finally { file.value = ""; }
+  });
+}
+
+// --- shared error handling ---------------------------------------------------
+
+function fieldError(field, message){
+  const holder = document.querySelector('[data-field="' + field + '"] .err');
+  if(holder){ holder.textContent = message; holder.hidden = false; }
+  else alert(message);
+}
+
+// A 428 means "type your password again", not "something broke" - so it gets
+// a confirm and a trip through the login form rather than an error toast.
+async function handledAuthFailure(e){
+  if(e.name === "PrefsReauthError"){
+    if(await confirmModal(e.message + " Você será levado à tela de login e volta para cá em seguida.")){
+      startPreferencesReauth();
+    }
+    return true;
+  }
+  if(e.name === "PrefsAuthError"){
+    alert("Sua sessão expirou. Entre de novo.");
+    startOAuth("padrao");
+    return true;
+  }
+  return false;
 }
 
 function field(name, label, value, hint){
@@ -302,6 +584,12 @@ function collectSection(section){
       excludedGroups: checked.map(c => ({ jid: c.dataset.jid, label: byJid.get(c.dataset.jid) || "" })),
     };
   }
+  if(section === "whatsappAllow"){
+    return { sendAllowlist: allowValues("wa").map(e => ({ number: e.value, label: e.label })) };
+  }
+  if(section === "mailAllow"){
+    return { sendAllowlist: allowValues("mail").map(e => e.value) };
+  }
   if(section === "rateLimits"){
     const out = {};
     Object.keys(prefs.bounds.rateLimits).forEach(key => {
@@ -319,18 +607,15 @@ async function saveSection(section, btn){
   btn.disabled = true;
   status.textContent = "Salvando…";
   try {
-    const data = await savePreferenceSection(section, collectSection(section));
+    const serverSection = section === "whatsappAllow" ? "whatsapp" : section === "mailAllow" ? "mail" : section;
+    const data = await savePreferenceSection(serverSection, collectSection(section));
     prefs.effective = data.effective;
     prefs.overrides = data.overrides;
     status.textContent = "Salvo.";
     setTimeout(() => { if(status) status.textContent = ""; }, 2500);
   } catch(e){
     status.textContent = "";
-    if(e.name === "PrefsAuthError"){
-      alert("Sua sessão expirou. Entre de novo para salvar.");
-      startOAuth("padrao");
-      return;
-    }
+    if(await handledAuthFailure(e)) return;
     // A 400 names the exact field, so the message lands next to the input
     // that caused it rather than as a generic failure at the top.
     const field = e.body && e.body.field ? String(e.body.field).split(".").pop() : null;
