@@ -244,7 +244,7 @@ function render(){
       // Plain text, not inputmode="numeric" - Verificar now doubles as a
       // name search (see searchByName() below), and a numeric-only virtual
       // keyboard makes typing a name impossible on a phone.
-      '<input type="text" id="wa-new" placeholder="Número com DDD ou nome do contato">' +
+      '<input type="text" id="wa-new" placeholder="Nome ou número com DDD">' +
       '<button class="link" id="wa-check">Verificar</button>' +
       '<button class="link" id="wa-add">Adicionar</button>' +
       '<p class="resolved" id="wa-resolved"></p>' +
@@ -427,6 +427,21 @@ function allowValues(kind){
   }));
 }
 
+// Same rule clientes.html's and fornecedores.html's own waPhoneDigits()
+// already apply for wa.me links: a Brazilian number is conventionally
+// typed as just DDD+number (10 or 11 digits), while WhatsApp itself - and
+// this allow-list's server-side check (security/allowlist.js, which
+// compares raw digit strings with NO normalization of its own) - always
+// speaks the full form with the 55 country code. Without this, "551199...."
+// and "1199...." are two different strings that happen to be the same
+// person: one silently duplicates the other on the list, and whichever
+// spelling is missing the 55 would never actually match a real send.
+// 12+ digits are assumed to already carry a country code and left alone.
+function normalizeWaNumber(raw){
+  const d = String(raw || "").replace(/\D/g, "");
+  return (d.length === 10 || d.length === 11) ? "55" + d : d;
+}
+
 function wireAllowlists(){
   document.querySelectorAll("[data-remove]").forEach(btn => {
     btn.addEventListener("click", () => btn.closest(".entry").remove());
@@ -445,8 +460,16 @@ function wireAllowlists(){
     const raw = waNew.value.trim();
     if(!raw) return;
     if(/[a-zA-Z]/.test(raw)){ await searchByName(raw); return; }
-    const digits = raw.replace(/\D/g, "");
+    const digits = normalizeWaNumber(raw);
     if(!digits) return;
+    if(digits.length < 12){
+      // Caught here rather than left to the server: a number this short
+      // can never be a real one, and sending it anyway just turns into a
+      // raw "Erro 400" the person has no way to make sense of.
+      waResolved.className = "resolved";
+      waResolved.textContent = "Número muito curto.";
+      return;
+    }
     waResolved.className = "resolved";
     waResolved.textContent = "Procurando…";
     try {
@@ -487,7 +510,7 @@ function wireAllowlists(){
         btn.className = "link";
         btn.textContent = m.name + " — " + m.phone;
         btn.addEventListener("click", () => {
-          waNew.value = m.phone;
+          waNew.value = normalizeWaNumber(m.phone);
           waResolved.className = "resolved ok";
           waResolved.textContent = "É " + m.name + ".";
         });
@@ -498,13 +521,13 @@ function wireAllowlists(){
   }
 
   document.getElementById("wa-add").addEventListener("click", () => {
-    const digits = waNew.value.replace(/\D/g, "");
-    if(digits.length < 10){ waResolved.className = "resolved"; waResolved.textContent = "Número muito curto."; return; }
-    // Exact-string dedupe, matching how the server itself decides who is
-    // allowed (security/allowlist.js compares digit strings directly, with
-    // no country-code normalization) - so "the same as an existing entry"
-    // means the same digit string, not an attempt to guess that "5511..."
-    // and "11..." are the same underlying number.
+    const digits = normalizeWaNumber(waNew.value);
+    if(digits.length < 12){ waResolved.className = "resolved"; waResolved.textContent = "Número muito curto."; return; }
+    // Exact-string dedupe against the ALREADY-NORMALIZED value - the server
+    // itself (security/allowlist.js) compares raw digit strings with no
+    // normalization of its own, so it is this normalize-before-store step,
+    // not the server, that guarantees "5511..." and "11...." can never
+    // both end up on the list as if they were different people.
     if(allowValues("wa").some(e => e.value === digits)){
       waResolved.className = "resolved";
       waResolved.textContent = "Esse número já está na lista.";

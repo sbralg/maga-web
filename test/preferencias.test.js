@@ -710,6 +710,78 @@ async function withPrefsFake(ctx, opts = {}) {
     await ctx.close();
   }
 
+  // --- 11d. a number typed WITHOUT the 55 country code normalizes to the
+  // same digit string as one already on the list (with 55) - regression
+  // test for a real reported bug: a Brazilian number typed as bare DDD
+  // (e.g. "11994452426") silently duplicated the SAME person already
+  // present as "5511994452426", since the dedupe check compared raw digit
+  // strings with no normalization. ------------------------------------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withPrefsFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#wa-new', { timeout: 6000 });
+
+    check('the field hint fits: "Nome ou número com DDD", got: ' + await page.getAttribute('#wa-new', 'placeholder'),
+      await page.getAttribute('#wa-new', 'placeholder') === 'Nome ou número com DDD');
+
+    const countBefore = await page.$$eval('.entry[data-kind="wa"]', els => els.length);
+    // makePrefs()'s fixture already has 5511900000000 on the list - typing
+    // the SAME real number without its country code must be refused as a
+    // duplicate, not silently added as if it were someone else.
+    await page.fill('#wa-new', '11900000000');
+    await page.click('#wa-add');
+    const countAfter = await page.$$eval('.entry[data-kind="wa"]', els => els.length);
+    check('the DDI-less spelling of an existing number is refused as a duplicate, not added again',
+      countAfter === countBefore);
+    const msg = await page.textContent('#wa-resolved');
+    check('it says so, got: ' + msg, /já está na lista/i.test(msg));
+
+    // A genuinely new number typed without the 55 must still be STORED
+    // with it - otherwise this entry would silently never match a real
+    // send (security/allowlist.js compares raw digit strings, no
+    // normalization of its own).
+    await page.fill('#wa-new', '11955554444');
+    await page.click('#wa-add');
+    check('a new DDI-less number is stored fully qualified with 55, got entries: ' +
+      JSON.stringify(await page.$$eval('.entry[data-kind="wa"]', els => els.map(el => el.dataset.value))),
+      await page.$('#wa-allow .entry[data-value="5511955554444"]') !== null);
+    check('the bare (un-prefixed) form is never stored as its own row',
+      await page.$('#wa-allow .entry[data-value="11955554444"]') === null);
+    await ctx.close();
+  }
+
+  // --- 11e. Verificar on an obviously-too-short number is refused
+  // client-side, without ever reaching the server - regression test for a
+  // real reported bug: a short typo (e.g. "12345") reached
+  // /preferences/whatsapp/contact, which 400s on anything under 8 digits,
+  // and the raw "Erro 400" leaked straight onto the page. ------------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const { otherCalls } = await withPrefsFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#wa-new', { timeout: 6000 });
+
+    await page.fill('#wa-new', '12345');
+    await page.click('#wa-check');
+    await page.waitForFunction(() => (document.getElementById('wa-resolved') || {}).textContent.length > 0, null, { timeout: 6000 });
+    const msg = await page.textContent('#wa-resolved');
+    check('a too-short number gets a friendly refusal, not a raw error code, got: ' + msg,
+      msg === 'Número muito curto.');
+    // makePrefs()'s own bare-number fixture rows trigger their OWN
+    // background lookups via resolveAllowlistNamesLater() on every load -
+    // this only cares whether "12345" itself was ever sent as a query.
+    check('no request was even sent for a number this short',
+      !otherCalls.some(c => c.pathname === '/preferences/whatsapp/contact' && c.query === '12345'));
+    await ctx.close();
+  }
+
   // --- 12. Verificar resolves a name; Adicionar + Salvar sends {number,label}
   {
     const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
