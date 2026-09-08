@@ -742,6 +742,7 @@ function groupsHtml(){
     loadingMsg: "Procurando os seus grupos…",
     unreachableMsg: "Não deu para listar os grupos agora",
     emptyMsg: "Nenhum grupo encontrado nos últimos 14 dias.",
+    noneMutedMsg: "Nenhum grupo silenciado.",
   });
 }
 
@@ -750,6 +751,7 @@ function contactsHtml(){
     loadingMsg: "Procurando as suas conversas…",
     unreachableMsg: "Não deu para listar as conversas agora",
     emptyMsg: "Nenhuma conversa encontrada nos últimos 14 dias.",
+    noneMutedMsg: "Nenhum contato silenciado.",
   });
 }
 
@@ -760,9 +762,9 @@ function contactsHtml(){
 // last fetched ({reachable, reason} plus the list itself); `muted` is the
 // jids already excluded, which must always render even when absent from the
 // recent-activity window - or saving would silently un-mute them.
-function chatPickerHtml(state, known, muted, { loadingMsg, unreachableMsg, emptyMsg }){
+function chatPickerHtml(state, known, muted, { loadingMsg, unreachableMsg, emptyMsg, noneMutedMsg }){
   if(!state){
-    return '<p class="hint">' + esc(loadingMsg) + '</p>' + mutedOnlyList(muted);
+    return '<p class="hint">' + esc(loadingMsg) + '</p>' + mutedOnlyList(muted, noneMutedMsg);
   }
   if(!state.reachable){
     // The bridge is on the LAN and the phone may be off it - saying which
@@ -775,7 +777,7 @@ function chatPickerHtml(state, known, muted, { loadingMsg, unreachableMsg, empty
     // is broken.
     return '<p class="hint">' + esc(unreachableMsg) +
       (state.reason ? ' (' + esc(state.reason) + ')' : ' (o WhatsApp da casa não respondeu)') + '. ' +
-      'Os que já estão silenciados continuam abaixo e podem ser liberados.</p>' + mutedOnlyList(muted);
+      'Os que já estão silenciados continuam abaixo e podem ser liberados.</p>' + mutedOnlyList(muted, noneMutedMsg);
   }
   const list = (known || []).slice();
   // A muted chat that hasn't spoken in two weeks won't be in the recent
@@ -812,8 +814,8 @@ function fmtGroupRate(avgPerDay){
   return '<span class="rate">≈' + esc(avgPerDay.toFixed(1).replace(".", ",")) + '/dia</span>';
 }
 
-function mutedOnlyList(muted){
-  if(!muted.length) return '<p class="hint">Nenhum grupo silenciado.</p>';
+function mutedOnlyList(muted, noneMutedMsg){
+  if(!muted.length) return '<p class="hint">' + esc(noneMutedMsg) + '</p>';
   return '<div class="grouplist">' + muted.map(jid =>
     '<label class="grouprow"><input type="checkbox" data-jid="' + esc(jid) + '" checked>' +
     '<span class="label">' + esc(jid) + '</span></label>').join("") + '</div>';

@@ -595,6 +595,37 @@ async function withPrefsFake(ctx, opts = {}) {
     await ctx.close();
   }
 
+  // --- 6f. regression test for a real reported bug: with NOTHING muted and
+  // the contacts endpoint unreachable (e.g. loadWhatsappRecentContacts()
+  // undefined on a stale cached shared-prefs.js, which is exactly how this
+  // was first noticed live), the empty-state copy under #contacts-box must
+  // say "Nenhum contato silenciado." - it used to hard-code the GROUPS
+  // wording ("Nenhum grupo silenciado.") for both boxes. --------------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    // Both endpoints fail, and nothing is muted on either list - the only
+    // way to see BOTH boxes fall through to their own "nothing muted" copy
+    // in the same test, proving they don't share one hard-coded string.
+    await withPrefsFake(ctx, { groupsMode: 'fail', contactsMode: 'fail' });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.waitForFunction(() =>
+      /Não deu para listar as conversas/.test((document.getElementById('contacts-box') || {}).textContent || ''),
+      null, { timeout: 6000 });
+    const contactsBoxText = await page.textContent('#contacts-box');
+    check('the contacts box says "Nenhum contato silenciado." when nothing is muted and the endpoint failed, got: ' + contactsBoxText,
+      contactsBoxText.includes('Nenhum contato silenciado.'));
+    check('it does NOT show the groups wording', !contactsBoxText.includes('Nenhum grupo silenciado.'));
+    // The groups box, unaffected by contactsMode, still shows its OWN wording.
+    const groupsBoxText = await page.textContent('#groups-box');
+    check('the groups box still says "Nenhum grupo silenciado." for its own empty state, got: ' + groupsBoxText,
+      groupsBoxText.includes('Nenhum grupo silenciado.'));
+    await ctx.close();
+  }
+
   // --- 7. a 400 invalid_preference on rateLimits ---------------------------
   // limitRow() (the markup for each rate-limit row) never emits a `.err`
   // element, so saveSection()'s `[data-field="..."] .err` lookup found no
