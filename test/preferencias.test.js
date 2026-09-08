@@ -63,6 +63,12 @@ const DEFAULT_GROUPS = [
   { jid: '120363222@g.us', label: 'Trabalho', avgPerDay: 0.2 },
 ];
 
+// The 1:1 counterpart to DEFAULT_GROUPS, same "busiest first" ordering rule.
+const DEFAULT_CONTACTS = [
+  { jid: '5511900000003@s.whatsapp.net', label: 'Colega Tagarela', avgPerDay: 4.1 },
+  { jid: '5511900000004@s.whatsapp.net', label: 'Fornecedor', avgPerDay: 0.3 },
+];
+
 function makePrefs(overrides = {}) {
   const base = {
     effective: {
@@ -72,6 +78,7 @@ function makePrefs(overrides = {}) {
       whatsapp: {
         selfNumber: '5511994452426',
         excludedGroups: [],
+        excludedUsers: [],
         queryApiUrl: 'http://192.168.1.8:47502',
         bridgeApiUrl: 'http://192.168.1.8:47501',
         sendAllowlist: ['5511900000000', '5511911111111'],
@@ -142,6 +149,7 @@ function applyPutToPrefs(prefs, section, body) {
     effective.whatsapp = { ...effective.whatsapp };
     if ('selfNumber' in body) effective.whatsapp.selfNumber = body.selfNumber;
     if (body.excludedGroups) effective.whatsapp.excludedGroups = body.excludedGroups.map(g => g.jid);
+    if (body.excludedUsers) effective.whatsapp.excludedUsers = body.excludedUsers.map(u => u.jid);
     if (body.sendAllowlist) effective.whatsapp.sendAllowlist = body.sendAllowlist.map(e => e.number);
   } else if (section === 'mail' && body.sendAllowlist) {
     effective.mail = { ...effective.mail, sendAllowlist: [...body.sendAllowlist] };
@@ -203,6 +211,8 @@ async function withPrefsFake(ctx, opts = {}) {
   const otherCalls = []; // {pathname, method, body?, query?} for the non-GET/PUT-person routes
   const groupsMode = opts.groupsMode || 'ok'; // 'ok' | 'fail' | 'unreachable'
   const groupsList = opts.groupsList || DEFAULT_GROUPS;
+  const contactsMode = opts.contactsMode || 'ok'; // 'ok' | 'fail' | 'unreachable'
+  const contactsList = opts.contactsList || DEFAULT_CONTACTS;
   const rateLimitsError = opts.rateLimitsError || null;
   const putOverride = opts.putOverride || null; // (section, body) => {status, body} | null
   const contactResult = opts.contactResult || (() => ({ reachable: true, matches: [] }));
@@ -254,6 +264,15 @@ async function withPrefsFake(ctx, opts = {}) {
       await fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify({ groups: reachable ? groupsList : [], reachable }),
+      });
+      return;
+    }
+    if (pathname === '/preferences/whatsapp/recent-contacts') {
+      if (contactsMode === 'fail') { await fulfill({ status: 500, body: 'oops' }); return; }
+      const reachable = contactsMode !== 'unreachable';
+      await fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ contacts: reachable ? contactsList : [], reachable }),
       });
       return;
     }
@@ -489,6 +508,90 @@ async function withPrefsFake(ctx, opts = {}) {
       Math.abs(geometry.rowRight - geometry.rateRight) <= 3);
     check('the rate vertically overlaps the row (same line, not pushed below it), got ' + JSON.stringify(geometry),
       geometry.rateTop >= geometry.rowTop - 1 && geometry.rateTop < geometry.rowBottom);
+    await ctx.close();
+  }
+
+  // --- 6c. ticking a 1:1 contact checkbox and saving whatsapp - the
+  // excludedUsers counterpart to test 6 above --------------------------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const { putCalls } = await withPrefsFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#contacts-box .grouprow input[type=checkbox]', { timeout: 6000 });
+    await page.check('#contacts-box input[data-jid="5511900000004@s.whatsapp.net"]');
+    await page.click('[data-save="whatsapp"]');
+    await page.waitForFunction(() => (document.getElementById('saved-whatsapp') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
+    const call = putCalls.find(c => c.section === 'whatsapp');
+    check('a whatsapp PUT was sent', !!call);
+    const excludedUsers = call && call.body && call.body.excludedUsers;
+    check('excludedUsers is an array', Array.isArray(excludedUsers));
+    check('excludedUsers contains the ticked jid as {jid,label}, got ' + JSON.stringify(excludedUsers),
+      Array.isArray(excludedUsers) && excludedUsers.some(u => u.jid === '5511900000004@s.whatsapp.net' && u.label === 'Fornecedor'));
+    // The groups box must be untouched by ticking a contact - the two lists
+    // are collected from their own containers, never a bare `[data-jid]`
+    // query that would conflate them.
+    const excludedGroups = call && call.body && call.body.excludedGroups;
+    check('excludedGroups stays empty when only a contact was ticked, got ' + JSON.stringify(excludedGroups),
+      Array.isArray(excludedGroups) && excludedGroups.length === 0);
+    await ctx.close();
+  }
+
+  // --- 6d. contacts render in the server's order (busiest first) and show
+  // the messages/day rate, mirroring test 6b for groups ---------------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withPrefsFake(ctx, {
+      prefsOverrides: { effective: Object.assign({}, makePrefs().effective, {
+        whatsapp: Object.assign({}, makePrefs().effective.whatsapp, { excludedUsers: ['5511999999999@s.whatsapp.net'] }),
+      }) },
+    });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#contacts-box .grouprow', { timeout: 6000 });
+    const rows = await page.$$eval('#contacts-box .grouprow', els => els.map(el => el.textContent.trim()));
+    check('Colega Tagarela (busier, 4.1/dia) renders before Fornecedor, got: ' + JSON.stringify(rows),
+      rows[0].includes('Colega Tagarela') && rows[1].includes('Fornecedor'));
+    check('the busier contact shows its rate, got: ' + rows[0], /4,1\/dia/.test(rows[0]));
+    // The muted contact with no recent activity (appended because it is in
+    // excludedUsers but absent from the 14-day fetch) must render with no
+    // fabricated rate - same rule test 6b already checks for groups.
+    const mutedRow = rows.find(r => r.includes('5511999999999@s.whatsapp.net'));
+    check('a muted-but-quiet contact still renders, got rows: ' + JSON.stringify(rows), !!mutedRow);
+    check('it shows no fabricated rate, got: ' + mutedRow, !/\/dia/.test(mutedRow));
+
+    // The groups list must be completely unaffected by the contacts fixture.
+    await page.waitForSelector('#groups-box .grouprow', { timeout: 6000 });
+    const groupRows = await page.$$eval('#groups-box .grouprow', els => els.map(el => el.textContent.trim()));
+    check('the groups box still shows the default groups, unaffected by the contacts list, got: ' + JSON.stringify(groupRows),
+      groupRows.some(r => r.includes('Família')) && groupRows.some(r => r.includes('Trabalho')));
+    await ctx.close();
+  }
+
+  // --- 6e. an unreachable recent-contacts endpoint still lists an
+  // already-muted contact so it can be un-muted, mirroring test 8b ----------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withPrefsFake(ctx, { contactsMode: 'unreachable', prefsOverrides: {
+      effective: Object.assign({}, makePrefs().effective, {
+        whatsapp: Object.assign({}, makePrefs().effective.whatsapp, { excludedUsers: ['5511988887777@s.whatsapp.net'] }),
+      }),
+    } });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.waitForFunction(() =>
+      (document.getElementById('contacts-box') || {}).textContent.includes('5511988887777@s.whatsapp.net'), null, { timeout: 6000 });
+    const box = await page.textContent('#contacts-box');
+    check('an already-muted contact is still listed when the bridge reports reachable:false, got: ' + box,
+      box.includes('5511988887777@s.whatsapp.net') &&
+        (await page.$('#contacts-box input[data-jid="5511988887777@s.whatsapp.net"]:checked')) !== null);
     await ctx.close();
   }
 

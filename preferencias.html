@@ -91,6 +91,7 @@ const root = document.getElementById("root");
 let prefs = null;        // the whole GET /preferences body
 let prefsStale = false;  // served from cache because the jump host was unreachable
 let groups = null;       // {groups:[{jid,label}], reachable}
+let contacts = null;     // {contacts:[{jid,label}], reachable} - 1:1 counterpart to groups
 
 const PAGE_LOGIN = {
   title: "Preferências",
@@ -177,6 +178,7 @@ async function load(){
 
   render();
   loadGroupsLater();
+  loadContactsLater();
   resolveAllowlistNamesLater();
 }
 
@@ -193,7 +195,14 @@ async function loadGroupsLater(){
   catch(e){ groups = { groups: [], reachable: false, reason: e.message }; }
   const box = document.getElementById("groups-box");
   if(box) box.innerHTML = groupsHtml();
-  wireGroupRows();
+}
+
+// Same idea as loadGroupsLater(), for the excludedUsers picker.
+async function loadContactsLater(){
+  try { contacts = await loadWhatsappRecentContacts(); }
+  catch(e){ contacts = { contacts: [], reachable: false, reason: e.message }; }
+  const box = document.getElementById("contacts-box");
+  if(box) box.innerHTML = contactsHtml();
 }
 
 function render(){
@@ -222,6 +231,9 @@ function render(){
     '<div class="field"><label>Grupos silenciados no resumo diário</label>' +
     '<p class="hint">Grupos marcados aqui não entram no resumo da manhã. Uma busca comum continua enxergando todos.</p>' +
     '<div id="groups-box">' + groupsHtml() + '</div></div>' +
+    '<div class="field"><label>Conversas silenciadas no resumo diário</label>' +
+    '<p class="hint">O mesmo, mas para uma conversa individual em vez de um grupo — inclui a transcrição de áudio, quando ativa. Uma busca comum continua enxergando tudo.</p>' +
+    '<div id="contacts-box">' + contactsHtml() + '</div></div>' +
     saveRow("whatsapp", "Salvar", writable && !prefsStale);
 
   // --- Limites ---
@@ -726,40 +738,62 @@ function lockedRow(k, v){
 }
 
 function groupsHtml(){
-  const muted = prefs.effective.whatsapp.excludedGroups || [];
-  if(!groups){
-    return '<p class="hint">Procurando os seus grupos…</p>' + mutedOnlyList(muted);
+  return chatPickerHtml(groups, groups && groups.groups, prefs.effective.whatsapp.excludedGroups || [], {
+    loadingMsg: "Procurando os seus grupos…",
+    unreachableMsg: "Não deu para listar os grupos agora",
+    emptyMsg: "Nenhum grupo encontrado nos últimos 14 dias.",
+  });
+}
+
+function contactsHtml(){
+  return chatPickerHtml(contacts, contacts && contacts.contacts, prefs.effective.whatsapp.excludedUsers || [], {
+    loadingMsg: "Procurando as suas conversas…",
+    unreachableMsg: "Não deu para listar as conversas agora",
+    emptyMsg: "Nenhuma conversa encontrada nos últimos 14 dias.",
+  });
+}
+
+// Shared by groupsHtml() and contactsHtml() - a group and a 1:1 conversation
+// are rendered as the exact same kind of tick-list (checkbox + live-resolved
+// name + rate), sourced from two different endpoints but otherwise identical
+// mechanics. `state`/`known` are whatever loadGroupsLater()/loadContactsLater()
+// last fetched ({reachable, reason} plus the list itself); `muted` is the
+// jids already excluded, which must always render even when absent from the
+// recent-activity window - or saving would silently un-mute them.
+function chatPickerHtml(state, known, muted, { loadingMsg, unreachableMsg, emptyMsg }){
+  if(!state){
+    return '<p class="hint">' + esc(loadingMsg) + '</p>' + mutedOnlyList(muted);
   }
-  if(!groups.reachable){
+  if(!state.reachable){
     // The bridge is on the LAN and the phone may be off it - saying which
-    // groups are muted still lets someone UN-mute one, which is the edit
+    // chats are muted still lets someone UN-mute one, which is the edit
     // most likely to be urgent ("why didn't the summary mention that?").
     // The actual reason is shown, not guessed at: this call has genuinely
     // timed out before on a perfectly healthy bridge, because it fetches
     // every message in a 14-day window with no pagination - a real cost
     // that scales with how much the household talks, not a sign anything
     // is broken.
-    return '<p class="hint">Não deu para listar os grupos agora' +
-      (groups.reason ? ' (' + esc(groups.reason) + ')' : ' (o WhatsApp da casa não respondeu)') + '. ' +
+    return '<p class="hint">' + esc(unreachableMsg) +
+      (state.reason ? ' (' + esc(state.reason) + ')' : ' (o WhatsApp da casa não respondeu)') + '. ' +
       'Os que já estão silenciados continuam abaixo e podem ser liberados.</p>' + mutedOnlyList(muted);
   }
-  const known = groups.groups.slice();
-  // A muted group that hasn't spoken in two weeks won't be in the recent
+  const list = (known || []).slice();
+  // A muted chat that hasn't spoken in two weeks won't be in the recent
   // list - it must still render, or saving would silently un-mute it.
   muted.forEach(jid => {
-    if(!known.some(g => g.jid === jid)) known.push({ jid, label: jid });
+    if(!list.some(g => g.jid === jid)) list.push({ jid, label: jid });
   });
-  if(!known.length) return '<p class="hint">Nenhum grupo encontrado nos últimos 14 dias.</p>';
+  if(!list.length) return '<p class="hint">' + esc(emptyMsg) + '</p>';
   // Server order is already busiest-first (avgPerDay descending) - that is
   // the whole point of showing the rate at all: without it, why a noisy
-  // group landed at the top would just look arbitrary.
+  // chat landed at the top would just look arbitrary.
   // The rate is a sibling of .label, not nested inside it - .grouprow is
   // itself the flex row, so a plain (non-growing) span placed after a
   // flex:1 .label lands flush against the row's right edge for free,
   // vertically centered against however many lines .label wraps to. That
   // is what makes it read as "on the row's line", right-aligned, whether
   // the name alone fits on one line or the jid pushes it to two.
-  return '<div class="grouplist">' + known.map(g =>
+  return '<div class="grouplist">' + list.map(g =>
     '<label class="grouprow"><input type="checkbox" data-jid="' + esc(g.jid) + '"' +
     (muted.includes(g.jid) ? " checked" : "") + '>' +
     '<span class="label">' + esc(g.label) +
@@ -792,11 +826,17 @@ function collectSection(section){
     return { displayName: document.getElementById("f-displayName").value.trim() };
   }
   if(section === "whatsapp"){
-    const checked = [...document.querySelectorAll("[data-jid]")].filter(c => c.checked);
-    const byJid = new Map((groups?.groups || []).map(g => [g.jid, g.label]));
+    // Scoped to each box's own container, not a bare `[data-jid]` query -
+    // groups and 1:1 contacts render as identical-looking checkbox rows,
+    // and #groups-box/#contacts-box are what actually tells them apart.
+    const checkedGroups = [...document.querySelectorAll("#groups-box [data-jid]")].filter(c => c.checked);
+    const checkedContacts = [...document.querySelectorAll("#contacts-box [data-jid]")].filter(c => c.checked);
+    const byGroupJid = new Map((groups?.groups || []).map(g => [g.jid, g.label]));
+    const byContactJid = new Map((contacts?.contacts || []).map(c => [c.jid, c.label]));
     return {
       selfNumber: document.getElementById("f-selfNumber").value.trim(),
-      excludedGroups: checked.map(c => ({ jid: c.dataset.jid, label: byJid.get(c.dataset.jid) || "" })),
+      excludedGroups: checkedGroups.map(c => ({ jid: c.dataset.jid, label: byGroupJid.get(c.dataset.jid) || "" })),
+      excludedUsers: checkedContacts.map(c => ({ jid: c.dataset.jid, label: byContactJid.get(c.dataset.jid) || "" })),
     };
   }
   if(section === "whatsappAllow"){

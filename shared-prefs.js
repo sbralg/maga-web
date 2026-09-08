@@ -97,6 +97,13 @@ async function loadWhatsappGroups(){
   return await mcpFetch("/preferences/whatsapp/groups");
 }
 
+/** The 1:1 conversations this person's WhatsApp has actually seen recently -
+ *  the excludedUsers counterpart to loadWhatsappGroups() above, same shape
+ *  ({contacts:[{jid,label,avgPerDay}], reachable}). */
+async function loadWhatsappRecentContacts(){
+  return await mcpFetch("/preferences/whatsapp/recent-contacts");
+}
+
 /** Who a number belongs to, so an allow-list entry can be checked before it
  *  is committed. A wrong digit is otherwise invisible until a message
  *  reaches a stranger. */

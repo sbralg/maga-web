@@ -9,6 +9,50 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-08): Preferências gains a "Conversas silenciadas" section — muting a specific 1:1 contact, not just a group
+
+Bia asked to mute a specific 1:1 conversation from the daily summary (and
+from audio transcription, where it's active) — the existing "Grupos
+silenciados" section only ever let her mute a group. The `maga-infra`
+side generalized `excludedGroups` into a union of `excludedGroups` +
+`excludedUsers` (see that repo's own CLAUDE.md entry) and added a new
+`GET /preferences/whatsapp/recent-contacts` endpoint, the 1:1 counterpart
+to the existing `/whatsapp/groups`. This is the front-end half.
+
+- **New "Conversas silenciadas no resumo diário" field**, right below the
+  existing "Grupos silenciados" one in the WhatsApp section — same
+  tick-list UI, same `#groups-box`-style container (`#contacts-box`),
+  backed by the new `loadWhatsappRecentContacts()` (`shared-prefs.js`) →
+  `GET /preferences/whatsapp/recent-contacts`.
+- **`groupsHtml()`/`contactsHtml()` now share one renderer,
+  `chatPickerHtml(state, known, muted, copy)`** — a group and a 1:1
+  contact render as the exact same kind of row (checkbox + live-resolved
+  name + rate), sourced from two different endpoints but otherwise
+  identical mechanics; only the loading/unreachable/empty copy differs
+  between the two callers. Refactored rather than duplicated, following
+  the same "one generic renderer, a `kind` parameter" shape
+  `allowRowsHtml(entries, kind)` already used for the WhatsApp/e-mail
+  allow-lists.
+- **`collectSection("whatsapp")` reads each checkbox list scoped to its
+  own container** (`#groups-box [data-jid]` / `#contacts-box [data-jid]`)
+  rather than a bare `[data-jid]` query — the two lists render visually
+  identical rows, so the container is what actually tells a group
+  checkbox apart from a contact checkbox when building the PUT body
+  (`excludedGroups` vs `excludedUsers`, both as `{jid,label}` arrays,
+  matching `preferencesStore.js`'s `groupList`/`userList` coerce shapes).
+- **10 new assertions in `test/preferencias.test.js`** (93 → 103, all
+  green): ticking a contact checkbox and saving sends `excludedUsers`
+  without touching `excludedGroups`; busiest-first ordering + rate
+  display for contacts, mirroring the existing groups test; an
+  already-muted contact still renders (and stays checked) when
+  `/whatsapp/recent-contacts` reports `reachable:false`, mirroring the
+  existing groups test for the same case. New fixtures `DEFAULT_CONTACTS`
+  and a `contactsMode`/`contactsList` pair of `withPrefsFake()` options,
+  mirroring `DEFAULT_GROUPS`/`groupsMode`/`groupsList` exactly.
+- **Not yet deployed** — this is a GitHub Pages static site with no build
+  step, so "deploy" is just merging to `main`; not done yet, pending
+  review.
+
 ## Status (2026-09-06, latest): every search/filter box in the app is now accent-insensitive
 
 Reported directly: typing "cafe" against an ingrediente/insumo stored as
