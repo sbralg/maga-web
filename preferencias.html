@@ -61,6 +61,10 @@
   details.infra summary{cursor:pointer;font-size:14px;font-weight:650;color:var(--muted);padding:6px 0}
   details.infra .note{font-size:12.5px;color:var(--muted);line-height:1.45;margin:2px 0 10px}
 
+  details.reveal{margin-top:8px}
+  details.reveal summary{cursor:pointer;font-size:12.5px;color:var(--accent);padding:4px 0}
+  details.reveal .grouplist{margin-top:6px}
+
   .entry{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
   .entry:last-of-type{border-bottom:none}
   .entry .who{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
@@ -738,31 +742,44 @@ function lockedRow(k, v){
 }
 
 function groupsHtml(){
-  return chatPickerHtml(groups, groups && groups.groups, prefs.effective.whatsapp.excludedGroups || [], {
+  const known = ((groups && groups.groups) || []).map(g => ({ jids: [g.jid], label: g.label, avgPerDay: g.avgPerDay }));
+  const other = ((groups && groups.otherGroups) || []).map(g => ({ jids: [g.jid], label: g.label }));
+  return chatPickerHtml(groups, known, other, prefs.effective.whatsapp.excludedGroups || [], {
     loadingMsg: "Procurando os seus grupos…",
     unreachableMsg: "Não deu para listar os grupos agora",
     emptyMsg: "Nenhum grupo encontrado nos últimos 14 dias.",
     noneMutedMsg: "Nenhum grupo silenciado.",
+    otherMsg: "Mostrar grupos sem atividade",
   });
 }
 
 function contactsHtml(){
-  return chatPickerHtml(contacts, contacts && contacts.contacts, prefs.effective.whatsapp.excludedUsers || [], {
+  const known = (contacts && contacts.contacts) || [];
+  const other = (contacts && contacts.otherContacts) || [];
+  return chatPickerHtml(contacts, known, other, prefs.effective.whatsapp.excludedUsers || [], {
     loadingMsg: "Procurando as suas conversas…",
     unreachableMsg: "Não deu para listar as conversas agora",
     emptyMsg: "Nenhuma conversa encontrada nos últimos 14 dias.",
     noneMutedMsg: "Nenhum contato silenciado.",
+    otherMsg: "Mostrar contatos sem atividade",
   });
 }
 
 // Shared by groupsHtml() and contactsHtml() - a group and a 1:1 conversation
-// are rendered as the exact same kind of tick-list (checkbox + live-resolved
-// name + rate), sourced from two different endpoints but otherwise identical
-// mechanics. `state`/`known` are whatever loadGroupsLater()/loadContactsLater()
-// last fetched ({reachable, reason} plus the list itself); `muted` is the
+// render as the exact same kind of tick-list (checkbox + live-resolved name
+// + rate), sourced from two different endpoints but otherwise identical
+// mechanics. Every row reaching this function is normalised to
+// {jids, label, avgPerDay?} - a group always carries exactly one jid, a
+// merged 1:1 contact may carry more than one (the same real person can have
+// a phone-number JID AND an opaque @lid - see /whatsapp/recent-contacts's
+// own doc comment). `state` is whatever loadGroupsLater()/loadContactsLater()
+// last fetched ({reachable, reason} plus the two lists); `muted` is the
 // jids already excluded, which must always render even when absent from the
-// recent-activity window - or saving would silently un-mute them.
-function chatPickerHtml(state, known, muted, { loadingMsg, unreachableMsg, emptyMsg, noneMutedMsg }){
+// recent-activity window - or saving would silently un-mute them. `other`
+// is the "sem atividade" universe - active-window candidates the person
+// might still want to mute, revealed behind a details/summary toggle so it
+// doesn't bury the (usually much shorter, actually-relevant) active list.
+function chatPickerHtml(state, known, other, muted, { loadingMsg, unreachableMsg, emptyMsg, noneMutedMsg, otherMsg }){
   if(!state){
     return '<p class="hint">' + esc(loadingMsg) + '</p>' + mutedOnlyList(muted, noneMutedMsg);
   }
@@ -783,25 +800,38 @@ function chatPickerHtml(state, known, muted, { loadingMsg, unreachableMsg, empty
   // A muted chat that hasn't spoken in two weeks won't be in the recent
   // list - it must still render, or saving would silently un-mute it.
   muted.forEach(jid => {
-    if(!list.some(g => g.jid === jid)) list.push({ jid, label: jid });
+    if(!list.some(g => g.jids.includes(jid))) list.push({ jids: [jid], label: jid });
   });
-  if(!list.length) return '<p class="hint">' + esc(emptyMsg) + '</p>';
-  // Server order is already busiest-first (avgPerDay descending) - that is
-  // the whole point of showing the rate at all: without it, why a noisy
-  // chat landed at the top would just look arbitrary.
-  // The rate is a sibling of .label, not nested inside it - .grouprow is
-  // itself the flex row, so a plain (non-growing) span placed after a
-  // flex:1 .label lands flush against the row's right edge for free,
-  // vertically centered against however many lines .label wraps to. That
-  // is what makes it read as "on the row's line", right-aligned, whether
-  // the name alone fits on one line or the jid pushes it to two.
-  return '<div class="grouplist">' + list.map(g =>
-    '<label class="grouprow"><input type="checkbox" data-jid="' + esc(g.jid) + '"' +
-    (muted.includes(g.jid) ? " checked" : "") + '>' +
-    '<span class="label">' + esc(g.label) +
-    (g.label === g.jid ? "" : '<span class="jid">' + esc(g.jid) + '</span>') +
-    '</span>' + fmtGroupRate(g.avgPerDay) +
-    '</label>').join("") + '</div>';
+  let html = list.length ? chatRowsHtml(list, muted) : '<p class="hint">' + esc(emptyMsg) + '</p>';
+  // The server already excludes anything active or already-muted from
+  // `other` - no need to re-filter here, same source of truth either way.
+  if((other || []).length){
+    html += '<details class="reveal"><summary>' + esc(otherMsg) + '</summary>' +
+      chatRowsHtml(other, muted) + '</details>';
+  }
+  return html;
+}
+
+// Server order is already busiest-first (avgPerDay descending) - that is
+// the whole point of showing the rate at all: without it, why a noisy chat
+// landed at the top would just look arbitrary. The rate is a sibling of
+// .label, not nested inside it - .grouprow is itself the flex row, so a
+// plain (non-growing) span placed after a flex:1 .label lands flush against
+// the row's right edge for free, vertically centered against however many
+// lines .label wraps to. That is what makes it read as "on the row's line",
+// right-aligned, whether the name alone fits on one line or the jid(s) push
+// it to two.
+function chatRowsHtml(items, muted){
+  return '<div class="grouplist">' + items.map(item => {
+    const checked = item.jids.some(jid => muted.includes(jid));
+    const isBareJid = item.jids.length === 1 && item.label === item.jids[0];
+    return '<label class="grouprow"><input type="checkbox" data-jids="' + esc(item.jids.join(",")) + '"' +
+      (checked ? " checked" : "") + '>' +
+      '<span class="label">' + esc(item.label) +
+      (isBareJid ? "" : '<span class="jid">' + esc(item.jids.join(", ")) + '</span>') +
+      '</span>' + fmtGroupRate(item.avgPerDay) +
+      '</label>';
+  }).join("") + '</div>';
 }
 
 // avgPerDay is absent for a muted group appended below because it hasn't
@@ -817,28 +847,46 @@ function fmtGroupRate(avgPerDay){
 function mutedOnlyList(muted, noneMutedMsg){
   if(!muted.length) return '<p class="hint">' + esc(noneMutedMsg) + '</p>';
   return '<div class="grouplist">' + muted.map(jid =>
-    '<label class="grouprow"><input type="checkbox" data-jid="' + esc(jid) + '" checked>' +
+    '<label class="grouprow"><input type="checkbox" data-jids="' + esc(jid) + '" checked>' +
     '<span class="label">' + esc(jid) + '</span></label>').join("") + '</div>';
 }
 
 function wireGroupRows(){ /* checkboxes are read at save time - nothing to wire yet */ }
+
+// jid -> label, from the server's own active+other lists (whichever raw
+// shape they carry - groups' {jid,label,...}, contacts' {jids,label,...}) -
+// used at save time so a checked row's label can be recovered even when it
+// came from the "sem atividade" list rather than the active one.
+function jidLabelMap(activeList, otherList){
+  const map = new Map();
+  [...(activeList || []), ...(otherList || [])].forEach(item => {
+    (item.jids || [item.jid]).forEach(jid => map.set(jid, item.label));
+  });
+  return map;
+}
 
 function collectSection(section){
   if(section === "identity"){
     return { displayName: document.getElementById("f-displayName").value.trim() };
   }
   if(section === "whatsapp"){
-    // Scoped to each box's own container, not a bare `[data-jid]` query -
+    // Scoped to each box's own container, not a bare `[data-jids]` query -
     // groups and 1:1 contacts render as identical-looking checkbox rows,
     // and #groups-box/#contacts-box are what actually tells them apart.
-    const checkedGroups = [...document.querySelectorAll("#groups-box [data-jid]")].filter(c => c.checked);
-    const checkedContacts = [...document.querySelectorAll("#contacts-box [data-jid]")].filter(c => c.checked);
-    const byGroupJid = new Map((groups?.groups || []).map(g => [g.jid, g.label]));
-    const byContactJid = new Map((contacts?.contacts || []).map(c => [c.jid, c.label]));
+    const checkedGroups = [...document.querySelectorAll("#groups-box [data-jids]")].filter(c => c.checked);
+    const checkedContacts = [...document.querySelectorAll("#contacts-box [data-jids]")].filter(c => c.checked);
+    const groupLabels = jidLabelMap(groups?.groups, groups?.otherGroups);
+    const contactLabels = jidLabelMap(contacts?.contacts, contacts?.otherContacts);
+    // One checked row can carry MORE than one jid (a merged 1:1 contact -
+    // see /whatsapp/recent-contacts) - ticking it once must save every jid
+    // it represents, or muting that person would be incomplete for
+    // whichever jid didn't happen to message recently.
+    const expand = (checkedEls, labels) => checkedEls.flatMap(c =>
+      c.dataset.jids.split(",").map(jid => ({ jid, label: labels.get(jid) || "" })));
     return {
       selfNumber: document.getElementById("f-selfNumber").value.trim(),
-      excludedGroups: checkedGroups.map(c => ({ jid: c.dataset.jid, label: byGroupJid.get(c.dataset.jid) || "" })),
-      excludedUsers: checkedContacts.map(c => ({ jid: c.dataset.jid, label: byContactJid.get(c.dataset.jid) || "" })),
+      excludedGroups: expand(checkedGroups, groupLabels),
+      excludedUsers: expand(checkedContacts, contactLabels),
     };
   }
   if(section === "whatsappAllow"){

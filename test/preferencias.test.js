@@ -64,9 +64,13 @@ const DEFAULT_GROUPS = [
 ];
 
 // The 1:1 counterpart to DEFAULT_GROUPS, same "busiest first" ordering rule.
+// `jids` (plural, an array) rather than a single `jid` - the real endpoint
+// merges a contact's phone-number JID and opaque @lid into one candidate
+// (see maga-infra's /whatsapp/recent-contacts), so every row can carry more
+// than one jid even though these two fixtures only ever need one each.
 const DEFAULT_CONTACTS = [
-  { jid: '5511900000003@s.whatsapp.net', label: 'Colega Tagarela', avgPerDay: 4.1 },
-  { jid: '5511900000004@s.whatsapp.net', label: 'Fornecedor', avgPerDay: 0.3 },
+  { jids: ['5511900000003@s.whatsapp.net'], label: 'Colega Tagarela', avgPerDay: 4.1 },
+  { jids: ['5511900000004@s.whatsapp.net'], label: 'Fornecedor', avgPerDay: 0.3 },
 ];
 
 function makePrefs(overrides = {}) {
@@ -211,8 +215,10 @@ async function withPrefsFake(ctx, opts = {}) {
   const otherCalls = []; // {pathname, method, body?, query?} for the non-GET/PUT-person routes
   const groupsMode = opts.groupsMode || 'ok'; // 'ok' | 'fail' | 'unreachable'
   const groupsList = opts.groupsList || DEFAULT_GROUPS;
+  const otherGroupsList = opts.otherGroupsList || []; // "sem atividade" - empty unless a test cares
   const contactsMode = opts.contactsMode || 'ok'; // 'ok' | 'fail' | 'unreachable'
   const contactsList = opts.contactsList || DEFAULT_CONTACTS;
+  const otherContactsList = opts.otherContactsList || [];
   const rateLimitsError = opts.rateLimitsError || null;
   const putOverride = opts.putOverride || null; // (section, body) => {status, body} | null
   const contactResult = opts.contactResult || (() => ({ reachable: true, matches: [] }));
@@ -263,7 +269,7 @@ async function withPrefsFake(ctx, opts = {}) {
       const reachable = groupsMode !== 'unreachable';
       await fulfill({
         status: 200, contentType: 'application/json',
-        body: JSON.stringify({ groups: reachable ? groupsList : [], reachable }),
+        body: JSON.stringify({ groups: reachable ? groupsList : [], otherGroups: reachable ? otherGroupsList : [], reachable }),
       });
       return;
     }
@@ -272,7 +278,7 @@ async function withPrefsFake(ctx, opts = {}) {
       const reachable = contactsMode !== 'unreachable';
       await fulfill({
         status: 200, contentType: 'application/json',
-        body: JSON.stringify({ contacts: reachable ? contactsList : [], reachable }),
+        body: JSON.stringify({ contacts: reachable ? contactsList : [], otherContacts: reachable ? otherContactsList : [], reachable }),
       });
       return;
     }
@@ -455,7 +461,7 @@ async function withPrefsFake(ctx, opts = {}) {
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
     await page.waitForSelector('.grouprow input[type=checkbox]', { timeout: 6000 });
-    await page.check('input[data-jid="120363222@g.us"]');
+    await page.check('input[data-jids="120363222@g.us"]');
     await page.click('[data-save="whatsapp"]');
     await page.waitForFunction(() => (document.getElementById('saved-whatsapp') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
     const call = putCalls.find(c => c.section === 'whatsapp');
@@ -521,7 +527,7 @@ async function withPrefsFake(ctx, opts = {}) {
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
     await page.waitForSelector('#contacts-box .grouprow input[type=checkbox]', { timeout: 6000 });
-    await page.check('#contacts-box input[data-jid="5511900000004@s.whatsapp.net"]');
+    await page.check('#contacts-box input[data-jids="5511900000004@s.whatsapp.net"]');
     await page.click('[data-save="whatsapp"]');
     await page.waitForFunction(() => (document.getElementById('saved-whatsapp') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
     const call = putCalls.find(c => c.section === 'whatsapp');
@@ -531,7 +537,7 @@ async function withPrefsFake(ctx, opts = {}) {
     check('excludedUsers contains the ticked jid as {jid,label}, got ' + JSON.stringify(excludedUsers),
       Array.isArray(excludedUsers) && excludedUsers.some(u => u.jid === '5511900000004@s.whatsapp.net' && u.label === 'Fornecedor'));
     // The groups box must be untouched by ticking a contact - the two lists
-    // are collected from their own containers, never a bare `[data-jid]`
+    // are collected from their own containers, never a bare `[data-jids]`
     // query that would conflate them.
     const excludedGroups = call && call.body && call.body.excludedGroups;
     check('excludedGroups stays empty when only a contact was ticked, got ' + JSON.stringify(excludedGroups),
@@ -591,7 +597,7 @@ async function withPrefsFake(ctx, opts = {}) {
     const box = await page.textContent('#contacts-box');
     check('an already-muted contact is still listed when the bridge reports reachable:false, got: ' + box,
       box.includes('5511988887777@s.whatsapp.net') &&
-        (await page.$('#contacts-box input[data-jid="5511988887777@s.whatsapp.net"]:checked')) !== null);
+        (await page.$('#contacts-box input[data-jids="5511988887777@s.whatsapp.net"]:checked')) !== null);
     await ctx.close();
   }
 
@@ -623,6 +629,77 @@ async function withPrefsFake(ctx, opts = {}) {
     const groupsBoxText = await page.textContent('#groups-box');
     check('the groups box still says "Nenhum grupo silenciado." for its own empty state, got: ' + groupsBoxText,
       groupsBoxText.includes('Nenhum grupo silenciado.'));
+    await ctx.close();
+  }
+
+  // --- 6g. otherGroups/otherContacts render behind a "sem atividade" toggle,
+  // collapsed by default, and its checkboxes are still collected on save --
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const { putCalls } = await withPrefsFake(ctx, {
+      otherGroupsList: [{ jid: '120363333@g.us', label: 'Quieted Down' }],
+      otherContactsList: [{ jids: ['5511900000005@s.whatsapp.net'], label: 'Fornecedor Quieto' }],
+    });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#groups-box details.reveal summary', { timeout: 6000 });
+
+    check('the groups "sem atividade" toggle names itself, got: ' + await page.textContent('#groups-box details.reveal summary'),
+      (await page.textContent('#groups-box details.reveal summary')).includes('Mostrar grupos sem atividade'));
+    check('the revealed group row is not visible until the toggle is open (collapsed <details> content is not rendered)',
+      !(await page.isVisible('#groups-box details.reveal .grouprow')));
+    check('the contacts "sem atividade" toggle names itself, got: ' + await page.textContent('#contacts-box details.reveal summary'),
+      (await page.textContent('#contacts-box details.reveal summary')).includes('Mostrar contatos sem atividade'));
+
+    // Opening it and ticking the revealed row must still be collected at
+    // save time - collapsed <details> content is still in the DOM, so this
+    // must work with no extra wiring.
+    await page.click('#contacts-box details.reveal summary');
+    await page.check('#contacts-box details.reveal input[data-jids="5511900000005@s.whatsapp.net"]');
+    await page.click('[data-save="whatsapp"]');
+    await page.waitForFunction(() => (document.getElementById('saved-whatsapp') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
+    const call = putCalls.find(c => c.section === 'whatsapp');
+    check('a contact ticked from inside the revealed "sem atividade" section is saved, got ' + JSON.stringify(call.body.excludedUsers),
+      call.body.excludedUsers.some(u => u.jid === '5511900000005@s.whatsapp.net' && u.label === 'Fornecedor Quieto'));
+    await ctx.close();
+  }
+
+  // --- 6h. a real reported bug, reproduced end to end: the same person
+  // (two jids - a phone-number JID and an opaque @lid) showing up TWICE in
+  // the picker. The merged row must appear ONCE, show the SUM of both
+  // jids' rates, and saving it must write BOTH jids to excludedUsers. -----
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const contactsList = [
+      { jids: ['5511994452426@s.whatsapp.net', '28235249275050@lid'], label: 'Alê', avgPerDay: 5 / 14 },
+    ];
+    const { putCalls } = await withPrefsFake(ctx, { contactsList });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#contacts-box .grouprow', { timeout: 6000 });
+
+    const rows = await page.$$eval('#contacts-box .grouprow', els => els.map(el => el.textContent.trim()));
+    check('Alê appears exactly once, not duplicated across their two jids, got: ' + JSON.stringify(rows),
+      rows.filter(r => r.includes('Alê')).length === 1);
+    // avgPerDay is fed straight through from the fake (5/14 ≈ 0.4/dia) -
+    // this only proves the ONE merged row renders A rate at all (not two
+    // separate, smaller ones), the actual sum-at-the-source math is covered
+    // server-side in mcp-server's own preferences.test.js.
+    check('the merged row shows a rate, got: ' + rows[0], /0,4\/dia/.test(rows[0]));
+
+    await page.check('#contacts-box input[data-jids="5511994452426@s.whatsapp.net,28235249275050@lid"]');
+    await page.click('[data-save="whatsapp"]');
+    await page.waitForFunction(() => (document.getElementById('saved-whatsapp') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
+    const call = putCalls.find(c => c.section === 'whatsapp');
+    const savedJids = call.body.excludedUsers.map(u => u.jid);
+    check('ticking the merged row once saves BOTH of their jids, got: ' + JSON.stringify(savedJids),
+      savedJids.includes('5511994452426@s.whatsapp.net') && savedJids.includes('28235249275050@lid'));
+    check('both saved entries carry the shared label, got: ' + JSON.stringify(call.body.excludedUsers),
+      call.body.excludedUsers.every(u => u.label === 'Alê'));
     await ctx.close();
   }
 
@@ -680,7 +757,7 @@ async function withPrefsFake(ctx, opts = {}) {
       (document.getElementById('groups-box') || {}).textContent.includes('120363111@g.us'), null, { timeout: 6000 });
     const box1 = await page.textContent('#groups-box');
     check('an already-muted group is still listed (so it can be un-muted) when the bridge is unreachable',
-      box1.includes('120363111@g.us') && (await page.$('#groups-box input[data-jid="120363111@g.us"]:checked')) !== null);
+      box1.includes('120363111@g.us') && (await page.$('#groups-box input[data-jids="120363111@g.us"]:checked')) !== null);
     await ctx.close();
   }
 

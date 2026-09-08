@@ -9,6 +9,38 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-08, later): fixed a real reported bug — the same contact showed up twice in the muted-contacts picker — plus a "sem atividade" reveal for both pickers
+
+Direct feedback on a live screenshot: "my contact is shown as duplicated in
+the excluded Users list." Root cause lived on the `maga-infra` side (a
+person can have both a phone-number JID and an opaque `@lid` - see that
+repo's own CLAUDE.md entry) and is fixed there; this is the front-end half.
+
+- **`chatPickerHtml()` (shared by the groups and contacts pickers) now
+  takes a normalised `{jids, label, avgPerDay?}` row shape** - a group
+  still only ever has one jid (wrapped into a 1-element array at the
+  `groupsHtml()` call site), but a merged 1:1 contact can carry more than
+  one. `data-jid` → `data-jids` (comma-joined) on every checkbox;
+  `collectSection("whatsapp")` now expands one checked row into one
+  `{jid,label}` entry PER jid it represents, so ticking a merged contact
+  once mutes every identity they have.
+- **New "sem atividade" reveal**: both pickers now render a
+  `<details class="reveal"><summary>Mostrar grupos/contatos sem
+  atividade</summary>` holding everything the person could ALSO mute but
+  hasn't been active in the window - sourced from mcp-server's new
+  `otherGroups`/`otherContacts` (see that repo's entry for where those come
+  from). Collapsed `<details>` content stays in the DOM, so the existing
+  `[data-jids]` query already reaches a row ticked from inside it with no
+  extra wiring.
+- **8 new assertions in `test/preferencias.test.js`** (93 → 114 across this
+  and the prior entry's work): the reveal toggle renders and names itself
+  correctly for both boxes, a row ticked from inside the collapsed section
+  is still saved, and an end-to-end reproduction of the exact reported bug
+  - a two-jid "Alê" fixture rendering as ONE row with a summed rate, saving
+  both jids when ticked once. Full 13-file suite green.
+- **Already deployed** - this repo has no build step (see its own
+  Conventions), pushed straight to `main`.
+
 ## Status (2026-09-08): Preferências gains a "Conversas silenciadas" section — muting a specific 1:1 contact, not just a group
 
 Bia asked to mute a specific 1:1 conversation from the daily summary (and
