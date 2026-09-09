@@ -62,6 +62,26 @@ function currentEnvPrefs(){
   };
 }
 
+// Real bug, found live 2026-09-09: saving the Aplicativo section updated the
+// SERVER correctly, but nothing ever refreshed THIS cache - it's written
+// only once, by completeOAuth() at login - so a just-hidden page kept
+// showing in the menu until the next full login. shared-prefs.js's
+// savePreferenceEnvironmentSection() calls this right after a successful
+// save so the current tab's menu is correct on its very next render, no
+// logout/login needed. Silently a no-op if the cache doesn't exist yet or
+// doesn't know this envId - there is nothing sensible to update in that
+// case, and the next real login will populate it correctly anyway.
+function updateCachedEnvPrefs(envId, effective){
+  let cache = null;
+  try { cache = JSON.parse(localStorage.getItem(ENV_CACHE_KEY) || "null"); } catch(_){ return; }
+  if(!cache || !Array.isArray(cache.environments)) return;
+  const env = cache.environments.find(e => e.id === envId);
+  if(!env) return;
+  env.menuHidden = (effective && effective.menu && effective.menu.hidden) || [];
+  if(effective && effective.landingPage) env.landingPage = effective.landingPage;
+  try { localStorage.setItem(ENV_CACHE_KEY, JSON.stringify(cache)); } catch(_){ /* private mode - stays stale until next login, same as before this fix */ }
+}
+
 // OAuth against the Magá MCP server: the front end runs the auth-code +
 // PKCE flow, then GET /web-config hands back {apiUrl, passphrase} for the
 // signed-in person + chosen environment. No secret lives here (public

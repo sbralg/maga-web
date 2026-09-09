@@ -109,6 +109,13 @@ async function savePreferenceEnvironmentSection(envId, section, body){
       environments: cached.environments.map(e => e.id === envId ? { ...e, effective: data.effective } : e),
     });
   }
+  // The load-bearing part of this fix: PREFS_CACHE_KEY above is only ever
+  // read by THIS page on its own next load - it does nothing for the menu
+  // shared-menu.js renders on every page. ENV_CACHE_KEY is what the menu
+  // actually reads (see shared-api.js's currentEnvPrefs()), and nothing
+  // else refreshes it after login - so without this call, a hidden page
+  // kept showing until the next full login (real bug, reported live).
+  updateCachedEnvPrefs(envId, data.effective);
   return data;
 }
 

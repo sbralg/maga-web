@@ -9,6 +9,43 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-09, later): real bug, reported live within minutes of shipping — a saved "Aplicativo" preference needed a fresh login to actually take effect
+
+Direct report: "I selected Fornecedores to be omitted, but it still shows.
+Do I need to logout/login for it to take effect?" The honest answer at
+that moment was yes, and it should never have been.
+
+- **Root cause**: `visibleMenuItems()` reads `currentEnvPrefs()`, which
+  reads `ENV_CACHE_KEY` (`checklist_envs_cache`) — but that cache is
+  written in exactly ONE place, `completeOAuth()`, at login. Saving in
+  Preferências updated the server correctly and updated
+  `PREFS_CACHE_KEY` (the cache `preferencias.html` itself reads on its
+  own next load) — but nothing ever refreshed `ENV_CACHE_KEY`, so the
+  menu everywhere else in the app kept reading the pre-save list until
+  the next full OAuth login.
+- **Fix: new `updateCachedEnvPrefs(envId, effective)` in `shared-api.js`**,
+  called from `shared-prefs.js`'s `savePreferenceEnvironmentSection()`
+  right after a successful save — patches the matching environment's
+  `menuHidden`/`landingPage` directly inside `ENV_CACHE_KEY`, in place.
+  Silently a no-op if the cache doesn't exist yet or doesn't know the
+  envId (nothing sensible to update; a future real login fixes it
+  regardless).
+- **New regression test in `test/preferencias.test.js`** (128 → 129):
+  seeds `checklist_envs_cache` the way a real login would (no
+  `menuHidden` yet — the exact pre-save state the report started from),
+  checks Fornecedores, saves, then reads `checklist_envs_cache` back and
+  asserts the `dev` entry's `menuHidden` reflects it. **Confirmed against
+  the pre-fix code first** (`git stash` the two `shared-*.js` files,
+  re-run): fails with exactly `got: undefined`, the same shape as the
+  live report — restoring the fix makes it pass. Full 14-file suite
+  green.
+- **Net effect**: no logout/login needed anymore. Saving now updates the
+  menu on this tab's very next render (opening the drawer, or navigating
+  to another page) — the same tab, no reload of `preferencias.html`
+  itself required either, since the fix runs synchronously inside the
+  save handler.
+- **Already deployed** — pushed straight to `main`.
+
 ## Status (2026-09-09): `preferencias.html` gains an "Aplicativo" section — environment tier (phase 3 of 4)
 
 Front-end half of `maga-infra`'s phase 3 — see that repo's own CLAUDE.md

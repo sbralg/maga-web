@@ -1515,6 +1515,31 @@ async function withPrefsFake(ctx, opts = {}) {
     await ctx.close();
   }
 
+  // --- 27. Aplicativo: REGRESSION for a real reported bug - a saved
+  // menuHidden must update the SAME cache the menu itself reads from
+  // (checklist_envs_cache), with no logout/login needed to see it --------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withPrefsFake(ctx, { prefsOverrides: { environments: ONE_ENV } });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    // defaultEnv:'dev' seeds checklist_envs_cache the way a real login
+    // would (see seed()) - WITHOUT a menuHidden field yet, exactly the
+    // pre-save state the reported bug started from.
+    await seed(page, { pass: 'x', token: 'tok-1', envId: 'dev', defaultEnv: 'dev' });
+    await page.reload();
+    await page.waitForSelector('[data-env="dev"]', { timeout: 6000 });
+    await page.check('[data-env="dev"] [data-hide="fornecedores"]');
+    await page.click('[data-save="env:dev"]');
+    await page.waitForFunction(() => (document.getElementById('saved-env:dev') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
+
+    const cache = await page.evaluate(() => JSON.parse(localStorage.getItem('checklist_envs_cache')));
+    const devEntry = cache.environments.find(e => e.id === 'dev');
+    check('checklist_envs_cache (what shared-menu.js actually reads) is updated in place after saving, got: ' + JSON.stringify(devEntry && devEntry.menuHidden),
+      !!devEntry && JSON.stringify(devEntry.menuHidden) === JSON.stringify(['fornecedores']));
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
 
