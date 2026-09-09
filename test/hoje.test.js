@@ -225,8 +225,8 @@ const REPORTS = {
     menuLinks.some(m => m.tag === 'SPAN' && m.text === '☀️ Hoje'));
   check('Tarefas is reachable as a real link (not the old index.html name)',
     menuLinks.some(m => m.tag === 'A' && m.href === 'tarefas.html'));
-  check('the dashboard is reachable as Home',
-    menuLinks.some(m => m.tag === 'A' && m.href === 'index.html' && m.text.includes('Home')));
+  check('the dashboard is reachable as Home, via the landing-page bypass link',
+    menuLinks.some(m => m.tag === 'A' && m.href === 'index.html?dash=1' && m.text.includes('Home')));
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !document.querySelector('.menu-backdrop'), null, { timeout: 6000 });
 

@@ -424,12 +424,13 @@ async function withPrefsFake(ctx, opts = {}) {
     check('GET /preferences was called', calls.includes('/preferences'));
     check('the display name input carries the effective value',
       await page.$eval('#f-displayName', el => el.value) === 'Alexandre');
+    await page.click('[data-tab="limites"]');
     for (const key of ['sendMessagePerHour', 'draftMailPerHour', 'extendedSearchContactsPerDay', 'magaWritePerHour']) {
       const val = await page.$eval('#f-' + key, el => el.value).catch(() => null);
       check('rate-limit input #f-' + key + ' carries its value, got ' + val, val === String(makePrefs().effective.rateLimits[key]));
     }
-    await page.click('summary'); // open the Infraestrutura <details>
-    const infraText = await page.textContent('details.infra');
+    await page.click('[data-tab="infra"]');
+    const infraText = await page.textContent('[data-tab-panel="infra"]');
     check('Infraestrutura shows the read-only IMAP host:port', infraText.includes('imap.example.com:1143'));
     check('Infraestrutura shows the masked owner phone', infraText.includes('+55 11 9****-2426'));
     await ctx.close();
@@ -484,6 +485,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('.grouprow input[type=checkbox]', { timeout: 6000 });
     await page.check('input[data-jids="120363222@g.us"]');
     await page.click('[data-save="whatsapp"]');
@@ -510,6 +513,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('.grouprow', { timeout: 6000 });
     const rows = await page.$$eval('.grouprow', els => els.map(el => el.textContent.trim()));
     check('Família (the busier group, 3.5/dia) renders before Trabalho, got: ' + JSON.stringify(rows),
@@ -550,6 +555,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('#contacts-box .grouprow input[type=checkbox]', { timeout: 6000 });
     await page.check('#contacts-box input[data-jids="5511900000004@s.whatsapp.net"]');
     await page.click('[data-save="whatsapp"]');
@@ -582,6 +589,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('#contacts-box .grouprow', { timeout: 6000 });
     const rows = await page.$$eval('#contacts-box .grouprow', els => els.map(el => el.textContent.trim()));
     check('Colega Tagarela (busier, 4.1/dia) renders before Fornecedor, got: ' + JSON.stringify(rows),
@@ -668,6 +677,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('#groups-box details.reveal summary', { timeout: 6000 });
 
     check('the groups "sem atividade" toggle names itself, got: ' + await page.textContent('#groups-box details.reveal summary'),
@@ -704,6 +715,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('#contacts-box .grouprow', { timeout: 6000 });
 
     const rows = await page.$$eval('#contacts-box .grouprow', els => els.map(el => el.textContent.trim()));
@@ -741,6 +754,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="limites"]');
     await page.waitForSelector('#f-sendMessagePerHour', { timeout: 6000 });
 
     const holderExists = await page.$('[data-field="sendMessagePerHour"] .err') !== null;
@@ -840,6 +855,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('#wa-allow .entry', { timeout: 6000 });
     const waRows = await page.$$eval('#wa-allow .entry', els => els.map(e => e.dataset.value));
     check('one WhatsApp allow-list row per configured recipient, got ' + JSON.stringify(waRows),
@@ -858,6 +875,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('#wa-allow .entry', { timeout: 6000 });
     await page.click('#wa-allow .entry[data-value="5511900000000"] [data-remove]');
     check('the removed row is gone from the DOM immediately',
@@ -890,6 +909,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('#wa-allow', { timeout: 6000 });
     await page.waitForFunction(() => {
       const row = document.querySelector('.entry[data-kind="wa"][data-value="5511900000000"] .who');
@@ -923,6 +944,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('#wa-new', { timeout: 6000 });
 
     const waCountBefore = await page.$$eval('.entry[data-kind="wa"]', els => els.length);
@@ -934,6 +957,8 @@ async function withPrefsFake(ctx, opts = {}) {
     const waMsg = await page.textContent('#wa-resolved');
     check('adding a duplicate WhatsApp number says so, got: ' + waMsg, /já está na lista/i.test(waMsg));
 
+    await page.click('[data-tab="email"]');
+    await page.waitForSelector('#mail-new', { timeout: 6000 });
     const mailCountBefore = await page.$$eval('.entry[data-kind="mail"]', els => els.length);
     await page.fill('#mail-new', 'someone@example.com'); // already present in makePrefs()'s fixture
     await page.click('#mail-add');
@@ -958,6 +983,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('#wa-new', { timeout: 6000 });
 
     check('the field hint fits: "Nome ou número com DDD", got: ' + await page.getAttribute('#wa-new', 'placeholder'),
@@ -1001,6 +1028,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('#wa-new', { timeout: 6000 });
 
     await page.fill('#wa-new', '12345');
@@ -1026,6 +1055,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('#wa-new', { timeout: 6000 });
     await page.fill('#wa-new', '5511922223333');
     await page.click('#wa-check');
@@ -1061,6 +1092,8 @@ async function withPrefsFake(ctx, opts = {}) {
     const lookupsFor = num => otherCalls.filter(c => c.pathname === '/preferences/whatsapp/contact' && c.query === num).length;
     const lookupsBeforeReload = lookupsFor('5511922223333');
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('#wa-allow .entry', { timeout: 6000 });
     const rowText = await page.textContent('.entry[data-kind="wa"][data-value="5511922223333"] .who');
     check('the resolved name is shown on the very first render after reload, got: ' + rowText,
@@ -1095,6 +1128,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('#wa-new', { timeout: 6000 });
 
     // Regression test for direct feedback: inputmode="numeric" opens a
@@ -1164,6 +1199,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('#wa-new', { timeout: 6000 });
     await page.fill('#wa-new', '5511955556666');
     await page.click('#wa-check');
@@ -1195,6 +1232,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="whatsapp"]');
     await page.waitForSelector('[data-save="whatsappAllow"]', { timeout: 6000 });
     await page.click('[data-save="whatsappAllow"]');
     await page.waitForSelector('.modal-backdrop', { timeout: 6000 });
@@ -1377,6 +1416,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="backup"]');
     await page.waitForSelector('#export', { timeout: 6000 });
     await page.click('#export');
     await page.waitForFunction(() => {
@@ -1398,6 +1439,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="backup"]');
     await page.waitForSelector('#import', { timeout: 6000 });
     await page.setInputFiles('#import-file', {
       name: 'maga-preferencias-2026-09-01.json',
@@ -1437,6 +1480,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="aplicativo"]');
     await page.waitForSelector('[data-env="dev"]', { timeout: 6000 });
     check('a single environment renders no env-heading label (nothing to disambiguate)',
       await page.$('.env-heading') === null);
@@ -1458,6 +1503,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="aplicativo"]');
     await page.waitForSelector('[data-env="prod"]', { timeout: 6000 });
     const headings = await page.$$eval('.env-heading', els => els.map(el => el.textContent));
     check('both environments get their own disambiguating heading, got: ' + headings.join(','),
@@ -1481,6 +1528,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="aplicativo"]');
     await page.waitForSelector('[data-env="dev"]', { timeout: 6000 });
     await page.check('[data-env="dev"] [data-hide="fornecedores"]');
     await page.selectOption('#f-landing-dev', 'eventos');
@@ -1504,6 +1553,8 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.goto(ORIGIN + '/preferencias.html');
     await seed(page, { pass: 'x', token: 'tok-1' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="aplicativo"]');
     await page.waitForSelector('[data-env="dev"]', { timeout: 6000 });
     await page.check('[data-env="dev"] [data-hide="financeiro"]');
     await page.click('[data-save="env:dev"]');
@@ -1528,6 +1579,8 @@ async function withPrefsFake(ctx, opts = {}) {
     // pre-save state the reported bug started from.
     await seed(page, { pass: 'x', token: 'tok-1', envId: 'dev', defaultEnv: 'dev' });
     await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="aplicativo"]');
     await page.waitForSelector('[data-env="dev"]', { timeout: 6000 });
     await page.check('[data-env="dev"] [data-hide="fornecedores"]');
     await page.click('[data-save="env:dev"]');

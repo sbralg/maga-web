@@ -156,7 +156,31 @@ function render(){
   wireMenuButton();
 }
 
-if(!getPass()){ showLogin(); } else { render(); }
+// The configured "Página inicial" (Preferências → Aplicativo, phase 3 of
+// the preferences plan) - this is the one place that actually consumes it.
+// index.html is where every "go home" link in the app points (every page's
+// brand-mark, every error-state "Voltar ao início"), so honouring the
+// landing page here means those links now genuinely go "home" to wherever
+// the account configured, not just back to the tile dashboard.
+//
+// Escape hatch: without ?dash=1, the drawer's own "Home" entry would point
+// right back at whatever landing page it's trying to let someone bypass -
+// unreachable the moment a landing page other than "home" is set. Only that
+// one link carries it (see shared-menu.js's MENU_ITEMS "home" href); every
+// other index.html link deliberately does not, since those are meant to
+// respect the configured landing page like everywhere else.
+function redirectToLandingPage(){
+  if(new URLSearchParams(location.search).get("dash") === "1") return false;
+  const target = currentEnvPrefs().landingPage;
+  if(!target || target === "home") return false; // nothing configured, or explicitly the dashboard itself
+  const item = MENU_ITEMS.find(i => i.page === target);
+  if(!item) return false; // an unknown/stale page key - fall back to the dashboard rather than a dead link
+  location.replace(item.href);
+  return true;
+}
+
+if(!getPass()){ showLogin(); }
+else if(!redirectToLandingPage()){ render(); }
 </script>
 </body>
 </html>

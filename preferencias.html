@@ -57,9 +57,6 @@
   .locked:last-child{border-bottom:none}
   .locked .k{color:var(--muted);flex:none}
   .locked .v{text-align:right;overflow-wrap:anywhere;font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
-  details.infra{margin-top:22px}
-  details.infra summary{cursor:pointer;font-size:14px;font-weight:650;color:var(--muted);padding:6px 0}
-  details.infra .note{font-size:12.5px;color:var(--muted);line-height:1.45;margin:2px 0 10px}
 
   details.reveal{margin-top:8px}
   details.reveal summary{cursor:pointer;font-size:12.5px;color:var(--accent);padding:4px 0}
@@ -85,6 +82,22 @@
     background:rgba(127,127,127,.1);color:var(--muted);
   }
   .banner.warn{background:rgba(var(--gold-rgb),.14);color:var(--text)}
+
+  /* One category at a time instead of one long scroll - a horizontally
+     scrollable pill row, same visual language as insumos.html's kind
+     filter chips. `hidden` (not display:none written inline) is what
+     each panel toggles, so shared-base.css's own [hidden]{display:none}
+     UA-outranking rule already does the work - see this repo's own
+     "adding display to a shared class needs a [hidden] guard" gotcha. */
+  .tabbar{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 10px;margin:0 -2px 4px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .tabbar::-webkit-scrollbar{display:none}
+  .tab-btn{
+    flex:none;font:inherit;font-size:13px;font-weight:600;padding:8px 14px;border-radius:999px;
+    border:1px solid var(--border-strong);background:var(--card);color:var(--muted);
+    white-space:nowrap;cursor:pointer;
+  }
+  .tab-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
+  .tab-panel h3:first-child{margin-top:0}
 
   .env-heading{font-size:13.5px;font-weight:650;color:var(--text);margin:18px 0 2px}
   .env-heading:first-child{margin-top:0}
@@ -220,9 +233,51 @@ async function loadContactsLater(){
   if(box) box.innerHTML = contactsHtml();
 }
 
+// The page's categories, in tab order. "aplicativo" is added conditionally
+// (nothing to show for a person with no maga.webEnvironments) - built as a
+// function, not a constant, since that depends on `prefs` having loaded.
+function tabDefs(){
+  const defs = [
+    { id: "conta", label: "Conta" },
+    { id: "whatsapp", label: "WhatsApp" },
+    { id: "email", label: "E-mail" },
+    { id: "limites", label: "Limites" },
+  ];
+  if(prefs.environments && prefs.environments.length) defs.push({ id: "aplicativo", label: "Aplicativo" });
+  defs.push({ id: "backup", label: "Backup" });
+  defs.push({ id: "infra", label: "Infraestrutura" });
+  return defs;
+}
+
+function tabBarHtml(defs){
+  return '<div class="tabbar" role="tablist">' +
+    defs.map((d, i) =>
+      '<button type="button" class="tab-btn' + (i === 0 ? " active" : "") + '" data-tab="' + d.id + '" role="tab" aria-selected="' + (i === 0) + '">' +
+      esc(d.label) + '</button>'
+    ).join("") +
+    '</div>';
+}
+
+function tabPanel(id, active, inner){
+  return '<div class="tab-panel" data-tab-panel="' + id + '"' + (active ? "" : " hidden") + '>' + inner + '</div>';
+}
+
+function wireTabs(){
+  const btns = [...document.querySelectorAll(".tab-btn")];
+  btns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      btns.forEach(b => { b.classList.remove("active"); b.setAttribute("aria-selected", "false"); });
+      btn.classList.add("active");
+      btn.setAttribute("aria-selected", "true");
+      document.querySelectorAll(".tab-panel").forEach(p => { p.hidden = (p.dataset.tabPanel !== btn.dataset.tab); });
+    });
+  });
+}
+
 function render(){
   const eff = prefs.effective;
   const writable = prefs.writable !== false;
+  const defs = tabDefs();
 
   let html = header();
 
@@ -233,60 +288,16 @@ function render(){
     html += '<div class="banner warn">' + esc(prefs.writableReason || "As preferências estão em modo somente leitura.") + '</div>';
   }
 
+  html += tabBarHtml(defs);
+
   // --- Conta ---
-  html += '<h3>Conta</h3>' +
+  html += tabPanel("conta", true,
+    '<h3>Conta</h3>' +
     field("displayName", "Como o assistente chama você", eff.displayName || "",
       "Aparece no resumo diário e nos avisos.") +
-    saveRow("identity", "Salvar", writable && !prefsStale);
+    saveRow("identity", "Salvar", writable && !prefsStale) +
 
-  // --- WhatsApp ---
-  html += '<h3>WhatsApp</h3>' +
-    field("selfNumber", "Seu número (conversa com você mesmo)", eff.whatsapp.selfNumber || "",
-      "É por aqui que o resumo da manhã encontra os recados que você manda para si mesmo. Deixe em branco para não usar.") +
-    '<div class="field"><label>Grupos silenciados no resumo diário</label>' +
-    '<p class="hint">Grupos marcados aqui não entram no resumo da manhã. Uma busca comum continua enxergando todos.</p>' +
-    '<div id="groups-box">' + groupsHtml() + '</div></div>' +
-    '<div class="field"><label>Conversas silenciadas no resumo diário</label>' +
-    '<p class="hint">O mesmo, mas para uma conversa individual em vez de um grupo — inclui a transcrição de áudio, quando ativa. Uma busca comum continua enxergando tudo.</p>' +
-    '<div id="contacts-box">' + contactsHtml() + '</div></div>' +
-    saveRow("whatsapp", "Salvar", writable && !prefsStale);
-
-  // --- Limites ---
-  html += '<h3>Limites por hora</h3>' +
-    '<p class="hint" style="margin:0 0 10px">Quantas vezes o assistente pode fazer cada coisa. Zero desliga a ação para esta conta.</p>' +
-    limitRow("sendMessagePerHour", "Enviar WhatsApp", "mensagens enviadas diretamente por você") +
-    limitRow("draftMailPerHour", "Rascunhos de e-mail", "salvos na sua pasta de rascunhos") +
-    limitRow("extendedSearchContactsPerDay", "Buscas longas (por dia)", "contatos novos com histórico além de 30 dias") +
-    (eff.rateLimits.magaWritePerHour !== undefined
-      ? limitRow("magaWritePerHour", "Alterações no app", "tarefas, compras, estoque e eventos") : "") +
-    saveRow("rateLimits", "Salvar", writable && !prefsStale);
-
-  // --- Contatos permitidos (security tier) ---
-  html += '<h3>Quem o assistente pode contatar</h3>' +
-    '<p class="hint" style="margin:0 0 10px">Só estes contatos podem receber uma mensagem enviada pelo assistente. ' +
-    'Alterar esta lista pede a sua senha de novo — é a proteção que impede uma mensagem recebida de virar um envio.</p>' +
-    '<div class="field" data-field="sendAllowlist"><label>WhatsApp</label>' +
-    '<div id="wa-allow">' + allowRowsHtml(withRecoveredLabels(eff.whatsapp.sendAllowlist || [], "wa"), "wa") + '</div>' +
-    '<div class="addrow">' +
-      // Plain text, not inputmode="numeric" - Verificar now doubles as a
-      // name search (see searchByName() below), and a numeric-only virtual
-      // keyboard makes typing a name impossible on a phone.
-      '<input type="text" id="wa-new" placeholder="Nome ou número com DDD">' +
-      '<button class="link" id="wa-check">Verificar</button>' +
-      '<button class="link" id="wa-add">Adicionar</button>' +
-      '<p class="resolved" id="wa-resolved"></p>' +
-    '</div><p class="err" hidden></p></div>' +
-    saveRow("whatsappAllow", "Salvar contatos do WhatsApp", writable && !prefsStale) +
-    '<div class="field" data-field="mailAllowlist" style="margin-top:18px"><label>E-mail</label>' +
-    '<div id="mail-allow">' + allowRowsHtml(eff.mail.sendAllowlist || [], "mail") + '</div>' +
-    '<div class="addrow">' +
-      '<input type="text" inputmode="email" id="mail-new" placeholder="endereco@exemplo.com">' +
-      '<button class="link" id="mail-add">Adicionar</button>' +
-    '</div><p class="err" hidden></p></div>' +
-    saveRow("mailAllow", "Salvar contatos de e-mail", writable && !prefsStale);
-
-  // --- Conta: senha e sessões ---
-  html += '<h3>Senha</h3>' +
+    '<h3>Senha</h3>' +
     '<div class="field" data-field="currentPassword">' +
       '<label for="pw-current">Senha atual</label>' +
       '<input type="password" id="pw-current" autocomplete="current-password">' +
@@ -301,17 +312,77 @@ function render(){
       '<input type="password" id="pw-confirm" autocomplete="new-password">' +
       '<p class="err" hidden></p></div>' +
     '<div class="actions"><button class="primary" id="pw-save">Trocar senha</button>' +
-    '<span class="saved" id="saved-password"></span></div>';
+    '<span class="saved" id="saved-password"></span></div>' +
 
-  html += '<h3>Sessões ativas</h3><div id="sessions-box"><p class="hint">Carregando…</p></div>' +
+    '<h3>Sessões ativas</h3><div id="sessions-box"><p class="hint">Carregando…</p></div>' +
     '<div class="actions"><button class="link danger" id="revoke-others">Sair dos outros dispositivos</button>' +
-    '<span class="saved" id="saved-sessions"></span></div>';
+    '<span class="saved" id="saved-sessions"></span></div>'
+  );
+
+  // --- WhatsApp ---
+  html += tabPanel("whatsapp", false,
+    '<h3>WhatsApp</h3>' +
+    field("selfNumber", "Seu número (conversa com você mesmo)", eff.whatsapp.selfNumber || "",
+      "É por aqui que o resumo da manhã encontra os recados que você manda para si mesmo. Deixe em branco para não usar.") +
+    '<div class="field"><label>Grupos silenciados no resumo diário</label>' +
+    '<p class="hint">Grupos marcados aqui não entram no resumo da manhã. Uma busca comum continua enxergando todos.</p>' +
+    '<div id="groups-box">' + groupsHtml() + '</div></div>' +
+    '<div class="field"><label>Conversas silenciadas no resumo diário</label>' +
+    '<p class="hint">O mesmo, mas para uma conversa individual em vez de um grupo — inclui a transcrição de áudio, quando ativa. Uma busca comum continua enxergando tudo.</p>' +
+    '<div id="contacts-box">' + contactsHtml() + '</div></div>' +
+    saveRow("whatsapp", "Salvar", writable && !prefsStale) +
+
+    '<h3>Quem pode receber uma mensagem</h3>' +
+    '<p class="hint" style="margin:0 0 10px">Só estes contatos podem receber uma mensagem enviada pelo assistente. ' +
+    'Alterar esta lista pede a sua senha de novo — é a proteção que impede uma mensagem recebida de virar um envio.</p>' +
+    '<div class="field" data-field="sendAllowlist">' +
+    '<div id="wa-allow">' + allowRowsHtml(withRecoveredLabels(eff.whatsapp.sendAllowlist || [], "wa"), "wa") + '</div>' +
+    '<div class="addrow">' +
+      // Plain text, not inputmode="numeric" - Verificar now doubles as a
+      // name search (see searchByName() below), and a numeric-only virtual
+      // keyboard makes typing a name impossible on a phone.
+      '<input type="text" id="wa-new" placeholder="Nome ou número com DDD">' +
+      '<button class="link" id="wa-check">Verificar</button>' +
+      '<button class="link" id="wa-add">Adicionar</button>' +
+      '<p class="resolved" id="wa-resolved"></p>' +
+    '</div><p class="err" hidden></p></div>' +
+    saveRow("whatsappAllow", "Salvar contatos do WhatsApp", writable && !prefsStale)
+  );
+
+  // --- E-mail ---
+  html += tabPanel("email", false,
+    '<h3>Quem pode receber um rascunho</h3>' +
+    '<p class="hint" style="margin:0 0 10px">Só estes endereços podem receber um rascunho de e-mail preparado pelo assistente. ' +
+    'Alterar esta lista pede a sua senha de novo.</p>' +
+    '<div class="field" data-field="mailAllowlist">' +
+    '<div id="mail-allow">' + allowRowsHtml(eff.mail.sendAllowlist || [], "mail") + '</div>' +
+    '<div class="addrow">' +
+      '<input type="text" inputmode="email" id="mail-new" placeholder="endereco@exemplo.com">' +
+      '<button class="link" id="mail-add">Adicionar</button>' +
+    '</div><p class="err" hidden></p></div>' +
+    saveRow("mailAllow", "Salvar contatos de e-mail", writable && !prefsStale)
+  );
+
+  // --- Limites ---
+  html += tabPanel("limites", false,
+    '<h3>Limites por hora</h3>' +
+    '<p class="hint" style="margin:0 0 10px">Quantas vezes o assistente pode fazer cada coisa. Zero desliga a ação para esta conta.</p>' +
+    limitRow("sendMessagePerHour", "Enviar WhatsApp", "mensagens enviadas diretamente por você") +
+    limitRow("draftMailPerHour", "Rascunhos de e-mail", "salvos na sua pasta de rascunhos") +
+    limitRow("extendedSearchContactsPerDay", "Buscas longas (por dia)", "contatos novos com histórico além de 30 dias") +
+    (eff.rateLimits.magaWritePerHour !== undefined
+      ? limitRow("magaWritePerHour", "Alterações no app", "tarefas, compras, estoque e eventos") : "") +
+    saveRow("rateLimits", "Salvar", writable && !prefsStale)
+  );
 
   // --- Aplicativo (environment tier - phase 3) ---
-  html += appSectionHtml(writable);
+  if(prefs.environments && prefs.environments.length){
+    html += tabPanel("aplicativo", false, appSectionHtml(writable));
+  }
 
   // --- Backup ---
-  html += '<h3>Backup</h3>' +
+  html += tabPanel("backup", false,
+    '<h3>Backup</h3>' +
     '<p class="hint" style="margin:0 0 10px">Estes ajustes ficam só no servidor de casa, que não tem backup automático. ' +
     'Guarde uma cópia depois de mexer em algo.</p>' +
     '<div class="actions">' +
@@ -319,11 +390,13 @@ function render(){
       '<button class="link" id="import">Restaurar de um arquivo</button>' +
       '<input type="file" id="import-file" accept="application/json" hidden>' +
       '<span class="saved" id="saved-backup"></span>' +
-    '</div>';
+    '</div>'
+  );
 
   // --- Infraestrutura ---
-  html += '<details class="infra"><summary>Infraestrutura</summary>' +
-    '<p class="note">Estes valores não são editáveis por aqui — eles definem para onde o assistente se conecta e quem ele avisa quando ' +
+  html += tabPanel("infra", false,
+    '<h3>Infraestrutura</h3>' +
+    '<p class="hint" style="margin:0 0 10px">Estes valores não são editáveis por aqui — eles definem para onde o assistente se conecta e quem ele avisa quando ' +
     'a tarefa da manhã falha. Um erro de digitação deixaria a conta fora do ar sem aviso, então eles são editados direto no ' +
     '<code>people.json</code>, no servidor.</p>' +
     lockedRow("Conta", eff.slug) +
@@ -336,11 +409,12 @@ function render(){
     lockedRow("Contatos permitidos (WhatsApp)", String((eff.whatsapp.sendAllowlist || []).length)) +
     lockedRow("Contatos permitidos (e-mail)", String((eff.mail.sendAllowlist || []).length)) +
     (eff.alerts ? lockedRow("Avisos de falha vão para", eff.alerts.ownerPhone) : "") +
-    (eff.maga ? lockedRow("Ambiente padrão", eff.maga.defaultWebEnvironment || "—") : "") +
-    '</details>';
+    (eff.maga ? lockedRow("Ambiente padrão", eff.maga.defaultWebEnvironment || "—") : "")
+  );
 
   root.innerHTML = html;
   wireMenuButton();
+  wireTabs();
   wireGroupRows();
   document.querySelectorAll("[data-save]").forEach(btn => {
     btn.addEventListener("click", () => saveSection(btn.dataset.save, btn));

@@ -46,19 +46,21 @@ function serve() {
 // `menuHidden` (optional, {dev:[...], prod:[...]}) seeds each cached
 // environment's own Aplicativo preference (phase 3) - the same shape
 // /web-config now returns per environment, see shared-api.js's
-// currentEnvPrefs().
-async function seedEnv(page, { envId, defaultEnv, menuHidden } = {}) {
-  await page.evaluate(({ envId, defaultEnv, menuHidden }) => {
+// currentEnvPrefs(). `landingPage` (optional, {dev:"...", prod:"..."}) does
+// the same for the OTHER Aplicativo field index.html's own
+// redirectToLandingPage() reads.
+async function seedEnv(page, { envId, defaultEnv, menuHidden, landingPage } = {}) {
+  await page.evaluate(({ envId, defaultEnv, menuHidden, landingPage }) => {
     localStorage.setItem('checklist_pass', 'x');
     if (envId) localStorage.setItem('checklist_env', envId);
     localStorage.setItem('checklist_envs_cache', JSON.stringify({
       defaultEnv,
       environments: [
-        { id: 'dev', label: 'Dev', menuHidden: (menuHidden && menuHidden.dev) || [] },
-        { id: 'prod', label: 'Prod', menuHidden: (menuHidden && menuHidden.prod) || [] },
+        { id: 'dev', label: 'Dev', menuHidden: (menuHidden && menuHidden.dev) || [], landingPage: (landingPage && landingPage.dev) || null },
+        { id: 'prod', label: 'Prod', menuHidden: (menuHidden && menuHidden.prod) || [], landingPage: (landingPage && landingPage.prod) || null },
       ],
     }));
-  }, { envId, defaultEnv, menuHidden });
+  }, { envId, defaultEnv, menuHidden, landingPage });
 }
 
 (async () => {
@@ -256,6 +258,59 @@ async function seedEnv(page, { envId, defaultEnv, menuHidden } = {}) {
     check('Preferências stays in the drawer no matter what, got: ' + JSON.stringify(labels), labels.some(l => l.includes('Preferências')));
     check('a genuinely hideable page is still actually hidden, got: ' + JSON.stringify(labels),
       !labels.some(l => l.includes('Fornecedores')));
+    await ctx.close();
+  }
+
+  // --- a configured landing page (Aplicativo, phase 3) redirects
+  // index.html away from the dashboard to that page instead --------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withApiFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/tarefas.html');
+    await seedEnv(page, { envId: 'dev', defaultEnv: 'dev', landingPage: { dev: 'receitas' } });
+    await page.goto(ORIGIN + '/index.html');
+    await page.waitForFunction(() => location.pathname.endsWith('/receitas.html'), null, { timeout: 6000 });
+    check('index.html redirected straight to the configured landing page, got: ' + page.url(),
+      page.url().endsWith('/receitas.html'));
+    await ctx.close();
+  }
+
+  // --- no landing page configured (or explicitly "home"): the dashboard
+  // renders as before - regression guard for the common, unconfigured case
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withApiFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/tarefas.html');
+    await seedEnv(page, { envId: 'dev', defaultEnv: 'dev', landingPage: { dev: 'home' } });
+    await page.goto(ORIGIN + '/index.html');
+    await page.waitForSelector('.tile', { timeout: 6000 });
+    check('landingPage:"home" stays on the dashboard, no redirect, got: ' + page.url(),
+      page.url().endsWith('/index.html'));
+    await ctx.close();
+  }
+
+  // --- the drawer's own Home entry carries ?dash=1, the one escape hatch
+  // back to the tile dashboard when a landing page other than "home" is
+  // set - without it, Home would just point right back at itself ---------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withApiFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/tarefas.html');
+    await seedEnv(page, { envId: 'dev', defaultEnv: 'dev', landingPage: { dev: 'receitas' } });
+    await page.reload();
+    await page.waitForSelector('#menu-btn', { timeout: 6000 });
+    await page.click('#menu-btn');
+    await page.waitForSelector('.menu-panel', { timeout: 4000 });
+    const homeHref = await page.$eval('.menu-item[href*="index.html"]', el => el.getAttribute('href'));
+    check('the drawer\'s Home link carries the landing-page bypass, got: ' + homeHref,
+      homeHref === 'index.html?dash=1');
+    await page.click('.menu-item[href*="index.html"]');
+    await page.waitForSelector('.tile', { timeout: 6000 });
+    check('following it lands on the actual dashboard, not the configured landing page, got: ' + page.url(),
+      page.url().includes('index.html'));
     await ctx.close();
   }
 

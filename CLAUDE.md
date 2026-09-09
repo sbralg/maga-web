@@ -9,6 +9,89 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-09, even later): `preferencias.html` reorganized into tabs, and `index.html` finally consumes the configured landing page — closing the two cuts phase 3 left open
+
+Direct feedback: the Preferências page had grown too crowded and confusing
+as one long scroll (six independent sections, from display name to
+Infraestrutura, all stacked on top of each other) — the user asked for
+tabs/submenus, and separately asked for the still-unconsumed "Página
+inicial" setting (phase 3's own entry above says so explicitly) to be
+wired up. Both closed the same session.
+
+- **Seven category tabs** (`Conta`, `WhatsApp`, `E-mail`, `Limites`,
+  `Aplicativo`, `Backup`, `Infraestrutura`) replace the single long scroll —
+  a horizontally-scrollable pill row, same visual language `insumos.html`'s
+  own kind-filter chips already use, plain `hidden` attribute toggling (no
+  framework, no routing, matching this repo's conventions). `Aplicativo`
+  renders conditionally, same as before — nothing to show for a person with
+  no `maga.webEnvironments`. **`E-mail` is a genuinely new tab**, not just a
+  relocation: the e-mail allow-list used to sit at the bottom of the
+  WhatsApp section (an unrelated field parked there for lack of anywhere
+  better), and now has its own tab under its own heading. Every existing
+  element id is unchanged — `#f-displayName`, `#groups-box`, `#wa-*`,
+  `#mail-*`, `#pw-*`, `#sessions-box`, `[data-env]`, `[data-save]`, etc. —
+  this was a layout change, not a rewire.
+- **`Infraestrutura` stopped being a collapsed `<details>` and became a
+  plain tab** — collapsing it inside an already-collapsed (now hidden by
+  default) tab panel was a leftover from when it was the one thing worth
+  hiding on an otherwise-flat page; once every section is behind its own
+  tab, a nested collapse under it added a click for no reason.
+- **`test/preferencias.test.js` updated throughout** (still 129
+  assertions, unchanged count — a pure navigation change, not new
+  behavior) — every test interacting with a field outside the default
+  `Conta` tab now clicks `[data-tab="<id>"]` first. The real gotcha this
+  surfaced: Playwright's `waitForSelector` defaults to `state:"visible"`,
+  so far more call sites needed a tab-switch than just the obviously
+  interactive ones (`click`/`check`/`fill`/`selectOption`) — a plain
+  content read (`$eval`, `$$eval`, `textContent`, `getAttribute`) does
+  NOT require visibility and needed no change. One test (Adicionar's
+  duplicate-refusal check) touches both the WhatsApp and E-mail tabs in
+  the same block and switches tabs mid-test accordingly.
+- **`index.html` now actually reads `currentEnvPrefs().landingPage`**
+  (Preferências → Aplicativo → "Página inicial") instead of always
+  showing the dashboard — the one half of phase 3 that entry explicitly
+  left unconsumed ("nothing yet reads it to actually change what page an
+  account lands on"). `index.html` is where every "go home" link in the
+  app points (every page's brand-mark, every error-state "Voltar ao
+  início"), so honouring the setting here means those links now genuinely
+  go home to wherever the account configured — not a special case bolted
+  onto one button.
+  - **The one thing this needed that wasn't obvious up front**: without an
+    escape hatch, the hamburger drawer's own "Home" entry would point
+    right back at whatever landing page it exists to let someone bypass,
+    making the tile dashboard itself unreachable the moment a landing page
+    other than `"home"` is configured. Fixed with a `?dash=1` query
+    param carried ONLY by that one link (`shared-menu.js`'s `MENU_ITEMS`
+    "home" entry, `href: "index.html?dash=1"`) — `index.html`'s
+    `redirectToLandingPage()` checks for it first and skips the redirect
+    when present. Every other link to `index.html` deliberately does NOT
+    carry it.
+  - `landingPage` values of `null`/`"home"`, or a stale/unknown page key,
+    all fall through to the ordinary dashboard render — no dead links, no
+    self-redirect loop (the redirect only ever leaves `index.html` for a
+    different page; nothing redirects back to it).
+  - **New regression tests in `test/env-scope.test.js`** (`seedEnv()`
+    gained an optional `landingPage` param): a configured landing page
+    redirects `index.html` straight to that page; `landingPage:"home"`
+    stays on the dashboard (regression guard for the common, unconfigured
+    case); the drawer's Home link carries `?dash=1` and following it lands
+    on the real dashboard even with a landing page configured. **Confirmed
+    against the pre-fix `index.html`/`shared-menu.js` first** (`git
+    stash` just those two files, re-run): the redirect test times out
+    waiting for a navigation that never happens — restoring the fix makes
+    it pass. `test/hoje.test.js`'s drawer assertion updated to expect the
+    new `index.html?dash=1` href on the Home entry.
+  - **Deliberately still not done, per the user's own instruction**:
+    pricing-default prefills (safety margin, labor rate, the three margin
+    tiers) — same cut phase 3's own entry already called out, left for a
+    separate pass since it means touching `receitas.html`/`produtos.html`'s
+    own creation flows.
+- Full 14-file suite green (the same handful of pre-existing, unrelated
+  console 404s a few files already logged before this session — not
+  caused here, `failures: (none)` on every file either way).
+- **Already deployed** — this repo has no build step, pushed straight to
+  `main`.
+
 ## Status (2026-09-09, later): real bug, reported live within minutes of shipping — a saved "Aplicativo" preference needed a fresh login to actually take effect
 
 Direct report: "I selected Fornecedores to be omitted, but it still shows.

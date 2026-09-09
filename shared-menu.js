@@ -21,7 +21,14 @@ const MENU_GROUPS = {
 };
 
 const MENU_ITEMS = [
-  { page: "home", href: "index.html", emoji: "🏠", label: "Home" },
+  // ?dash=1 is the one link in the whole app that bypasses the configured
+  // landing page (index.html's own redirectToLandingPage()) - without it,
+  // this entry would just point right back at whatever it exists to let
+  // someone escape from, the moment a landing page other than "home" is
+  // set. Every OTHER index.html link (every page's brand-mark, every
+  // error-state "Voltar ao início") deliberately does NOT carry it, so
+  // those keep honouring the configured landing page like a real homepage.
+  { page: "home", href: "index.html?dash=1", emoji: "🏠", label: "Home" },
   { page: "hoje", href: "hoje.html", emoji: "☀️", label: "Hoje", group: "dia" },
   { page: "tarefas", href: "tarefas.html", emoji: "✓", label: "Tarefas", group: "dia" },
   { page: "compras", href: "compras.html", emoji: "🛒", label: "Compras", group: "producao" },
