@@ -20,12 +20,19 @@ const VAPID_PUBLIC_KEYS = {
   prod: "BCh2n1jvX3vwZqt9JRBcMXAJhU7pC6Q_05_ZkNDlx7I71SJe4B9igoRp4CvBa0lbnbRl8KUyUNseLlfAXescTAU",
 };
 
+// The server-provided key (phase 3's environment tier — see /web-config's
+// per-environment vapidPublicKey, cached by shared-api.js's
+// currentEnvPrefs()) is tried first: once every people.json webEnvironments
+// entry sets one, this hardcoded pairing stops being load-bearing at all.
 // ENV_ID_KEY (shared-api.js) is the resolved OAuth environment id
-// ("dev"/"prod") and is the normal source of truth. The manual-passphrase
-// "Opções avançadas" login path never sets it, so as a fallback this
-// matches the resolved API host against the two known project refs —
-// same two projects either way, just a different way of naming which one.
+// ("dev"/"prod") and is the normal source of truth for the fallback map
+// below. The manual-passphrase "Opções avançadas" login path never sets
+// it, so as a LAST resort this matches the resolved API host against the
+// two known project refs — same two projects either way, just a different
+// way of naming which one.
 function currentVapidPublicKey(){
+  const fromServer = currentEnvPrefs().vapidPublicKey;
+  if(fromServer) return fromServer;
   const envId = localStorage.getItem(ENV_ID_KEY);
   if(envId && VAPID_PUBLIC_KEYS[envId]) return VAPID_PUBLIC_KEYS[envId];
   let apiHost = "";

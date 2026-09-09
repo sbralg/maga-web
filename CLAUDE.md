@@ -9,6 +9,67 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-09): `preferencias.html` gains an "Aplicativo" section — environment tier (phase 3 of 4)
+
+Front-end half of `maga-infra`'s phase 3 — see that repo's own CLAUDE.md
+entry for the backend side (`mergeEnvironment`, the new `PUT
+/preferences/environment/:envId/:section` route, `/web-config`'s richer
+per-environment shape).
+
+- **New "Aplicativo" section**, one block per `maga.webEnvironment` the
+  signed-in account has (Alexandre: dev + prod; Bia: prod only) — a
+  disambiguating heading only when there's more than one. Each block: a
+  checklist of every page that CAN be hidden from that environment's own
+  menu (every `MENU_ITEMS` entry except `home`/`preferencias`, which can
+  never be hidden — see below), and a landing-page `<select>` offering
+  every page. One "Salvar" per environment, sending TWO scoped PUTs (`menu`
+  then `app` — they're separate `ENVIRONMENT_FIELDS` sections
+  server-side), never touching a sibling environment's own saved state.
+- **`shared-menu.js`'s `visibleMenuItems()` now also drops whatever the
+  CURRENT environment's own `menu.hidden` names**, on top of the existing
+  "dia" group rule (which is a separate, additional filter — this one
+  fires even on the account's own default environment). `home` and
+  `preferencias` are hard-excluded client-side too
+  (`MENU_ITEMS_NEVER_HIDDEN`), not just left un-offered in the picker's
+  checklist — a stale or tampered cache must never be able to strand an
+  account with no way back to fix its own menu.
+- **`shared-api.js`'s env cache (`ENV_CACHE_KEY`) now carries
+  `menuHidden`/`landingPage`/`vapidPublicKey` per environment**, populated
+  straight from `/web-config`'s response at login — no second fetch
+  anywhere for something this basic. `apiUrl`/`passphrase` stay
+  deliberately UNCACHED across the whole list (only the one chosen
+  environment's are ever stored), since those are real per-environment
+  secrets and these three new fields are not.
+- **`shared-push.js`'s `currentVapidPublicKey()` now prefers the
+  server-provided key** (from the same cache) **over the hardcoded
+  `VAPID_PUBLIC_KEYS` map**, which becomes pure fallback once a real
+  deployment sets `vapidPublicKey` on its `webEnvironments` entries.
+- **`shared-prefs.js`** gained `savePreferenceEnvironmentSection(envId,
+  section, body)`, scoping its localStorage cache update to just that one
+  environment's entry inside `prefs.environments` rather than the whole
+  cached blob.
+- **14 new assertions in `test/preferencias.test.js`** (114 → 128): no
+  section renders for a person with no `webEnvironments`; a single
+  environment renders with no disambiguating heading and sane defaults;
+  two environments each render pre-filled from their OWN already-saved
+  state without cross-contamination; saving sends exactly the two expected
+  scoped PUTs; saving one environment never touches another's. **9 new
+  assertions in `test/env-scope.test.js`**: an environment's own
+  `menuHidden` drops a page from both the drawer and the dashboard, on the
+  default env (not just the non-default "dia" case the file already
+  covered); switching between two environments applies each one's OWN
+  hidden list, never leaking the other's; `home`/`preferencias` survive
+  even a `menuHidden` list that names them directly. Full 14-file
+  regression green.
+- **Deliberately not done, matching the backend entry's own cuts**:
+  pricing-default prefills (would need `receitas.html`/`produtos.html`
+  changes, a separate scope), and the landing-page REDIRECT itself —
+  `landingPage` saves and loads correctly, but nothing yet reads it to
+  actually change what page an account lands on. Menu-hiding IS live;
+  that's the other half of "the front end consuming it" from the plan.
+- **Already deployed** — this repo has no build step, pushed straight to
+  `main`.
+
 ## Status (2026-09-08, later): fixed a real reported bug — the same contact showed up twice in the muted-contacts picker — plus a "sem atividade" reveal for both pickers
 
 Direct feedback on a live screenshot: "my contact is shown as duplicated in

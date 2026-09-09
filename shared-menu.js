@@ -44,8 +44,16 @@ const MENU_ITEMS = [
 // "dev", which is Alexandre's real household data reused as dev data).
 // Every menu-item consumer (the drawer here, index.html's dashboard tiles)
 // reads through this instead of MENU_ITEMS directly, so the two can't drift.
+// Pages "home" and "preferencias" can never be hidden by an environment's
+// own menu.hidden preference (see preferencias.html's Aplicativo section) -
+// without them, hiding everything would leave no way back to undo it.
+const MENU_ITEMS_NEVER_HIDDEN = new Set(["home", "preferencias"]);
+
 function visibleMenuItems(){
-  return isDefaultEnv() ? MENU_ITEMS : MENU_ITEMS.filter(item => item.group !== "dia");
+  const items = isDefaultEnv() ? MENU_ITEMS : MENU_ITEMS.filter(item => item.group !== "dia");
+  const hidden = new Set(currentEnvPrefs().menuHidden);
+  if(!hidden.size) return items;
+  return items.filter(item => MENU_ITEMS_NEVER_HIDDEN.has(item.page) || !hidden.has(item.page));
 }
 
 function wireMenuButton(){

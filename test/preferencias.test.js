@@ -73,6 +73,16 @@ const DEFAULT_CONTACTS = [
   { jids: ['5511900000004@s.whatsapp.net'], label: 'Fornecedor', avgPerDay: 0.3 },
 ];
 
+// The Aplicativo (environment tier) fixtures - GET /preferences.environments
+// entries. Both start with a fixed default state matching maga-infra's own
+// mergeEnvironment() defaults, so a test that seeds neither explicitly still
+// exercises the real "nothing saved yet" render.
+const ONE_ENV = [{ id: 'dev', label: 'Dev', effective: { menu: { hidden: [] }, landingPage: 'home' } }];
+const TWO_ENVS = [
+  { id: 'dev', label: 'Dev', effective: { menu: { hidden: [] }, landingPage: 'home' } },
+  { id: 'prod', label: 'Prod', effective: { menu: { hidden: ['fornecedores'] }, landingPage: 'eventos' } },
+];
+
 function makePrefs(overrides = {}) {
   const base = {
     effective: {
@@ -321,6 +331,20 @@ async function withPrefsFake(ctx, opts = {}) {
       otherCalls.push({ pathname, method, body });
       const r = importResult(body);
       await fulfill({ status: r.status, contentType: 'application/json', body: JSON.stringify(r.body) });
+      return;
+    }
+    if (pathname.startsWith('/preferences/environment/') && method === 'PUT') {
+      const [, , , envId, section] = pathname.split('/');
+      const body = JSON.parse(req.postData() || '{}');
+      putCalls.push({ section: 'env:' + envId + ':' + section, body });
+      const env = (prefs.environments || []).find(e => e.id === envId);
+      if (!env) {
+        await fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: 'unknown_environment' }) });
+        return;
+      }
+      if (section === 'menu' && body.hidden) env.effective = { ...env.effective, menu: { hidden: [...body.hidden] } };
+      if (section === 'app' && body.landingPage) env.effective = { ...env.effective, landingPage: body.landingPage };
+      await fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ effective: env.effective }) });
       return;
     }
     if (pathname.startsWith('/preferences/person/') && method === 'PUT') {
@@ -1388,6 +1412,106 @@ async function withPrefsFake(ctx, opts = {}) {
       !!importCall && JSON.stringify(importCall.body) === JSON.stringify(importedPayload));
     const backupStatus = await page.textContent('#saved-backup');
     check('the page shows what was restored, got: ' + backupStatus, backupStatus.startsWith('Restaurado:') && backupStatus.includes('effective'));
+    await ctx.close();
+  }
+
+  // --- 22. Aplicativo: no maga.webEnvironments -> the section is absent ---
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withPrefsFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    const heading = await page.$$eval('h3', els => els.map(el => el.textContent));
+    check('no "Aplicativo" heading renders for a person with no webEnvironments', !heading.includes('Aplicativo'));
+    await ctx.close();
+  }
+
+  // --- 23. Aplicativo: one environment, nothing saved yet -----------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withPrefsFake(ctx, { prefsOverrides: { environments: ONE_ENV } });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('[data-env="dev"]', { timeout: 6000 });
+    check('a single environment renders no env-heading label (nothing to disambiguate)',
+      await page.$('.env-heading') === null);
+    check('"home" and "preferencias" are never offered as hideable',
+      await page.$('[data-env="dev"] [data-hide="home"]') === null &&
+      await page.$('[data-env="dev"] [data-hide="preferencias"]') === null);
+    check('an ordinary page IS offered as hideable, unchecked by default',
+      await page.$eval('[data-env="dev"] [data-hide="eventos"]', el => el.checked) === false);
+    check('the landing-page select defaults to home', await page.$eval('#f-landing-dev', el => el.value) === 'home');
+    await ctx.close();
+  }
+
+  // --- 24. Aplicativo: two environments render separately, each pre-filled
+  // from its own already-saved state, correctly disambiguated by heading --
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withPrefsFake(ctx, { prefsOverrides: { environments: TWO_ENVS } });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('[data-env="prod"]', { timeout: 6000 });
+    const headings = await page.$$eval('.env-heading', els => els.map(el => el.textContent));
+    check('both environments get their own disambiguating heading, got: ' + headings.join(','),
+      headings.includes('Dev') && headings.includes('Prod'));
+    check('dev\'s fornecedores checkbox is unchecked (dev has nothing hidden)',
+      await page.$eval('[data-env="dev"] [data-hide="fornecedores"]', el => el.checked) === false);
+    check('prod\'s fornecedores checkbox is pre-checked from its saved menu.hidden',
+      await page.$eval('[data-env="prod"] [data-hide="fornecedores"]', el => el.checked) === true);
+    check('prod\'s landing-page select is pre-selected to its saved value',
+      await page.$eval('#f-landing-prod', el => el.value) === 'eventos');
+    check('dev\'s own landing-page select is unaffected, still home',
+      await page.$eval('#f-landing-dev', el => el.value) === 'home');
+    await ctx.close();
+  }
+
+  // --- 25. Aplicativo: saving sends TWO scoped PUTs (menu, then app) ------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const { putCalls } = await withPrefsFake(ctx, { prefsOverrides: { environments: ONE_ENV } });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('[data-env="dev"]', { timeout: 6000 });
+    await page.check('[data-env="dev"] [data-hide="fornecedores"]');
+    await page.selectOption('#f-landing-dev', 'eventos');
+    await page.click('[data-save="env:dev"]');
+    await page.waitForFunction(() => (document.getElementById('saved-env:dev') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
+
+    const menuPut = putCalls.find(c => c.section === 'env:dev:menu');
+    const appPut = putCalls.find(c => c.section === 'env:dev:app');
+    check('the menu PUT went to the right environment and carries the checked page',
+      !!menuPut && JSON.stringify(menuPut.body.hidden) === JSON.stringify(['fornecedores']));
+    check('the app PUT carries the newly picked landing page',
+      !!appPut && appPut.body.landingPage === 'eventos');
+    await ctx.close();
+  }
+
+  // --- 26. Aplicativo: saving one environment never touches another's PUTs
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const { putCalls } = await withPrefsFake(ctx, { prefsOverrides: { environments: TWO_ENVS } });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('[data-env="dev"]', { timeout: 6000 });
+    await page.check('[data-env="dev"] [data-hide="financeiro"]');
+    await page.click('[data-save="env:dev"]');
+    await page.waitForFunction(() => (document.getElementById('saved-env:dev') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
+    check('no PUT was sent for the untouched "prod" environment',
+      !putCalls.some(c => c.section.startsWith('env:prod:')));
+    check('prod\'s own checkboxes are unaffected in the DOM after saving dev',
+      await page.$eval('[data-env="prod"] [data-hide="fornecedores"]', el => el.checked) === true);
     await ctx.close();
   }
 

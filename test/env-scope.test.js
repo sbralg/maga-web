@@ -43,14 +43,22 @@ function serve() {
 // Seeds localStorage the way a completed OAuth login would (see
 // completeOAuth() in shared-api.js) — env id + the cached account env list
 // it's compared against — without actually running the OAuth flow.
-async function seedEnv(page, { envId, defaultEnv }) {
-  await page.evaluate(({ envId, defaultEnv }) => {
+// `menuHidden` (optional, {dev:[...], prod:[...]}) seeds each cached
+// environment's own Aplicativo preference (phase 3) - the same shape
+// /web-config now returns per environment, see shared-api.js's
+// currentEnvPrefs().
+async function seedEnv(page, { envId, defaultEnv, menuHidden } = {}) {
+  await page.evaluate(({ envId, defaultEnv, menuHidden }) => {
     localStorage.setItem('checklist_pass', 'x');
     if (envId) localStorage.setItem('checklist_env', envId);
     localStorage.setItem('checklist_envs_cache', JSON.stringify({
-      defaultEnv, environments: [{ id: 'dev', label: 'Dev' }, { id: 'prod', label: 'Prod' }],
+      defaultEnv,
+      environments: [
+        { id: 'dev', label: 'Dev', menuHidden: (menuHidden && menuHidden.dev) || [] },
+        { id: 'prod', label: 'Prod', menuHidden: (menuHidden && menuHidden.prod) || [] },
+      ],
     }));
-  }, { envId, defaultEnv });
+  }, { envId, defaultEnv, menuHidden });
 }
 
 (async () => {
@@ -182,6 +190,72 @@ async function seedEnv(page, { envId, defaultEnv }) {
     const tiles = await page.$$eval('.tile .label', els => els.map(el => el.textContent));
     check('Hoje IS a dashboard tile on the default env, got: ' + JSON.stringify(tiles), tiles.includes('Hoje'));
     check('Tarefas IS a dashboard tile on the default env, got: ' + JSON.stringify(tiles), tiles.includes('Tarefas'));
+    await ctx.close();
+  }
+
+  // --- an environment's own menuHidden (Aplicativo, phase 3) drops that
+  // page from BOTH the drawer and the dashboard tiles, on the DEFAULT env
+  // (the "dia" group rule above is a separate, additional filter — this one
+  // must work even when isDefaultEnv() is true) --------------------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withApiFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/tarefas.html');
+    await seedEnv(page, { envId: 'dev', defaultEnv: 'dev', menuHidden: { dev: ['fornecedores'] } });
+    await page.reload();
+    await page.waitForSelector('#menu-btn', { timeout: 6000 });
+    await page.click('#menu-btn');
+    await page.waitForSelector('.menu-panel', { timeout: 4000 });
+    const labels = await page.$$eval('.menu-item', els => els.map(el => el.textContent));
+    check('Fornecedores is hidden from the drawer per this environment\'s own preference, got: ' + JSON.stringify(labels),
+      !labels.some(l => l.includes('Fornecedores')));
+    check('Tarefas (an unrelated page) is still shown, got: ' + JSON.stringify(labels), labels.some(l => l.includes('Tarefas')));
+
+    await page.goto(ORIGIN + '/index.html');
+    await page.waitForSelector('.tile', { timeout: 6000 });
+    const tiles = await page.$$eval('.tile .label', els => els.map(el => el.textContent));
+    check('Fornecedores is not a dashboard tile either, got: ' + JSON.stringify(tiles), !tiles.includes('Fornecedores'));
+    check('other Produção tiles are unaffected, got: ' + JSON.stringify(tiles), tiles.includes('Insumos'));
+    await ctx.close();
+  }
+
+  // --- switching environments applies THAT environment's own menuHidden,
+  // never the other one's - prod's own hidden list must not leak into dev
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withApiFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/tarefas.html');
+    await seedEnv(page, { envId: 'dev', defaultEnv: 'dev', menuHidden: { dev: [], prod: ['financeiro'] } });
+    await page.reload();
+    await page.waitForSelector('#menu-btn', { timeout: 6000 });
+    await page.click('#menu-btn');
+    await page.waitForSelector('.menu-panel', { timeout: 4000 });
+    const labels = await page.$$eval('.menu-item', els => els.map(el => el.textContent));
+    check('prod\'s own hidden page does not leak into a dev session, got: ' + JSON.stringify(labels),
+      labels.some(l => l.includes('Financeiro')));
+    await ctx.close();
+  }
+
+  // --- a server-provided menuHidden can never hide Home or Preferências,
+  // even if it tried to - the one client-side guard against being locked
+  // out of the menu entirely -------------------------------------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withApiFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/tarefas.html');
+    await seedEnv(page, { envId: 'dev', defaultEnv: 'dev', menuHidden: { dev: ['home', 'preferencias', 'fornecedores'] } });
+    await page.reload();
+    await page.waitForSelector('#menu-btn', { timeout: 6000 });
+    await page.click('#menu-btn');
+    await page.waitForSelector('.menu-panel', { timeout: 4000 });
+    const labels = await page.$$eval('.menu-item', els => els.map(el => el.textContent));
+    check('Home stays in the drawer no matter what, got: ' + JSON.stringify(labels), labels.some(l => l.includes('Home')));
+    check('Preferências stays in the drawer no matter what, got: ' + JSON.stringify(labels), labels.some(l => l.includes('Preferências')));
+    check('a genuinely hideable page is still actually hidden, got: ' + JSON.stringify(labels),
+      !labels.some(l => l.includes('Fornecedores')));
     await ctx.close();
   }
 

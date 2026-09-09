@@ -85,6 +85,17 @@
     background:rgba(127,127,127,.1);color:var(--muted);
   }
   .banner.warn{background:rgba(var(--gold-rgb),.14);color:var(--text)}
+
+  .env-heading{font-size:13.5px;font-weight:650;color:var(--text);margin:18px 0 2px}
+  .env-heading:first-child{margin-top:0}
+  .checklist{display:flex;flex-direction:column;gap:7px;margin:4px 0 0}
+  .checkrow{display:flex;align-items:center;gap:9px;font-size:14px}
+  .checkrow input{width:19px;height:19px;accent-color:var(--accent);flex:none}
+  .field select{
+    font:inherit;font-size:15px;padding:9px 11px;border-radius:10px;
+    border:1px solid var(--border-strong);background:var(--card);color:var(--text);
+    -webkit-appearance:none;width:100%;
+  }
 </style>
 </head>
 <body>
@@ -295,6 +306,9 @@ function render(){
   html += '<h3>Sessões ativas</h3><div id="sessions-box"><p class="hint">Carregando…</p></div>' +
     '<div class="actions"><button class="link danger" id="revoke-others">Sair dos outros dispositivos</button>' +
     '<span class="saved" id="saved-sessions"></span></div>';
+
+  // --- Aplicativo (environment tier - phase 3) ---
+  html += appSectionHtml(writable);
 
   // --- Backup ---
   html += '<h3>Backup</h3>' +
@@ -857,6 +871,51 @@ function wireGroupRows(){ /* checkboxes are read at save time - nothing to wire 
 // shape they carry - groups' {jid,label,...}, contacts' {jids,label,...}) -
 // used at save time so a checked row's label can be recovered even when it
 // came from the "sem atividade" list rather than the active one.
+// --- Aplicativo (environment tier) ------------------------------------------
+
+// "home" (the dashboard) and "preferencias" itself can never be hidden -
+// see shared-menu.js's own MENU_ITEMS_NEVER_HIDDEN, which this mirrors so
+// the picker never even offers a checkbox for the one thing that would
+// strand an account with no way back.
+function hideableMenuItems(){
+  return MENU_ITEMS.filter(item => !MENU_ITEMS_NEVER_HIDDEN.has(item.page));
+}
+
+// A person may have more than one maga-api environment (Alexandre: dev +
+// prod). Each renders as its own block with its own Salvar - one environment's
+// save must never touch another's, which is also why each block's
+// checkboxes/select are scoped under a `data-env="<id>"` wrapper rather than
+// sharing bare ids.
+function appSectionHtml(writable){
+  if(!prefs.environments || !prefs.environments.length) return "";
+  const multi = prefs.environments.length > 1;
+  return '<h3>Aplicativo</h3>' +
+    '<p class="hint" style="margin:0 0 10px">Por ambiente: quais páginas aparecem no menu e qual página abre primeiro.</p>' +
+    prefs.environments.map(env => envSectionHtml(env, writable, multi)).join("");
+}
+
+function envSectionHtml(env, writable, multi){
+  const eff = env.effective;
+  const hidden = new Set(eff.menu.hidden || []);
+  const rows = hideableMenuItems().map(item =>
+    '<label class="checkrow"><input type="checkbox" data-hide="' + esc(item.page) + '"' +
+    (hidden.has(item.page) ? " checked" : "") + '> ' + item.emoji + ' ' + esc(item.label) + '</label>'
+  ).join("");
+  const options = MENU_ITEMS.map(item =>
+    '<option value="' + esc(item.page) + '"' + (eff.landingPage === item.page ? " selected" : "") + '>' +
+    item.emoji + ' ' + esc(item.label) + '</option>'
+  ).join("");
+  const section = "env:" + env.id;
+  return (multi ? '<p class="env-heading">' + esc(env.label) + '</p>' : "") +
+    '<div class="field" data-env="' + esc(env.id) + '">' +
+      '<label>Ocultar do menu</label>' +
+      '<div class="checklist">' + rows + '</div>' +
+    '</div>' +
+    '<div class="field"><label for="f-landing-' + esc(env.id) + '">Página inicial</label>' +
+      '<select id="f-landing-' + esc(env.id) + '">' + options + '</select></div>' +
+    saveRow(section, "Salvar" + (multi ? " (" + esc(env.label) + ")" : ""), writable && !prefsStale);
+}
+
 function jidLabelMap(activeList, otherList){
   const map = new Map();
   [...(activeList || []), ...(otherList || [])].forEach(item => {
@@ -866,6 +925,15 @@ function jidLabelMap(activeList, otherList){
 }
 
 function collectSection(section){
+  if(section.startsWith("env:")){
+    const envId = section.slice(4);
+    const hiddenEls = [...document.querySelectorAll('[data-env="' + envId + '"] [data-hide]')].filter(c => c.checked);
+    const landingEl = document.getElementById("f-landing-" + envId);
+    return {
+      menu: { hidden: hiddenEls.map(c => c.dataset.hide) },
+      app: { landingPage: landingEl ? landingEl.value : "home" },
+    };
+  }
   if(section === "identity"){
     return { displayName: document.getElementById("f-displayName").value.trim() };
   }
@@ -912,10 +980,23 @@ async function saveSection(section, btn){
   btn.disabled = true;
   status.textContent = "Salvando…";
   try {
-    const serverSection = section === "whatsappAllow" ? "whatsapp" : section === "mailAllow" ? "mail" : section;
-    const data = await savePreferenceSection(serverSection, collectSection(section));
-    prefs.effective = data.effective;
-    prefs.overrides = data.overrides;
+    if(section.startsWith("env:")){
+      const envId = section.slice(4);
+      const { menu, app } = collectSection(section);
+      // Two PUTs, not one - menu.hidden and app.landingPage are separate
+      // ENVIRONMENT_FIELDS sections server-side (see maga-infra's
+      // preferencesStore.js). The second call's `effective` already
+      // reflects both, since it's read fresh from the store on every write.
+      await savePreferenceEnvironmentSection(envId, "menu", menu);
+      const data = await savePreferenceEnvironmentSection(envId, "app", app);
+      const env = prefs.environments.find(e => e.id === envId);
+      if(env) env.effective = data.effective;
+    } else {
+      const serverSection = section === "whatsappAllow" ? "whatsapp" : section === "mailAllow" ? "mail" : section;
+      const data = await savePreferenceSection(serverSection, collectSection(section));
+      prefs.effective = data.effective;
+      prefs.overrides = data.overrides;
+    }
     status.textContent = "Salvo.";
     setTimeout(() => { if(status) status.textContent = ""; }, 2500);
   } catch(e){

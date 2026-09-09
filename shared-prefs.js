@@ -93,6 +93,25 @@ async function savePreferenceSection(section, body){
   return data;
 }
 
+/** Save one section of ONE environment's "Aplicativo" settings (menu
+ *  visibility, landing page - phase 3). Unlike savePreferenceSection, the
+ *  cache update is scoped to just that environment's entry inside
+ *  prefs.environments, not the whole cached blob. */
+async function savePreferenceEnvironmentSection(envId, section, body){
+  const data = await mcpFetch(
+    "/preferences/environment/" + encodeURIComponent(envId) + "/" + encodeURIComponent(section),
+    { method: "PUT", body: JSON.stringify(body) }
+  );
+  const cached = cachedPreferences();
+  if(cached && Array.isArray(cached.environments)){
+    cachePreferences({
+      ...cached,
+      environments: cached.environments.map(e => e.id === envId ? { ...e, effective: data.effective } : e),
+    });
+  }
+  return data;
+}
+
 async function loadWhatsappGroups(){
   return await mcpFetch("/preferences/whatsapp/groups");
 }

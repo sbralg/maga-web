@@ -43,6 +43,25 @@ function isDefaultEnv(){
   return envId === cache.defaultEnv;
 }
 
+// The current environment's own "Aplicativo" preferences (phase 3 of the
+// Preferências plan) - menu visibility and its VAPID public key, read from
+// the SAME cache /web-config already populated at login (see completeOAuth
+// below), so neither shared-menu.js nor shared-push.js needs a fetch of its
+// own for something this basic. Returns null fields when nothing is cached
+// yet, which every caller already treats as "nothing hidden"/"no override".
+function currentEnvPrefs(){
+  const envId = localStorage.getItem(ENV_ID_KEY);
+  if(!envId) return { menuHidden: [], landingPage: null, vapidPublicKey: null };
+  let cache = null;
+  try { cache = JSON.parse(localStorage.getItem(ENV_CACHE_KEY) || "null"); } catch(_){ cache = null; }
+  const env = cache && Array.isArray(cache.environments) ? cache.environments.find(e => e.id === envId) : null;
+  return {
+    menuHidden: (env && env.menuHidden) || [],
+    landingPage: (env && env.landingPage) || null,
+    vapidPublicKey: (env && env.vapidPublicKey) || null,
+  };
+}
+
 // OAuth against the Magá MCP server: the front end runs the auth-code +
 // PKCE flow, then GET /web-config hands back {apiUrl, passphrase} for the
 // signed-in person + chosen environment. No secret lives here (public
@@ -266,7 +285,15 @@ async function completeOAuth(){
     try {
       localStorage.setItem(ENV_CACHE_KEY, JSON.stringify({
         defaultEnv: cfg.defaultEnv,
-        environments: (cfg.environments || []).map(e => ({ id: e.id, label: e.label }))
+        // apiUrl/passphrase are deliberately NOT cached here - those stay
+        // scoped to whichever ONE environment is actually chosen below
+        // (API_KEY/PASS_KEY). menuHidden/landingPage/vapidPublicKey are
+        // presentation-only (phase 3's own env-tier boundary), safe to
+        // cache for every environment the picker lists.
+        environments: (cfg.environments || []).map(e => ({
+          id: e.id, label: e.label,
+          menuHidden: e.menuHidden || [], landingPage: e.landingPage || null, vapidPublicKey: e.vapidPublicKey || null,
+        }))
       }));
     } catch(_){ /* localStorage unavailable - the picker just falls back to nothing cached */ }
     const wanted = st.envChoice === "padrao" ? cfg.defaultEnv : st.envChoice;
