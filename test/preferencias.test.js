@@ -87,6 +87,7 @@ function makePrefs(overrides = {}) {
   const base = {
     effective: {
       displayName: 'Alexandre',
+      timezone: 'America/Sao_Paulo',
       slug: 'alexandre',
       scopes: ['mcp:read', 'mcp:send'],
       whatsapp: {
@@ -471,9 +472,83 @@ async function withPrefsFake(ctx, opts = {}) {
     await page.waitForFunction(() => (document.getElementById('saved-identity') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
     check('exactly one PUT for the identity section', putCalls.filter(c => c.section === 'identity').length === 1);
     const call = putCalls.find(c => c.section === 'identity');
-    check('the PUT body is {displayName:"Ale"}, got ' + JSON.stringify(call.body),
-      JSON.stringify(call.body) === JSON.stringify({ displayName: 'Ale' }));
+    check('the PUT body is {displayName:"Ale", timezone unchanged}, got ' + JSON.stringify(call.body),
+      JSON.stringify(call.body) === JSON.stringify({ displayName: 'Ale', timezone: 'America/Sao_Paulo' }));
     check('the page shows a saved confirmation', (await page.textContent('#saved-identity')) === 'Salvo.');
+    await ctx.close();
+  }
+
+  // --- 5b. timezone field: preset already-saved value pre-selects the right option ---
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withPrefsFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#f-timezone', { timeout: 6000 });
+    check('a known preset (America/Sao_Paulo) is pre-selected in the dropdown',
+      (await page.$eval('#f-timezone', el => el.value)) === 'America/Sao_Paulo');
+    check('the custom text input stays hidden for a known preset',
+      await page.$eval('#f-timezone-custom', el => el.hidden) === true);
+    await ctx.close();
+  }
+
+  // --- 5c. timezone field: picking a preset and saving sends its value ----
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const { putCalls } = await withPrefsFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#f-timezone', { timeout: 6000 });
+    await page.selectOption('#f-timezone', 'Europe/Lisbon');
+    check('the custom input stays hidden when a preset is picked',
+      await page.$eval('#f-timezone-custom', el => el.hidden) === true);
+    await page.click('[data-save="identity"]');
+    await page.waitForFunction(() => (document.getElementById('saved-identity') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
+    const call = putCalls.find(c => c.section === 'identity');
+    check('the PUT body carries the newly picked preset, got ' + JSON.stringify(call.body),
+      call.body.timezone === 'Europe/Lisbon');
+    await ctx.close();
+  }
+
+  // --- 5d. timezone field: "Outro (digite)" reveals a free-text input, and its typed value is what gets saved ---
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const { putCalls } = await withPrefsFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#f-timezone', { timeout: 6000 });
+    await page.selectOption('#f-timezone', '__custom__');
+    check('picking "Outro" reveals the free-text input',
+      await page.$eval('#f-timezone-custom', el => el.hidden) === false);
+    await page.fill('#f-timezone-custom', 'Australia/Sydney');
+    await page.click('[data-save="identity"]');
+    await page.waitForFunction(() => (document.getElementById('saved-identity') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
+    const call = putCalls.find(c => c.section === 'identity');
+    check('the PUT body carries the typed custom zone, got ' + JSON.stringify(call.body),
+      call.body.timezone === 'Australia/Sydney');
+    await ctx.close();
+  }
+
+  // --- 5e. timezone field: an already-saved value NOT in the preset list pre-selects "Outro" and pre-fills the text input ---
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    await withPrefsFake(ctx, { prefsOverrides: { effective: Object.assign({}, makePrefs().effective, { timezone: 'Australia/Sydney' }) } });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#f-timezone', { timeout: 6000 });
+    check('an unrecognized saved value pre-selects "Outro (digite)"',
+      (await page.$eval('#f-timezone', el => el.value)) === '__custom__');
+    check('the custom input is pre-filled with the saved value and visible',
+      (await page.$eval('#f-timezone-custom', el => el.value)) === 'Australia/Sydney' &&
+      (await page.$eval('#f-timezone-custom', el => el.hidden)) === false);
     await ctx.close();
   }
 

@@ -295,6 +295,7 @@ function render(){
     '<h3>Conta</h3>' +
     field("displayName", "Como o assistente chama você", eff.displayName || "",
       "Aparece no resumo diário e nos avisos.") +
+    timezoneFieldHtml(eff.timezone || "") +
     saveRow("identity", "Salvar", writable && !prefsStale) +
 
     '<h3>Senha</h3>' +
@@ -415,6 +416,7 @@ function render(){
   root.innerHTML = html;
   wireMenuButton();
   wireTabs();
+  wireTimezoneField();
   wireGroupRows();
   document.querySelectorAll("[data-save]").forEach(btn => {
     btn.addEventListener("click", () => saveSection(btn.dataset.save, btn));
@@ -809,6 +811,57 @@ function field(name, label, value, hint){
     '<p class="err" hidden></p></div>';
 }
 
+// A short list of common zones so most people can just pick one, plus an
+// "Outro (digite)" escape hatch for anywhere else - identity.timezone
+// exists specifically so it can be changed for a trip abroad without a
+// code change, and a free-text-only field would leave someone typing an
+// IANA name from memory. Server-side validation (mcp/localTime.js) is the
+// same either way - this is only about how the value gets typed in.
+const TIMEZONE_PRESETS = [
+  { value: "America/Sao_Paulo", label: "São Paulo / Brasília" },
+  { value: "America/Manaus", label: "Manaus" },
+  { value: "America/Noronha", label: "Fernando de Noronha" },
+  { value: "America/New_York", label: "Nova York" },
+  { value: "America/Los_Angeles", label: "Los Angeles" },
+  { value: "Europe/Lisbon", label: "Lisboa" },
+  { value: "Europe/London", label: "Londres" },
+  { value: "Europe/Paris", label: "Paris" },
+  { value: "Asia/Tokyo", label: "Tóquio" },
+];
+
+function timezoneFieldHtml(value){
+  const known = TIMEZONE_PRESETS.some(z => z.value === value);
+  const options = TIMEZONE_PRESETS.map(z =>
+    '<option value="' + esc(z.value) + '"' + (value === z.value ? " selected" : "") + '>' + esc(z.label) + '</option>'
+  ).join("") + '<option value="__custom__"' + (known ? "" : " selected") + '>Outro (digite)</option>';
+  return '<div class="field" data-field="timezone">' +
+    '<label for="f-timezone">Fuso horário</label>' +
+    '<select id="f-timezone">' + options + '</select>' +
+    '<input type="text" id="f-timezone-custom" placeholder="Ex.: America/Los_Angeles" value="' + esc(known ? "" : (value || "")) + '"' + (known ? " hidden" : "") + '>' +
+    '<p class="hint">Usado para mostrar horários (mensagens, e-mails, calendário) no fuso certo — troque se estiver viajando.</p>' +
+    '<p class="err" hidden></p></div>';
+}
+
+// Toggles the free-text input's visibility with the select, since neither
+// field alone tells the whole story: a preset pick hides it, "Outro" reveals
+// it. Called once after every render() - the select/input pair is rebuilt
+// from scratch each time, so there's nothing to preserve across renders.
+function wireTimezoneField(){
+  const select = document.getElementById("f-timezone");
+  const custom = document.getElementById("f-timezone-custom");
+  if(!select || !custom) return;
+  select.addEventListener("change", () => {
+    custom.hidden = select.value !== "__custom__";
+    if(!custom.hidden) custom.focus();
+  });
+}
+
+function timezoneFieldValue(){
+  const select = document.getElementById("f-timezone");
+  if(!select) return "";
+  return select.value === "__custom__" ? document.getElementById("f-timezone-custom").value.trim() : select.value;
+}
+
 function limitRow(key, label, hint){
   const bounds = (prefs.bounds && prefs.bounds.rateLimits && prefs.bounds.rateLimits[key]) || { min: 0, max: 99 };
   const value = prefs.effective.rateLimits[key];
@@ -1009,7 +1062,7 @@ function collectSection(section){
     };
   }
   if(section === "identity"){
-    return { displayName: document.getElementById("f-displayName").value.trim() };
+    return { displayName: document.getElementById("f-displayName").value.trim(), timezone: timezoneFieldValue() };
   }
   if(section === "whatsapp"){
     // Scoped to each box's own container, not a bare `[data-jids]` query -
