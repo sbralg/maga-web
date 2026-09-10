@@ -113,6 +113,15 @@ function makePrefs(overrides = {}) {
       },
       alerts: { ownerPhone: '+55 11 9****-2426' },
       maga: { defaultWebEnvironment: 'dev' },
+      // Phase 4 - presentPerson() on the real server always includes this,
+      // sections defaulting all-true and roster/context empty, whether or
+      // not anything has ever been saved. Mirrored here for the same reason
+      // every other `effective.*` field is: the page reads it unconditionally.
+      dailySummary: {
+        sections: { workSummary: true, watchlist: true, instructions: true },
+        roster: [],
+        context: '',
+      },
     },
     overrides: {},
     bounds: {
@@ -1665,6 +1674,140 @@ async function withPrefsFake(ctx, opts = {}) {
     const devEntry = cache.environments.find(e => e.id === 'dev');
     check('checklist_envs_cache (what shared-menu.js actually reads) is updated in place after saving, got: ' + JSON.stringify(devEntry && devEntry.menuHidden),
       !!devEntry && JSON.stringify(devEntry.menuHidden) === JSON.stringify(['fornecedores']));
+    await ctx.close();
+  }
+
+  // --- 28. Resumo diário: defaults render, and a toggle + context save ----
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const { putCalls } = await withPrefsFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="resumo"]');
+    await page.waitForSelector('#f-context', { timeout: 6000 });
+
+    for (const key of ['workSummary', 'watchlist', 'instructions']) {
+      const checked = await page.$eval('[data-section="' + key + '"]', el => el.checked);
+      check('section toggle "' + key + '" defaults to ON with nothing saved yet', checked === true);
+    }
+    check('an empty roster shows the empty-state message',
+      (await page.textContent('#roster-box')).includes('Ninguém cadastrado ainda'));
+    check('the context char counter starts at 0 / 1500',
+      (await page.textContent('#context-count')).trim() === '0 / 1500');
+
+    await page.uncheck('[data-section="workSummary"]');
+    await page.fill('#f-context', 'Foco em vendas de eventos neste mês.');
+    check('the char counter tracks typed length',
+      (await page.textContent('#context-count')).trim() === '36 / 1500');
+    await page.click('[data-save="dailySummary"]');
+    await page.waitForFunction(() => (document.getElementById('saved-dailySummary') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
+
+    const put = putCalls.find(c => c.section === 'dailySummary');
+    check('saving PUT the whole dailySummary section', !!put);
+    check('the turned-off toggle reached the server as false, got: ' + JSON.stringify(put.body.sections),
+      put.body.sections.workSummary === false && put.body.sections.watchlist === true && put.body.sections.instructions === true);
+    check('an untouched roster is sent as an empty array', Array.isArray(put.body.roster) && put.body.roster.length === 0);
+    check('the typed context reached the server, got: ' + put.body.context,
+      put.body.context === 'Foco em vendas de eventos neste mês.');
+    await ctx.close();
+  }
+
+  // --- 29. Resumo diário: adding a roster row is refused client-side with
+  // no name, then succeeds and round-trips through Salvar -----------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const { putCalls } = await withPrefsFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="resumo"]');
+    await page.waitForSelector('#roster-add', { timeout: 6000 });
+
+    await page.click('#roster-add');
+    await page.waitForSelector('#ros-name', { timeout: 6000 });
+    await page.click('#ros-ok');
+    check('an empty name is refused inline, without closing the modal',
+      await page.$eval('#ros-err', el => el.style.display) === 'block');
+    check('the roster is still empty after the refused add',
+      (await page.textContent('#roster-box')).includes('Ninguém cadastrado ainda'));
+
+    await page.fill('#ros-name', 'Bia');
+    await page.fill('#ros-nicknames', 'Bibi, Bia linda');
+    await page.fill('#ros-relationship', 'esposa');
+    await page.selectOption('#ros-priority', 'high');
+    await page.check('#ros-relayed');
+    await page.fill('#ros-notes', 'negócio de confeitaria');
+    await page.click('#ros-ok');
+    await page.waitForSelector('[data-roster-idx="0"]', { timeout: 6000 });
+    const rowText = await page.textContent('[data-roster-idx="0"]');
+    check('the new roster row shows the typed name and bits, got: ' + rowText,
+      rowText.includes('Bia') && rowText.includes('Bibi') && rowText.includes('esposa') &&
+      rowText.includes('prioridade alta') && rowText.includes('conta mesmo repassada'));
+
+    await page.click('[data-save="dailySummary"]');
+    await page.waitForFunction(() => (document.getElementById('saved-dailySummary') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
+    const put = putCalls.find(c => c.section === 'dailySummary');
+    check('the saved roster carries exactly one typed row, got: ' + JSON.stringify(put.body.roster),
+      put.body.roster.length === 1 &&
+      put.body.roster[0].name === 'Bia' &&
+      JSON.stringify(put.body.roster[0].nicknames) === JSON.stringify(['Bibi', 'Bia linda']) &&
+      put.body.roster[0].relationship === 'esposa' &&
+      put.body.roster[0].priority === 'high' &&
+      put.body.roster[0].relayedByAdult === true &&
+      put.body.roster[0].notes === 'negócio de confeitaria');
+    await ctx.close();
+  }
+
+  // --- 30. Resumo diário: editing and removing an already-saved roster row,
+  // seeded straight from the fixture (not added by the test itself) -------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const { putCalls } = await withPrefsFake(ctx, {
+      prefsOverrides: {
+        effective: {
+          ...makePrefs().effective,
+          dailySummary: {
+            sections: { workSummary: true, watchlist: true, instructions: true },
+            roster: [{ name: 'Daniel', nicknames: ['Dani'], relationship: 'filho', priority: 'normal', relayedByAdult: true, notes: '' }],
+            context: '',
+          },
+        },
+      },
+    });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="resumo"]');
+    await page.waitForSelector('[data-roster-idx="0"]', { timeout: 6000 });
+    check('the pre-saved roster row renders on load, got: ' + await page.textContent('[data-roster-idx="0"]'),
+      (await page.textContent('[data-roster-idx="0"]')).includes('Daniel'));
+
+    await page.click('[data-roster-idx="0"] [data-roster-edit]');
+    await page.waitForSelector('#ros-name', { timeout: 6000 });
+    check('the edit modal prefills the existing row\'s name',
+      await page.$eval('#ros-name', el => el.value) === 'Daniel');
+    await page.fill('#ros-relationship', 'filho (6 anos)');
+    await page.click('#ros-ok');
+    await page.waitForFunction(() => document.querySelector('[data-roster-idx="0"]').textContent.includes('filho (6 anos)'), null, { timeout: 6000 });
+    check('editing an existing row updates it in place, without adding a second row',
+      (await page.$$('[data-roster-idx]')).length === 1);
+
+    await page.click('[data-roster-idx="0"] [data-roster-remove]');
+    check('removing the only row restores the empty-state message',
+      (await page.textContent('#roster-box')).includes('Ninguém cadastrado ainda'));
+
+    await page.click('[data-save="dailySummary"]');
+    await page.waitForFunction(() => (document.getElementById('saved-dailySummary') || {}).textContent === 'Salvo.', null, { timeout: 6000 });
+    const put = putCalls.find(c => c.section === 'dailySummary');
+    check('a removed row is actually sent as an empty roster, got: ' + JSON.stringify(put.body.roster),
+      Array.isArray(put.body.roster) && put.body.roster.length === 0);
     await ctx.close();
   }
 
