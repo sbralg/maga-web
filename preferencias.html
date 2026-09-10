@@ -109,6 +109,19 @@
     border:1px solid var(--border-strong);background:var(--card);color:var(--text);
     -webkit-appearance:none;width:100%;
   }
+
+  /* .entry's own .who span is monospace (a jid, elsewhere) - the roster's
+     sub-line is plain metadata (apelidos/relação/etc.), so .roster overrides
+     back to the page's normal font. */
+  .entry.roster{align-items:flex-start}
+  .entry.roster .who span{font-family:inherit;font-size:12px}
+  .ctx{
+    font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
+    border:1px solid var(--border-strong);background:var(--card);color:var(--text);
+    width:100%;min-height:110px;resize:vertical;-webkit-appearance:none;line-height:1.4;
+  }
+  .charcount{font-size:11.5px;color:var(--muted);text-align:right;margin:4px 0 0}
+  .charcount.over{color:var(--danger)}
 </style>
 </head>
 <body>
@@ -120,6 +133,19 @@ let prefs = null;        // the whole GET /preferences body
 let prefsStale = false;  // served from cache because the jump host was unreachable
 let groups = null;       // {groups:[{jid,label}], reachable}
 let contacts = null;     // {contacts:[{jid,label}], reachable} - 1:1 counterpart to groups
+let rosterState = [];    // dailySummary.roster, mutated in-place by the tab's own add/edit/remove UI
+
+// Mirrors maga-infra's preferencesStore.js exactly (DAILY_SUMMARY_SECTIONS,
+// ROSTER_*, DAILY_SUMMARY_CONTEXT_MAX) - kept in sync by hand, same as any
+// other client-side echo of a server-side bound. These are UX limits (a
+// maxlength attribute, a "no more rows" alert) so a person hits them before
+// wasting a round trip; the server's own copy is what actually enforces them.
+const DAILY_SUMMARY_SECTIONS = ["workSummary", "watchlist", "instructions"];
+const ROSTER_MAX_ROWS = 30;
+const ROSTER_NAME_MAX = 100;
+const ROSTER_RELATIONSHIP_MAX = 60;
+const ROSTER_NOTES_MAX = 200;
+const DAILY_SUMMARY_CONTEXT_MAX = 1500;
 
 const PAGE_LOGIN = {
   title: "Preferências",
@@ -242,6 +268,7 @@ function tabDefs(){
     { id: "whatsapp", label: "WhatsApp" },
     { id: "email", label: "E-mail" },
     { id: "limites", label: "Limites" },
+    { id: "resumo", label: "Resumo diário" },
   ];
   if(prefs.environments && prefs.environments.length) defs.push({ id: "aplicativo", label: "Aplicativo" });
   defs.push({ id: "backup", label: "Backup" });
@@ -278,6 +305,16 @@ function render(){
   const eff = prefs.effective;
   const writable = prefs.writable !== false;
   const defs = tabDefs();
+
+  // rosterState is the tab's own working copy - deep-cloned from the server's
+  // last-known value on every full render() so an unsaved add/edit/remove
+  // never survives a reload, same as every other tab's fields re-reading
+  // from `eff` here rather than remembering their own prior draft.
+  rosterState = (eff.dailySummary.roster || []).map(r => ({
+    name: r.name, nicknames: (r.nicknames || []).slice(),
+    relationship: r.relationship || "", priority: r.priority || "normal",
+    relayedByAdult: !!r.relayedByAdult, notes: r.notes || "",
+  }));
 
   let html = header();
 
@@ -375,6 +412,32 @@ function render(){
     saveRow("rateLimits", "Salvar", writable && !prefsStale)
   );
 
+  // --- Resumo diário (phase 4) ---
+  html += tabPanel("resumo", false,
+    '<h3>Seções do resumo</h3>' +
+    '<p class="hint" style="margin:0 0 10px">Quais partes entram no resumo da manhã. Desligada, a seção some do resumo até ser ligada de novo.</p>' +
+    '<div class="checklist">' +
+      sectionCheckRow(eff, "workSummary", "Resumo de trabalho", "Reuniões e pendências do seu resumo de trabalho (OneDrive). Só existe para quem tem esse resumo configurado.") +
+      sectionCheckRow(eff, "watchlist", "Watchlist", "Itens em andamento, sem urgência hoje, só para acompanhar.") +
+      sectionCheckRow(eff, "instructions", "Instruções via WhatsApp", "Recados que você manda para si mesmo, tratados como um pedido para o resumo responder.") +
+    '</div>' +
+
+    '<h3>Pessoas</h3>' +
+    '<p class="hint" style="margin:0 0 10px">Quem o resumo deve reconhecer por nome ou apelido ao triar e-mails e mensagens. ' +
+    '"Prioridade alta" baixa a exigência para virar uma Ação; "mesmo repassada por um adulto" cobre o caso de uma criança, por exemplo, cuja mensagem chega pela voz de outra pessoa.</p>' +
+    '<div id="roster-box">' + rosterRowsHtml() + '</div>' +
+    '<div class="actions" style="margin-top:6px"><button class="link" id="roster-add">+ Adicionar pessoa</button></div>' +
+
+    '<h3>Contexto</h3>' +
+    '<p class="hint" style="margin:0 0 10px">Um parágrafo curto de contexto (trabalho, negócio, o que for relevante) — lido como o que VOCÊ configurou, nunca como uma instrução para o assistente executar.</p>' +
+    '<div class="field" data-field="context">' +
+      '<textarea class="ctx" id="f-context" maxlength="' + DAILY_SUMMARY_CONTEXT_MAX + '">' + esc(eff.dailySummary.context || "") + '</textarea>' +
+      '<p class="charcount" id="context-count"></p>' +
+      '<p class="err" hidden></p>' +
+    '</div>' +
+    saveRow("dailySummary", "Salvar", writable && !prefsStale)
+  );
+
   // --- Aplicativo (environment tier - phase 3) ---
   if(prefs.environments && prefs.environments.length){
     html += tabPanel("aplicativo", false, appSectionHtml(writable));
@@ -422,6 +485,7 @@ function render(){
   wireAllowlists();
   wirePassword();
   wireBackup();
+  wireDailySummaryTab();
   loadSessionsLater();
 }
 
@@ -665,6 +729,153 @@ function appendAllowEntry(boxId, kind, value, label){
     '<button class="icon-btn" title="Remover" data-remove>🗑</button></div>');
   const btn = box.lastElementChild.querySelector("[data-remove]");
   btn.addEventListener("click", () => btn.closest(".entry").remove());
+}
+
+// --- Resumo diário (phase 4) --------------------------------------------------
+
+function sectionCheckRow(eff, key, label, hint){
+  const on = eff.dailySummary.sections[key] !== false;
+  return '<label class="checkrow" style="align-items:flex-start;gap:9px">' +
+    '<input type="checkbox" data-section="' + key + '"' + (on ? " checked" : "") + ' style="margin-top:2px">' +
+    '<span>' + esc(label) + '<br><span class="hint" style="margin:2px 0 0">' + esc(hint) + '</span></span>' +
+    '</label>';
+}
+
+// rosterState (not the DOM) is the source of truth for this list, unlike the
+// allow-lists above - a roster row has several fields, not one value+label
+// pair, so a data-attribute-per-field encoding would be more awkward than
+// just re-rendering from the array on every change (same "redraw from
+// in-memory state" shape as tarefas.html's redrawPendingCard()).
+function rosterRowsHtml(){
+  if(!rosterState.length) return '<p class="hint">Ninguém cadastrado ainda.</p>';
+  return rosterState.map((r, i) => {
+    const bits = [];
+    if(r.nicknames && r.nicknames.length) bits.push(r.nicknames.join(", "));
+    if(r.relationship) bits.push(r.relationship);
+    if(r.priority === "high") bits.push("⭐ prioridade alta");
+    if(r.relayedByAdult) bits.push("🗣️ conta mesmo repassada");
+    return '<div class="entry roster" data-roster-idx="' + i + '">' +
+      '<span class="who">' + esc(r.name) + (bits.length ? '<span>' + esc(bits.join(" · ")) + '</span>' : '') + '</span>' +
+      '<button class="icon-btn" title="Editar" data-roster-edit>✎</button>' +
+      '<button class="icon-btn" title="Remover" data-roster-remove>🗑</button>' +
+      '</div>';
+  }).join("");
+}
+
+function redrawRoster(){
+  const box = document.getElementById("roster-box");
+  if(box) box.innerHTML = rosterRowsHtml();
+  wireRosterRows();
+}
+
+function wireRosterRows(){
+  document.querySelectorAll("[data-roster-edit]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const idx = Number(btn.closest("[data-roster-idx]").dataset.rosterIdx);
+      const result = await rosterEntryModal(rosterState[idx]);
+      if(result){ rosterState[idx] = result; redrawRoster(); }
+    });
+  });
+  document.querySelectorAll("[data-roster-remove]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const idx = Number(btn.closest("[data-roster-idx]").dataset.rosterIdx);
+      rosterState.splice(idx, 1);
+      redrawRoster();
+    });
+  });
+}
+
+// A page-local form modal, not one of shared-ui.js's generic
+// confirmModal()/promptModal() - a roster row has six fields, which those
+// two were never meant to cover, and nothing else on the page needs a
+// multi-field form dialog. Resolves the typed-and-validated row object, or
+// null on cancel - never a half-filled draft.
+function rosterEntryModal(existing){
+  return new Promise(resolve => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.innerHTML =
+      '<div class="modal-card">' +
+        '<h3>' + (existing ? "Editar pessoa" : "Adicionar pessoa") + '</h3>' +
+        '<label for="ros-name">Nome</label>' +
+        '<input type="text" id="ros-name" value="' + esc(existing ? existing.name : "") + '" maxlength="' + ROSTER_NAME_MAX + '">' +
+        '<label for="ros-nicknames">Apelidos (separados por vírgula)</label>' +
+        '<input type="text" id="ros-nicknames" value="' + esc(existing ? existing.nicknames.join(", ") : "") + '">' +
+        '<label for="ros-relationship">Relação com você</label>' +
+        '<input type="text" id="ros-relationship" value="' + esc(existing ? existing.relationship : "") + '" maxlength="' + ROSTER_RELATIONSHIP_MAX + '" placeholder="ex.: esposa, filho, irmão">' +
+        '<label for="ros-priority">Prioridade</label>' +
+        '<select id="ros-priority" style="width:100%;margin-bottom:14px">' +
+          '<option value="normal"' + (!existing || existing.priority !== "high" ? " selected" : "") + '>Normal</option>' +
+          '<option value="high"' + (existing && existing.priority === "high" ? " selected" : "") + '>Alta — baixa a exigência para virar Ação</option>' +
+        '</select>' +
+        '<label class="checkrow" style="margin:0 0 14px">' +
+          '<input type="checkbox" id="ros-relayed"' + (existing && existing.relayedByAdult ? " checked" : "") + '> ' +
+          'Uma menção a essa pessoa já conta como prioritária mesmo quando não é ela quem escreve' +
+        '</label>' +
+        '<label for="ros-notes">Notas</label>' +
+        '<input type="text" id="ros-notes" value="' + esc(existing ? existing.notes : "") + '" maxlength="' + ROSTER_NOTES_MAX + '">' +
+        '<p class="hint" id="ros-err" style="color:var(--danger);display:none;margin:-6px 0 14px"></p>' +
+        '<div class="modal-actions">' +
+          '<button class="cancel" id="ros-cancel">Cancelar</button>' +
+          '<button class="save" id="ros-ok">Salvar</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(backdrop);
+    const close = (result) => {
+      backdrop.remove();
+      document.removeEventListener("keydown", onKey);
+      resolve(result);
+    };
+    function onKey(e){ if(e.key === "Escape") close(null); }
+    document.addEventListener("keydown", onKey);
+    backdrop.addEventListener("click", e => { if(e.target === backdrop) close(null); });
+    document.getElementById("ros-cancel").addEventListener("click", () => close(null));
+    document.getElementById("ros-ok").addEventListener("click", () => {
+      const name = document.getElementById("ros-name").value.trim();
+      if(!name){
+        const err = document.getElementById("ros-err");
+        err.textContent = "O nome não pode ficar em branco.";
+        err.style.display = "block";
+        return;
+      }
+      const nicknames = document.getElementById("ros-nicknames").value
+        .split(",").map(s => s.trim()).filter(Boolean).slice(0, 10);
+      close({
+        name,
+        nicknames,
+        relationship: document.getElementById("ros-relationship").value.trim(),
+        priority: document.getElementById("ros-priority").value,
+        relayedByAdult: document.getElementById("ros-relayed").checked,
+        notes: document.getElementById("ros-notes").value.trim(),
+      });
+    });
+    document.getElementById("ros-name").focus();
+  });
+}
+
+function wireDailySummaryTab(){
+  wireRosterRows();
+  const addBtn = document.getElementById("roster-add");
+  if(addBtn){
+    addBtn.addEventListener("click", async () => {
+      if(rosterState.length >= ROSTER_MAX_ROWS){
+        alert("Limite de " + ROSTER_MAX_ROWS + " pessoas cadastradas.");
+        return;
+      }
+      const result = await rosterEntryModal(null);
+      if(result){ rosterState.push(result); redrawRoster(); }
+    });
+  }
+  const ctx = document.getElementById("f-context");
+  const count = document.getElementById("context-count");
+  if(ctx && count){
+    const update = () => {
+      count.textContent = ctx.value.length + " / " + DAILY_SUMMARY_CONTEXT_MAX;
+      count.classList.toggle("over", ctx.value.length > DAILY_SUMMARY_CONTEXT_MAX);
+    };
+    ctx.addEventListener("input", update);
+    update();
+  }
 }
 
 // --- password ----------------------------------------------------------------
@@ -1044,6 +1255,18 @@ function collectSection(section){
       if(el) out[key] = Number(el.value.replace(/\D/g, "") || "0");
     });
     return out;
+  }
+  if(section === "dailySummary"){
+    const sections = {};
+    DAILY_SUMMARY_SECTIONS.forEach(key => {
+      const el = document.querySelector('[data-section="' + key + '"]');
+      sections[key] = el ? el.checked : true;
+    });
+    return {
+      sections,
+      roster: rosterState,
+      context: document.getElementById("f-context").value.trim(),
+    };
   }
   return {};
 }
