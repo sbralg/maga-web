@@ -153,24 +153,29 @@ function noteCountFor(notebookId) {
   // --- empty state ---
   await page.goto(PAGE);
   await page.waitForSelector('#new-notebook', { timeout: 6000 });
-  check('empty state message shown', (await page.textContent('#root')).includes('Nenhum caderno ainda'));
+  check('empty state message shown', (await page.textContent('#root')).includes('Nenhum caderno seu ainda'));
 
   // --- seed an object-backed notebook (a cliente) with one note, plus
-  // an empty one (produto) that must NOT show up in the list ---
+  // an empty one (produto) — NEITHER should show in the default (no
+  // search) list: object-backed notebooks live on their own object's
+  // page, and cluttering this list with every one that's ever had a note
+  // written against it is exactly what the default view now avoids ---
   const clienteNb = seedObjectNotebook('cliente', 'C1', 'Maria Silva');
   seedNote(clienteNb.id, { body: 'Prefere contato à tarde' });
   seedObjectNotebook('produto', 'P1', 'Bolo de Cenoura'); // no notes yet
 
   await page.reload();
-  await page.waitForSelector('#nb-card', { timeout: 6000 });
-  check('only the notebook WITH a note is listed, got: ' + await page.textContent('#nb-card'),
-    (await page.textContent('#nb-card')).includes('Maria Silva') &&
-    !(await page.textContent('#nb-card')).includes('Bolo de Cenoura'));
-  check('the note count is shown', (await page.textContent('#nb-card')).includes('1 anotação'));
+  await page.waitForSelector('#new-notebook', { timeout: 6000 });
+  check('no object-backed notebooks in the default list, got: ' + await page.textContent('#root'),
+    (await page.textContent('#root')).includes('Nenhum caderno seu ainda') &&
+    !(await page.textContent('#root')).includes('Maria Silva') &&
+    !(await page.textContent('#root')).includes('Bolo de Cenoura'));
 
-  // --- opening an object-backed notebook shows a link back to the object,
-  // and no rename/delete actions (those belong to the object's own page) ---
-  await page.click('.row[data-id="' + clienteNb.id + '"]');
+  // --- opening an object-backed notebook directly (e.g. the ?id= a link
+  // from its own detail page would use) still works even though it's not
+  // in the default list, and shows a link back to the object, and no
+  // rename/delete actions (those belong to the object's own page) ---
+  await page.goto(PAGE + '?id=' + clienteNb.id);
   await page.waitForSelector('.notes-card', { timeout: 6000 });
   check('the object link points at clientes.html',
     (await page.getAttribute('.detail-actions a', 'href') || '').includes('clientes.html?id=C1'));
@@ -207,6 +212,16 @@ function noteCountFor(notebookId) {
   check('a user-created notebook DOES have rename/delete',
     (await page.$('#rename-nb')) !== null && (await page.$('#del-nb')) !== null);
   const userNbId = state.notebooks.find(nb => nb.name === 'Ideias para o cardápio de verão').id;
+
+  // --- unlike the object-backed notebooks above, a user-created one DOES
+  // show up in the default list, right alongside its note count ---
+  await page.click('#back');
+  await page.waitForSelector('#nb-card', { timeout: 6000 });
+  check('the user-created notebook appears in the default list, got: ' + await page.textContent('#nb-card'),
+    (await page.textContent('#nb-card')).includes('Ideias para o cardápio de verão'));
+  check('its note count shows 0 anotações', (await page.textContent('#nb-card')).includes('0 anotações'));
+  await page.click('.row[data-id="' + userNbId + '"]');
+  await page.waitForSelector('.notes-card', { timeout: 6000 });
 
   await page.click('#rename-nb');
   await page.waitForSelector('.modal-card', { timeout: 4000 });

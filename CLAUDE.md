@@ -9,6 +9,41 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-17, later): notas.html's default list now shows only user-created notebooks — object-backed ones surface via search, not the front page
+
+Direct feedback, discussed before building: as notes accumulate across
+every object detail page (clientes/eventos/produtos/receitas/
+fornecedores/ingredientes/insumos), the "Anotações" landing list would
+otherwise fill with entries nobody came here looking for — a cliente's
+notebook belongs on `clientes.html`, not competing for space with the
+user's own general-purpose notebooks. Agreed approach (option 1 of two
+discussed): filter the default view only; leave search untouched.
+
+- **`renderList()`'s no-search branch now filters `notebooks` to
+  `!notebookInfo(nb).kind`** (i.e. no object FK set — a user-created
+  notebook) before rendering `#nb-card`. Nothing is hidden outright:
+  `notes_all`-backed global search still reaches every note across every
+  notebook, object-backed included, exactly as before — this only changes
+  what's listed with an EMPTY search box.
+- **Opening an object-backed notebook still works two ways**: through a
+  search hit (already worked), or a direct `?id=` link from the object's
+  own detail page (the `load()` function's `wanted` check already reads
+  against the full, unfiltered `notebooks` array — untouched by this
+  change).
+- **The empty-state copy rewritten** from "Nenhum caderno ainda... aparecem
+  aqui automaticamente" (no longer true) to "Nenhum caderno seu ainda...
+  continuam na página do próprio objeto — busque aqui para encontrá-las".
+- **`test/notas.test.js` reworked**: the old "only the notebook WITH a note
+  is listed" case (testing the SERVER-side filter — an empty object-backed
+  notebook never lists) now additionally confirms NEITHER a with-notes NOR
+  an empty object-backed notebook shows in the default view, and opens the
+  with-notes one via a direct `?id=` navigation instead of clicking a row
+  that no longer exists there. New coverage: a freshly created user-made
+  notebook DOES appear in the default list with its note count, right
+  after creation.
+- Full 17-file suite green.
+- **Already deployed** — pushed straight to `main`.
+
 ## Status (2026-09-17): notas.html — the back link no longer wraps on a long object name, and "Ver X" is now a button in the same right-aligned row as Renomear/Remover
 
 Two more direct polish requests on the notebook-detail view.
@@ -1573,9 +1608,11 @@ build step, no framework:
   manual task creation with an optional due date, a ⭐ star for importance,
   and an edit modal for text/category/due date/delete). Renamed from
   `index.html` when the dashboard took over that filename.
-- `notas.html` — every notebook in one place plus a global search across
-  every note's text; opening an object-backed notebook (cliente/evento/
-  produto/receita/fornecedor/ingrediente/insumo) links back to that
+- `notas.html` — the user's own general-purpose notebooks by default, plus
+  a global search across every note's text (object-backed notebooks
+  included) for the ones that live on their own object's page instead;
+  opening an object-backed notebook (cliente/evento/produto/receita/
+  fornecedor/ingrediente/insumo) via search or a direct link back to that
   object's own page, opening a user-created one offers rename/delete.
   Env-gated like `hoje.html`/`tarefas.html` — this account's own personal
   data, hidden while looking at a different environment.

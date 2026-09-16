@@ -11,16 +11,20 @@
 <link rel="apple-touch-icon" href="assets/icon-192.png">
 <title>Anotações</title>
 <!--
-  Data-free shell for Anotações — every notebook in one place, plus a
-  search across every note's text. A notebook is either OBJECT-BACKED
-  (one per cliente/evento/produto/receita/fornecedor/ingrediente/insumo,
+  Data-free shell for Anotações. A notebook is either OBJECT-BACKED (one
+  per cliente/evento/produto/receita/fornecedor/ingrediente/insumo,
   created lazily the moment a note is first written against that object —
   see shared-notes.js, used identically on all seven of those detail
   pages) or USER-CREATED (no object behind it, made from the "+ Novo
-  caderno" button here). Both kinds render through the SAME
-  wireNotesPanel() once opened — this page always opens by notebook id
-  (kind:"notebook"), never by {kind, ref}, since every notebook already
-  has an id the moment it's listed here.
+  caderno" button here). The default (no search) list shows only
+  USER-CREATED notebooks — an object-backed one already has a home on its
+  own object's page, and listing every object that's ever had a note
+  written against it here would just be clutter. A search across every
+  note's text still reaches object-backed notebooks too (renderList()'s
+  no-search branch is the one place this filter lives). Both kinds render
+  through the SAME wireNotesPanel() once opened — this page always opens
+  by notebook id (kind:"notebook"), never by {kind, ref}, since every
+  notebook already has an id by the time it's reachable here.
 
   Env-gated like Hoje/Tarefas: personal daily data and personal notes are
   the same class of thing, so this page is hidden and blocked on a
@@ -220,11 +224,20 @@ async function renderList(term){
       ? '<p class="msg small">Nenhuma anotação encontrada.</p>'
       : '<div class="card search-hits" id="hits-card">' + hits.map(noteHitRowHtml).join("") + '</div>';
   }else{
-    listHtml = notebooks.length === 0
-      ? '<p class="msg small">Nenhum caderno ainda. Anotações escritas em um cliente, ' +
-        'evento, produto, receita, fornecedor, ingrediente ou insumo aparecem aqui ' +
-        'automaticamente, ou crie um caderno seu.</p>'
-      : '<div class="card" id="nb-card">' + notebooks.map(notebookRowHtml).join("") + '</div>';
+    // The default (no search) list shows only USER-CREATED notebooks —
+    // an object-backed one (a cliente, an insumo, ...) already has a home
+    // on its own detail page, and as notes accumulate across the whole
+    // app this list would otherwise fill with entries nobody came here
+    // looking for. They're never hidden, only not listed by default: the
+    // search above still reaches every note via notes_all, object-backed
+    // included, and opening one from a hit (or a direct ?id= link) works
+    // exactly as before.
+    const userNotebooks = notebooks.filter(nb => !notebookInfo(nb).kind);
+    listHtml = userNotebooks.length === 0
+      ? '<p class="msg small">Nenhum caderno seu ainda. Anotações escritas em um cliente, ' +
+        'evento, produto, receita, fornecedor, ingrediente ou insumo continuam na página ' +
+        'do próprio objeto — busque aqui para encontrá-las, ou crie um caderno seu.</p>'
+      : '<div class="card" id="nb-card">' + userNotebooks.map(notebookRowHtml).join("") + '</div>';
   }
 
   root.innerHTML = navHeader("Anotações") +
