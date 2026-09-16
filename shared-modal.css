@@ -38,6 +38,15 @@
   width:100%;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
   border:1px solid var(--border-strong);background:var(--card);color:var(--text);margin-bottom:14px;
 }
+/* An unstyled <textarea> falls back to the browser default (a monospace
+   font, a narrow intrinsic width) instead of matching the text input right
+   above it — shared-notes.js's edit-note textarea (#note-edit-body) hit
+   this exactly, rendering tiny and out of place in the modal. */
+.modal-card textarea{
+  width:100%;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
+  border:1px solid var(--border-strong);background:var(--card);color:var(--text);
+  margin-bottom:14px;resize:vertical;min-height:120px;
+}
 .modal-card .hint{font-size:12px;color:var(--muted);line-height:1.4;margin:-6px 0 16px}
 .modal-card select{
   font:inherit;font-size:15px;padding:9px 10px;border-radius:10px;

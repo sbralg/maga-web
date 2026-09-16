@@ -177,6 +177,22 @@ function noteCountFor(notebookId) {
   check('no rename/delete controls for an object-backed notebook',
     (await page.$('#rename-nb')) === null && (await page.$('#del-nb')) === null);
   check('the existing note is shown', (await page.textContent('.notes-card')).includes('Prefere contato à tarde'));
+
+  // --- the edit-note modal's textarea must actually be styled, not fall
+  // back to the browser default (a real reported bug: an unstyled
+  // textarea renders tiny/monospace instead of matching the title input
+  // right above it — see shared-modal.css's `.modal-card textarea` rule) ---
+  await page.click('.note-body-wrap');
+  await page.waitForSelector('#note-edit-body', { timeout: 4000 });
+  const widths = await page.evaluate(() => ({
+    title: document.getElementById('note-edit-title').getBoundingClientRect().width,
+    body: document.getElementById('note-edit-body').getBoundingClientRect().width,
+  }));
+  check('the note-edit textarea is as wide as the title field above it, got: ' + JSON.stringify(widths),
+    Math.abs(widths.title - widths.body) < 1);
+  await page.click('#note-edit-cancel');
+  await page.waitForSelector('.notes-card', { timeout: 4000 });
+
   await page.click('#back');
   await page.waitForSelector('#new-notebook', { timeout: 6000 });
 

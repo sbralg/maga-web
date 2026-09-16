@@ -9,6 +9,35 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-16, even later): real bug — the edit-note modal's textarea was unstyled, rendering tiny and monospace
+
+Reported directly with a screenshot: the "Anotação" textarea in the edit
+modal looked much smaller than the "Título" field right above it, in a
+different (monospace) font.
+
+- **Root cause: `shared-modal.css` had never had a `textarea` rule at
+  all** — only `.modal-card input[type=text]:not(.num-input)` was styled.
+  `noteEditModal()`'s `#note-edit-body` (`shared-notes.js`) is the first
+  `<textarea>` any modal in this app has ever used, so it fell straight
+  through to the browser's UA-agent default: a small intrinsic width (the
+  default `cols`) and a monospace font, instead of matching the text input
+  next to it.
+- **Fix: new `.modal-card textarea` rule**, mirroring the existing text-
+  input rule (full width, same font/padding/border-radius) plus
+  `resize:vertical;min-height:120px` so a longer note has room without the
+  box needing to be dragged open first.
+- **New regression assertion in `test/notas.test.js`**: opens a note's
+  edit modal and compares `#note-edit-title`'s and `#note-edit-body`'s
+  computed widths via `getBoundingClientRect()` — a class-name-only check
+  could not have caught this (the textarea gets no special class, it's
+  purely a missing element-selector rule), so this measures actual layout,
+  the same lesson this file's CSS-bug entries already carry (the icon-btn
+  hit-target entry, the calendar-icon `color`-vs-`filter` entry). Confirmed
+  it fails against the pre-fix CSS first (`git stash` just
+  `shared-modal.css`, re-run: `172.9px` vs `324.9px`) before trusting it.
+- Full 17-file suite green.
+- **Already deployed** — pushed straight to `main`.
+
 ## Status (2026-09-16, later): Anotações folded into "Dia a dia"; a real bug — its hamburger button was dead on arrival
 
 Direct feedback on the entry directly below, same day: a standalone
