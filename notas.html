@@ -56,7 +56,7 @@
   .addrow-btn{margin:8px 0 0}
   button.primary.full{width:100%}
   .search-hits .row .snippet{font-size:12.5px;color:var(--text);margin:2px 0 0;white-space:pre-wrap;word-wrap:break-word}
-  .detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px}
+  .detail-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin:14px 0 18px}
   .obj-link{font-size:13px;margin:0 0 14px}
   .card.pad{padding:16px}
 </style>
@@ -118,7 +118,7 @@ function navHeader(title, backAction){
     '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
   if(!backAction) return topRow;
   return topRow + '<div class="subheader">' +
-    '<button class="link" id="back">← Anotações</button>' +
+    '<button class="link" id="back">← Cadernos</button>' +
     (title ? '<h2 class="nb-title" id="nb-title">' + esc(title) + '</h2>' : '') +
   '</div>';
 }

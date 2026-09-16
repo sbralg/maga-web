@@ -390,8 +390,10 @@ function computeProdutoCost(id) {
   await page.goto(PAGE + '?id=' + someProduto.id);
   await page.waitForSelector('.notes-card', { timeout: 6000 });
   await page.waitForFunction(() => document.querySelector('.notes-card .note-empty'), null, { timeout: 6000 });
-  await page.fill('.note-add-body', 'Cliente pediu embalagem reforçada');
   await page.click('.note-add-btn');
+  await page.waitForSelector('#note-new-body', { timeout: 4000 });
+  await page.fill('#note-new-body', 'Cliente pediu embalagem reforçada');
+  await page.click('#note-new-save');
   await page.waitForSelector('.note-row', { timeout: 6000 });
   check('a note was created against the produto notebook',
     state.notes.some(n => n.body === 'Cliente pediu embalagem reforçada'));

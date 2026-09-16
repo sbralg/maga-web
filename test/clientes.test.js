@@ -338,8 +338,10 @@ function handleNotesAction(body) {
   await page.waitForSelector('.notes-card', { timeout: 6000 });
   await page.waitForFunction(() => document.querySelector('.notes-card .note-empty'), null, { timeout: 6000 });
   check('empty notes state shown', (await page.textContent('.notes-card')).includes('Nenhuma anotação'));
-  await page.fill('.note-add-body', 'Prefere contato à tarde');
   await page.click('.note-add-btn');
+  await page.waitForSelector('#note-new-body', { timeout: 4000 });
+  await page.fill('#note-new-body', 'Prefere contato à tarde');
+  await page.click('#note-new-save');
   await page.waitForSelector('.note-row', { timeout: 6000 });
   check('one note was created', state.notes.length === 1);
   check('the note shows its own text', (await page.textContent('.note-row')).includes('Prefere contato à tarde'));

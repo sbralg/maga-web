@@ -26,12 +26,7 @@ function noteTitle(note){
 
 function notesPanelHtml(){
   return (
-    '<h3>📓 Anotações</h3>' +
-    '<div class="note-add">' +
-      '<input type="text" class="note-add-title" placeholder="Título (opcional)">' +
-      '<textarea class="note-add-body" placeholder="Escrever uma nova anotação..." rows="2"></textarea>' +
-      '<button class="primary note-add-btn">+ Adicionar</button>' +
-    '</div>' +
+    '<button class="primary note-add-btn">+ Adicionar</button>' +
     '<div class="note-list"><p class="note-empty">Carregando…</p></div>'
   );
 }
@@ -48,8 +43,6 @@ function notesNotDeployed(e){
 // IS the whole container — either works, since every selector below is
 // scoped to it). kind/ref: e.g. ("cliente", c.id) or ("insumo", gtin).
 async function wireNotesPanel(container, kind, ref){
-  const addTitle = container.querySelector(".note-add-title");
-  const addBody = container.querySelector(".note-add-body");
   const addBtn = container.querySelector(".note-add-btn");
   const listEl = container.querySelector(".note-list");
 
@@ -122,14 +115,14 @@ async function wireNotesPanel(container, kind, ref){
   }
 
   async function add(){
-    const body = addBody.value.trim();
-    if(!body) return;
-    const title = addTitle.value.trim() || undefined;
+    const result = await noteAddModal();
+    if(!result) return;
+    const title = result.title || undefined;
     addBtn.disabled = true;
     try{
       // Once load() has run, notebookId is always known — sending it
       // directly means note_create never needs {kind, ref} at all here.
-      const res = await api("note_create", { notebook_id: notebookId, title, body });
+      const res = await api("note_create", { notebook_id: notebookId, title, body: result.body });
       notebookId = notebookId || res.note.notebook_id;
       notes.unshift(res.note);
       // A newly-added note is never pinned, so it belongs first among
@@ -137,8 +130,6 @@ async function wireNotesPanel(container, kind, ref){
       // full re-sort for the one insertion this causes.
       notes.sort((a, b) => (b.pinned - a.pinned) || 0);
       redraw();
-      addTitle.value = "";
-      addBody.value = "";
     }catch(e){
       listToast(notesNotDeployed(e)
         ? "Anotações ainda não disponíveis — republique a Edge Function."
@@ -193,6 +184,48 @@ async function wireNotesPanel(container, kind, ref){
 
   addBtn.addEventListener("click", add);
   await load();
+}
+
+// title/body creator for a brand-new note, opened by the panel's single
+// "+ Adicionar" button — no inline fields sit on the page itself, so
+// capture is a deliberate tap-then-type instead of always-visible real
+// estate on every object detail page. No "Remover" button, since there's
+// nothing to remove yet (that's noteEditModal's job, once a note exists).
+// Resolves {title, body} | null.
+function noteAddModal(){
+  return new Promise(resolve => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "modal-backdrop";
+    backdrop.innerHTML =
+      '<div class="modal-card">' +
+        '<h3>Nova anotação</h3>' +
+        '<label for="note-new-title">Título (opcional)</label>' +
+        '<input type="text" id="note-new-title" value="">' +
+        '<label for="note-new-body">Anotação</label>' +
+        '<textarea id="note-new-body" rows="6"></textarea>' +
+        '<div class="modal-actions">' +
+          '<button class="cancel" id="note-new-cancel">Cancelar</button>' +
+          '<button class="save" id="note-new-save">Salvar</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(backdrop);
+    const close = (result) => {
+      backdrop.remove();
+      document.removeEventListener("keydown", onKey);
+      resolve(result);
+    };
+    function onKey(e){ if(e.key === "Escape") close(null); }
+    document.addEventListener("keydown", onKey);
+    backdrop.addEventListener("click", e => { if(e.target === backdrop) close(null); });
+    document.getElementById("note-new-cancel").addEventListener("click", () => close(null));
+    document.getElementById("note-new-save").addEventListener("click", () => {
+      const title = document.getElementById("note-new-title").value.trim();
+      const body = document.getElementById("note-new-body").value.trim();
+      if(!body) return; // caller's api() call will 400 on empty anyway, but this avoids the round trip
+      close({ title, body });
+    });
+    document.getElementById("note-new-title").focus();
+  });
 }
 
 // title/body/pinned editor, with a "Remover" button in the footer —

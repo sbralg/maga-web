@@ -229,8 +229,10 @@ function noteCountFor(notebookId) {
   await page.fill('#prompt-input', 'Lista de fornecedores para testar');
   await page.click('#prompt-ok');
   await page.waitForSelector('.notes-card', { timeout: 6000 });
-  await page.fill('.note-add-body', 'Ligar para o novo fornecedor de farinha');
   await page.click('.note-add-btn');
+  await page.waitForSelector('#note-new-body', { timeout: 4000 });
+  await page.fill('#note-new-body', 'Ligar para o novo fornecedor de farinha');
+  await page.click('#note-new-save');
   await page.waitForSelector('.note-row', { timeout: 6000 });
   const nonEmptyNbId = state.notebooks.find(nb => nb.name === 'Lista de fornecedores para testar').id;
   await page.click('#del-nb');

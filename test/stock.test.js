@@ -844,8 +844,10 @@ function handleMove(body) {
   // --- notes panel (insumo's ref is a gtin, not a uuid) ---
   await page.waitForSelector('.notes-card', { timeout: 6000 });
   await page.waitForFunction(() => document.querySelector('.notes-card .note-empty'), null, { timeout: 6000 });
-  await page.fill('.note-add-body', 'Pacote costuma vir amassado nesse fornecedor');
   await page.click('.note-add-btn');
+  await page.waitForSelector('#note-new-body', { timeout: 4000 });
+  await page.fill('#note-new-body', 'Pacote costuma vir amassado nesse fornecedor');
+  await page.click('#note-new-save');
   await page.waitForSelector('.note-row', { timeout: 6000 });
   check('a note was created against the insumo notebook',
     state.notes.some(n => n.body === 'Pacote costuma vir amassado nesse fornecedor'));

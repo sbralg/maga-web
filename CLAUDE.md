@@ -9,6 +9,46 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-16, latest): notes panel simplified to a single "+ Adicionar" button, opening a modal instead of always-visible fields; two notas.html polish requests
+
+Direct feedback on the shared notes panel (`shared-notes.js`, dropped into
+all eight places it appears — the seven object detail pages plus
+`notas.html`'s own notebook view): when a notebook is open, show only
+"+ Adicionar"; drop the "📓 Anotações" heading and the always-visible
+title/body fields, and open a note by clicking the button instead.
+Two follow-up polish requests on `notas.html` specifically landed the
+same session.
+
+- **`notesPanelHtml()`** now renders just `<button class="note-add-btn">+
+  Adicionar</button>` plus the note list — no heading, no inline
+  `<input>`/`<textarea>`. `shared-notes.css`'s now-dead
+  `.note-add`/`.note-add-title`/`.note-add-body` rules were removed; the
+  button gets a plain `.note-add-btn{margin:0 0 16px}` for spacing before
+  the list.
+- **New `noteAddModal()`** in `shared-notes.js`, the same modal shell as
+  the existing `noteEditModal()` (title/body fields, Cancelar/Salvar) but
+  with no "Remover" button — there's nothing to remove yet for a note that
+  doesn't exist. `wireNotesPanel()`'s `add()` now opens this modal on the
+  button click and posts `note_create` with whatever it resolves, instead
+  of reading two always-present form fields.
+- **Applies to all eight consumers**, since this is the one shared
+  component — not scoped to `notas.html` alone. All 8 existing add-note
+  test assertions (in `clientes.test.js`/`eventos.test.js`/
+  `fornecedores.test.js`/`ingredientes.test.js`/`notas.test.js`/
+  `produtos.test.js`/`receitas.test.js`/`stock.test.js`) updated from
+  filling `.note-add-body` directly to clicking `.note-add-btn`, waiting
+  for `#note-new-body`, filling it, and clicking `#note-new-save`.
+- **`notas.html` polish, same session**: the back link out of an open
+  notebook now reads "← Cadernos" (was "← Anotações" — confusing next to
+  the page's own "Anotações" header just above it). `.detail-actions`
+  (the Renomear/Remover row on a user-created notebook) gained
+  `justify-content:flex-end`, so those two buttons sit right-aligned
+  under the notebook's name instead of left-aligned under the back link —
+  this page-local style only, no other page shares this exact class
+  content.
+- Full 17-file suite green (`for t in test/*.test.js; do node "$t"; done`).
+- **Already deployed** — pushed straight to `main`.
+
 ## Status (2026-09-16, even later): real bug — the edit-note modal's textarea was unstyled, rendering tiny and monospace
 
 Reported directly with a screenshot: the "Anotação" textarea in the edit

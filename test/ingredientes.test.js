@@ -455,8 +455,10 @@ function handleNotesAction(body) {
   await page.goto(PAGE + '?id=I2');
   await page.waitForSelector('.notes-card', { timeout: 6000 });
   await page.waitForFunction(() => document.querySelector('.notes-card .note-empty'), null, { timeout: 6000 });
-  await page.fill('.note-add-body', 'Comprar sempre o tamanho 20cm');
   await page.click('.note-add-btn');
+  await page.waitForSelector('#note-new-body', { timeout: 4000 });
+  await page.fill('#note-new-body', 'Comprar sempre o tamanho 20cm');
+  await page.click('#note-new-save');
   await page.waitForSelector('.note-row', { timeout: 6000 });
   check('a note was created against the ingredient notebook',
     state.notes.some(n => n.body === 'Comprar sempre o tamanho 20cm'));
