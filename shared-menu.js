@@ -15,7 +15,6 @@
 // not a nesting level, so nothing collapses or hides.
 const MENU_GROUPS = {
   dia: "Dia a dia",
-  anotacoes: "Anotações",
   producao: "Produção",
   negocio: "Negócio",
   conta: "Conta",
@@ -32,7 +31,7 @@ const MENU_ITEMS = [
   { page: "home", href: "index.html?dash=1", emoji: "🏠", label: "Home" },
   { page: "hoje", href: "hoje.html", emoji: "☀️", label: "Hoje", group: "dia" },
   { page: "tarefas", href: "tarefas.html", emoji: "✓", label: "Tarefas", group: "dia" },
-  { page: "notas", href: "notas.html", emoji: "📓", label: "Anotações", group: "anotacoes" },
+  { page: "notas", href: "notas.html", emoji: "📓", label: "Anotações", group: "dia" },
   { page: "compras", href: "compras.html", emoji: "🛒", label: "Compras", group: "producao" },
   { page: "estoque", href: "estoque.html", emoji: "📦", label: "Estoque", group: "producao" },
   { page: "insumos", href: "insumos.html", emoji: "🥖", label: "Insumos", group: "producao" },
@@ -46,19 +45,19 @@ const MENU_ITEMS = [
   { page: "preferencias", href: "preferencias.html", emoji: "⚙️", label: "Preferências", group: "conta" },
 ];
 
-// The "dia" and "anotacoes" groups (Hoje, Tarefas, Anotações) are this
-// account's own personal data - the daily-summary triage, the task
-// checklist, and personal notes - not something that belongs on screen
-// while looking at a DIFFERENT, non-default environment (see
-// shared-api.js's isDefaultEnv() comment: e.g. Bia opening "dev", which is
-// Alexandre's real household data reused as dev data). Every menu-item
-// consumer (the drawer here, index.html's dashboard tiles) reads through
-// this instead of MENU_ITEMS directly, so the two can't drift.
+// The "dia" group (Hoje, Tarefas, Anotações) is this account's own personal
+// data - the daily-summary triage, the task checklist, and personal notes -
+// not something that belongs on screen while looking at a DIFFERENT,
+// non-default environment (see shared-api.js's isDefaultEnv() comment: e.g.
+// Bia opening "dev", which is Alexandre's real household data reused as dev
+// data). Every menu-item consumer (the drawer here, index.html's dashboard
+// tiles) reads through this instead of MENU_ITEMS directly, so the two
+// can't drift.
 // Pages "home" and "preferencias" can never be hidden by an environment's
 // own menu.hidden preference (see preferencias.html's Aplicativo section) -
 // without them, hiding everything would leave no way back to undo it.
 const MENU_ITEMS_NEVER_HIDDEN = new Set(["home", "preferencias"]);
-const ENV_GATED_GROUPS = new Set(["dia", "anotacoes"]);
+const ENV_GATED_GROUPS = new Set(["dia"]);
 
 function visibleMenuItems(){
   const items = isDefaultEnv() ? MENU_ITEMS : MENU_ITEMS.filter(item => !ENV_GATED_GROUPS.has(item.group));
