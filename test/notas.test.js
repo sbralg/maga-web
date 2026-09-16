@@ -173,7 +173,7 @@ function noteCountFor(notebookId) {
   await page.click('.row[data-id="' + clienteNb.id + '"]');
   await page.waitForSelector('.notes-card', { timeout: 6000 });
   check('the object link points at clientes.html',
-    (await page.getAttribute('.obj-link a', 'href') || '').includes('clientes.html?id=C1'));
+    (await page.getAttribute('.detail-actions a', 'href') || '').includes('clientes.html?id=C1'));
   check('no rename/delete controls for an object-backed notebook',
     (await page.$('#rename-nb')) === null && (await page.$('#del-nb')) === null);
   check('the existing note is shown', (await page.textContent('.notes-card')).includes('Prefere contato à tarde'));
@@ -203,7 +203,7 @@ function noteCountFor(notebookId) {
   await page.click('#prompt-ok');
   await page.waitForSelector('.notes-card', { timeout: 6000 });
   check('a user-created notebook has no object link',
-    (await page.$('.obj-link')) === null);
+    (await page.$('.detail-actions a')) === null);
   check('a user-created notebook DOES have rename/delete',
     (await page.$('#rename-nb')) !== null && (await page.$('#del-nb')) !== null);
   const userNbId = state.notebooks.find(nb => nb.name === 'Ideias para o cardápio de verão').id;

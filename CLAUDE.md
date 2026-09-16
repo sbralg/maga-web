@@ -9,6 +9,38 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-17): notas.html — the back link no longer wraps on a long object name, and "Ver X" is now a button in the same right-aligned row as Renomear/Remover
+
+Two more direct polish requests on the notebook-detail view.
+
+- **The back link ("← Cadernos") could wrap onto two lines** when the
+  object's own name was long enough to push the flex `.subheader` row's
+  other child (the back button) below its natural width — `.subheader`
+  has `min-width:0` so its children can shrink, and the button had
+  nothing stopping it from shrinking. Fixed with `#back{flex:none;
+  white-space:nowrap}`, so the title (which already wraps via
+  `.nb-title{word-wrap:break-word}`) is the only side allowed to grow
+  taller.
+- **"Ver X →" (the link back to an object-backed notebook's own record)
+  is now a real button**, sharing the `.detail-actions` row (right-
+  aligned, below the title) and the same `primary small alt` styling as
+  Renomear — previously a plain `<p class="obj-link">` link sitting above
+  the card, visually disconnected from the button row. New `a.primary`
+  rule in `shared-base.css` (alongside the existing `button.primary`) is
+  what makes a real `<a href>` look like a button — kept as a genuine
+  link rather than a button+onclick fake-navigation, so middle-click/
+  keyboard/etc. all still work. No other element uses `class="primary"`
+  today, so this stays scoped to the two tags that need it rather than a
+  blanket `.primary` selector.
+  - **They never actually appear together**: an object-backed notebook
+    never has Renomear/Remover, and a user-created one never has "Ver
+    X" — so in practice this row only ever shows one or the other, never
+    both side by side. Built to share one row/style regardless, in case
+    that ever changes.
+- `test/notas.test.js`'s two `.obj-link`-selector assertions updated to
+  `.detail-actions a`. Full 17-file suite green.
+- **Already deployed** — pushed straight to `main`.
+
 ## Status (2026-09-16, latest): notes panel simplified to a single "+ Adicionar" button, opening a modal instead of always-visible fields; two notas.html polish requests
 
 Direct feedback on the shared notes panel (`shared-notes.js`, dropped into

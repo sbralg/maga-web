@@ -81,21 +81,27 @@ body{
 .icon-btn.danger{color:var(--danger)}
 .icon-btn.danger:hover{background:rgba(220,38,38,.15);color:var(--danger)}
 
-button.primary{
+/* a.primary is the one non-button case: a real <a href> styled to match,
+   for a navigation action that belongs in a button row (e.g. notas.html's
+   "Ver X →" sitting next to Renomear) - kept a real link rather than a
+   button+onclick fake-nav so it stays keyboard/middle-click/etc. friendly.
+   No other element in this app uses class="primary", so this stays scoped
+   to the two tags that actually need it rather than a blanket `.primary`. */
+button.primary, a.primary{
   font:inherit;font-weight:600;font-size:16px;border:none;border-radius:14px;
   padding:15px 20px;min-height:52px;cursor:pointer;width:100%;max-width:640px;
-  background:var(--accent);color:var(--accent-text);
+  background:var(--accent);color:var(--accent-text);text-decoration:none;box-sizing:border-box;
   display:flex;align-items:center;justify-content:center;gap:8px;
   transition:filter .15s ease,transform .1s ease;
 }
-button.primary:hover:not(:disabled){filter:brightness(1.1)}
-button.primary:active:not(:disabled){transform:scale(.98)}
+button.primary:hover:not(:disabled), a.primary:hover{filter:brightness(1.1)}
+button.primary:active:not(:disabled), a.primary:active{transform:scale(.98)}
 button.primary:disabled{opacity:.5}
-button.primary.small{min-height:44px;padding:10px 16px;font-size:14px;width:auto;flex:none}
+button.primary.small, a.primary.small{min-height:44px;padding:10px 16px;font-size:14px;width:auto;flex:none}
 /* A secondary action sitting next to a primary one (e.g. the scan button
    beside +, or "Editar dados" beside "Remover"). */
-button.primary.alt{background:rgba(127,127,127,.16);color:var(--text)}
-button.primary.alt:hover:not(:disabled){background:rgba(127,127,127,.26);filter:none}
+button.primary.alt, a.primary.alt{background:rgba(127,127,127,.16);color:var(--text)}
+button.primary.alt:hover:not(:disabled), a.primary.alt:hover{background:rgba(127,127,127,.26);filter:none}
 button.primary.alt.danger{color:var(--danger)}
 button.primary.alt.danger:hover:not(:disabled){background:rgba(220,38,38,.14)}
 

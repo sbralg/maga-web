@@ -57,7 +57,7 @@
   button.primary.full{width:100%}
   .search-hits .row .snippet{font-size:12.5px;color:var(--text);margin:2px 0 0;white-space:pre-wrap;word-wrap:break-word}
   .detail-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin:14px 0 18px}
-  .obj-link{font-size:13px;margin:0 0 14px}
+  #back{flex:none;white-space:nowrap}
   .card.pad{padding:16px}
 </style>
 </head>
@@ -271,24 +271,33 @@ async function renderList(term){
 
 // ---- notebook detail ----
 
+// The label after "Ver " in the object-backed notebook's button — mirrors
+// NOTEBOOK_KIND_LINKS' own key set.
+const KIND_OBJ_LABEL = {
+  cliente: "cliente", evento: "evento", produto: "produto", receita: "receita",
+  fornecedor: "fornecedor", ingredient: "ingrediente", insumo: "insumo",
+};
+
 function openNotebook(id){
   const nb = notebooks.find(n => n.id === id);
   const info = nb ? notebookInfo(nb) : { kind: null, label: "Caderno", href: null };
 
+  // "Ver X" (object-backed) and Renomear/Remover (user-created) never
+  // apply to the same notebook - but building one row from whichever
+  // applies keeps them visually consistent (same right-aligned button
+  // row) instead of two differently-styled treatments.
+  const actions = [];
+  if(info.href){
+    actions.push('<a class="primary small alt" href="' + esc(info.href) + '">Ver ' +
+      (KIND_OBJ_LABEL[info.kind] || "objeto") + ' →</a>');
+  }
+  if(info.kind === null && nb){
+    actions.push('<button class="primary small alt" id="rename-nb">✎ Renomear</button>');
+    actions.push('<button class="primary small alt danger" id="del-nb">🗑 Remover</button>');
+  }
+
   root.innerHTML = navHeader(info.label, () => { history.replaceState(null, "", "notas.html"); renderList(""); }) +
-    (info.href
-      ? '<p class="obj-link"><a class="link" href="' + esc(info.href) + '">Ver ' +
-          (info.kind === "cliente" ? "cliente" : info.kind === "evento" ? "evento" :
-           info.kind === "produto" ? "produto" : info.kind === "receita" ? "receita" :
-           info.kind === "fornecedor" ? "fornecedor" : info.kind === "ingredient" ? "ingrediente" : "insumo") +
-          ' →</a></p>'
-      : '') +
-    (info.kind === null && nb
-      ? '<div class="detail-actions">' +
-          '<button class="primary small alt" id="rename-nb">✎ Renomear</button>' +
-          '<button class="primary small alt danger" id="del-nb">🗑 Remover</button>' +
-        '</div>'
-      : '') +
+    (actions.length ? '<div class="detail-actions">' + actions.join("") + '</div>' : '') +
     '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
   wireNav(() => { history.replaceState(null, "", "notas.html"); renderList(""); });
