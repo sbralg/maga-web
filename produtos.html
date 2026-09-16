@@ -36,6 +36,7 @@
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-inputs.css">
+<link rel="stylesheet" href="shared-notes.css">
 <style>
   body{ padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom)); }
   .wrap{max-width:640px;margin:0 auto}
@@ -126,6 +127,7 @@ const PAGE_LOGIN = {
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
 <script src="shared-produto-panel.js"></script>
+<script src="shared-notes.js"></script>
 <script src="shared-pwa.js"></script>
 <script>
 
@@ -372,7 +374,6 @@ function openProdutoModal(p, presetFornecedor){
   let mAtacadoStr = isEdit ? pct(p.margin_atacado) : "65";
   let mDistStr = isEdit ? pct(p.margin_distribuidor) : "30";
   let mVarejoStr = isEdit ? pct(p.margin_varejo) : "40";
-  let notes = isEdit ? (p.notes || "") : "";
 
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
@@ -435,8 +436,6 @@ function openProdutoModal(p, presetFornecedor){
             '<span class="field"><input class="num-input" type="text" inputmode="decimal" id="pr-m-varejo" ' +
               'value="' + esc(mVarejoStr) + '"></span></div>' +
         '</div>' +
-        '<label for="pr-notes">Notas (opcional)</label>' +
-        '<input type="text" id="pr-notes" value="' + esc(notes) + '">' +
         '<div class="modal-actions">' +
           '<button class="cancel" id="pr-cancel">Cancelar</button>' +
           '<button class="save" id="pr-ok">Salvar</button>' +
@@ -444,7 +443,6 @@ function openProdutoModal(p, presetFornecedor){
       '</div>';
 
     backdrop.querySelector("#pr-name-i").addEventListener("input", (e) => { name = e.target.value; });
-    backdrop.querySelector("#pr-notes").addEventListener("input", (e) => { notes = e.target.value; });
 
     const itemsEl = backdrop.querySelector("#pr-items");
     const packMinEl = backdrop.querySelector("#pr-pack-min");
@@ -505,7 +503,6 @@ function openProdutoModal(p, presetFornecedor){
         margin_atacado: (parseQtyInput(mAtacadoEl.value) || 0) / 100,
         margin_distribuidor: (parseQtyInput(mDistEl.value) || 0) / 100,
         margin_varejo: (parseQtyInput(mVarejoEl.value) || 0) / 100,
-        notes: backdrop.querySelector("#pr-notes").value.trim() || null,
       };
       try{
         if(isEdit){
@@ -580,9 +577,11 @@ function renderProduto(data){
       '<button class="primary small alt" id="edit-produto">✎ Editar</button>' +
       '<button class="primary small alt danger" id="del-produto">🗑 Remover</button>' +
     '</div>' +
-    '<div id="pp-panel"></div>';
+    '<div id="pp-panel"></div>' +
+    '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
   wireNav(loadProdutos);
+  wireNotesPanel(root.querySelector(".notes-card"), "produto", p.id);
 
   document.getElementById("prod-name").addEventListener("click", () => openProdutoModal(p));
   document.getElementById("edit-produto").addEventListener("click", () => openProdutoModal(p));

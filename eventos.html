@@ -32,6 +32,7 @@
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-inputs.css">
+<link rel="stylesheet" href="shared-notes.css">
 <style>
   body{
     padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
@@ -174,6 +175,7 @@ const PAGE_LOGIN = {
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
+<script src="shared-notes.js"></script>
 <script src="shared-pwa.js"></script>
 <script>
 
@@ -617,8 +619,6 @@ function openCreateModal(){
       '<label for="nv-date">Data do evento (opcional)</label>' +
       '<input type="date" id="nv-date" style="width:100%;margin-bottom:14px;padding:10px 12px;' +
         'border-radius:10px;border:1px solid var(--border-strong);background:var(--card);color:var(--text)">' +
-      '<label for="nv-notes">Notas (opcional)</label>' +
-      '<input type="text" id="nv-notes" placeholder="detalhes, origem do contato…">' +
       '<div class="modal-actions">' +
         '<button class="cancel" id="nv-cancel">Cancelar</button>' +
         '<button class="save" id="nv-ok">Criar</button>' +
@@ -648,10 +648,9 @@ function openCreateModal(){
     if(!name){ alert("O nome do evento não pode ficar vazio."); return; }
     const status = backdrop.querySelector("#nv-status").value;
     const event_date = backdrop.querySelector("#nv-date").value || null;
-    const notes = backdrop.querySelector("#nv-notes").value.trim() || null;
     try{
       const res = await api("evento_create", {
-        cliente_id: chosenCliente.id, name, status, event_date, notes,
+        cliente_id: chosenCliente.id, name, status, event_date,
       });
       close();
       eventos = [];
@@ -773,9 +772,11 @@ function renderEvento(data){
     '<h3>Itens</h3>' + itensHtml +
     '<button class="primary small alt addrow-btn" id="add-item">+ Item</button>' +
     '<h3>Pagamentos</h3>' + paysHtml +
-    '<button class="primary addrow-btn" id="confirm-pay">Confirmar pagamento</button>';
+    '<button class="primary addrow-btn" id="confirm-pay">Confirmar pagamento</button>' +
+    '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
   wireNav(loadEventos);
+  wireNotesPanel(root.querySelector(".notes-card"), "evento", v.id);
 
   document.getElementById("evento-name").addEventListener("click", async () => {
     const name = await promptModal("Editar evento", "Nome", v.name);

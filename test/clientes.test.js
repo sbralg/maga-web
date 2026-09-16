@@ -48,10 +48,60 @@ function serve() {
   });
 }
 
-const state = { clientes: [], eventos: [], pagamentos: [], seq: 0 };
+const state = { clientes: [], eventos: [], pagamentos: [], notebooks: [], notes: [], seq: 0 };
 const uid = (p) => p + (++state.seq);
 
 function clienteOf(id) { return state.clientes.find(c => c.id === id); }
+
+// Minimal notebooks/notes fake, shared in shape across every page's test
+// that loads shared-notes.js — a notebook is get-or-created lazily by
+// {kind, ref}, matching maga-api's own domains/notas.ts.
+function notebookFor(kind, ref) {
+  let nb = state.notebooks.find(n => n[kind + '_id'] === ref);
+  if (!nb) {
+    nb = { id: uid('NB'), name: null, emoji: null, updated_at: new Date().toISOString() };
+    nb[kind + '_id'] = ref;
+    state.notebooks.push(nb);
+  }
+  return nb;
+}
+function handleNotesAction(body) {
+  if (body.action === 'notebook_detail') {
+    const nb = body.id
+      ? state.notebooks.find(n => n.id === body.id)
+      : notebookFor(body.kind, body.ref);
+    if (!nb) return { found: false };
+    const notes = state.notes.filter(n => n.notebook_id === nb.id)
+      .sort((a, b) => (b.pinned - a.pinned) || b.created_at.localeCompare(a.created_at));
+    return { found: true, notebook: nb, notes };
+  }
+  if (body.action === 'note_create') {
+    const nb = body.notebook_id
+      ? state.notebooks.find(n => n.id === body.notebook_id)
+      : notebookFor(body.kind, body.ref);
+    const now = new Date().toISOString();
+    const note = {
+      id: uid('N'), notebook_id: nb.id, title: body.title || null, body: body.body,
+      pinned: false, created_at: now, updated_at: now,
+    };
+    state.notes.push(note);
+    return { ok: true, note };
+  }
+  if (body.action === 'note_update') {
+    const n = state.notes.find(x => x.id === body.id);
+    if (!n) return { error: 'unknown note' };
+    if ('title' in body) n.title = body.title;
+    if ('body' in body) n.body = body.body;
+    if ('pinned' in body) n.pinned = body.pinned;
+    n.updated_at = new Date().toISOString();
+    return { ok: true, note: n };
+  }
+  if (body.action === 'note_delete') {
+    state.notes = state.notes.filter(n => n.id !== body.id);
+    return { ok: true, id: body.id };
+  }
+  return null;
+}
 
 (async () => {
   const failures = [];
@@ -66,14 +116,18 @@ function clienteOf(id) { return state.clientes.find(c => c.id === id); }
 
   await ctx.route('**/functions/v1/maga-api', async route => {
     const body = route.request().postDataJSON();
-    let resp;
+    let resp = handleNotesAction(body);
+    if (resp) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(resp) });
+      return;
+    }
     if (body.action === 'clientes') {
       resp = { clientes: state.clientes.slice() };
     } else if (body.action === 'cliente_create') {
       const c = {
         id: uid('C'), name: body.name,
         organization: body.organization ?? null, phone: body.phone ?? null,
-        email: body.email ?? null, notes: body.notes ?? null,
+        email: body.email ?? null,
         created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
       };
       state.clientes.push(c);
@@ -82,7 +136,7 @@ function clienteOf(id) { return state.clientes.find(c => c.id === id); }
       const c = clienteOf(body.id);
       if (!c) { resp = { error: 'unknown cliente' }; }
       else {
-        ['name', 'organization', 'phone', 'email', 'notes'].forEach(k => {
+        ['name', 'organization', 'phone', 'email'].forEach(k => {
           if (k in body) c[k] = body[k];
         });
         c.updated_at = new Date().toISOString();
@@ -136,7 +190,6 @@ function clienteOf(id) { return state.clientes.find(c => c.id === id); }
   await page.fill('#cli-org', 'Doces da Maria');
   await page.fill('#cli-phone', '11994452426');
   await page.fill('#cli-email', 'maria@example.com');
-  await page.fill('#cli-notes', 'Prefere contato à tarde');
   await page.click('#cli-ok');
   await page.waitForSelector('#cliente-name', { timeout: 6000 });
   check('one cliente exists', state.clientes.length === 1);
@@ -144,7 +197,6 @@ function clienteOf(id) { return state.clientes.find(c => c.id === id); }
   check('detail shows the organization', (await page.textContent('#root')).includes('Doces da Maria'));
   check('detail shows the phone', (await page.textContent('#root')).includes('11994452426'));
   check('detail shows the email', (await page.textContent('#root')).includes('maria@example.com'));
-  check('detail shows the notes', (await page.textContent('#root')).includes('Prefere contato à tarde'));
   check('no eventos yet', (await page.textContent('#root')).includes('Nenhum evento ainda'));
   check('no pagamentos yet', (await page.textContent('#root')).includes('Nenhum pagamento registrado ainda'));
   check('no totals card without eventos', (await page.$('.totals-card')) === null);
@@ -280,6 +332,40 @@ function clienteOf(id) { return state.clientes.find(c => c.id === id); }
   check('only the remaining cliente shows in the list',
     (await page.textContent('#list-card')).includes('Clube Helvetia') &&
     !(await page.textContent('#list-card')).includes('Maria Silva'));
+
+  // --- notes panel: add, edit, pin, delete ---
+  await page.goto(PAGE + '?id=' + cliente2.id);
+  await page.waitForSelector('.notes-card', { timeout: 6000 });
+  await page.waitForFunction(() => document.querySelector('.notes-card .note-empty'), null, { timeout: 6000 });
+  check('empty notes state shown', (await page.textContent('.notes-card')).includes('Nenhuma anotação'));
+  await page.fill('.note-add-body', 'Prefere contato à tarde');
+  await page.click('.note-add-btn');
+  await page.waitForSelector('.note-row', { timeout: 6000 });
+  check('one note was created', state.notes.length === 1);
+  check('the note shows its own text', (await page.textContent('.note-row')).includes('Prefere contato à tarde'));
+  check('a note with no explicit title carries none', state.notes[0].title === null);
+
+  await page.click('.note-pin');
+  await page.waitForFunction(() => document.querySelector('.note-title').textContent.includes('⭐'), null, { timeout: 6000 });
+  check('pinning the note persisted', state.notes[0].pinned === true);
+
+  await page.click('.note-body-wrap');
+  await page.waitForSelector('#note-edit-body', { timeout: 6000 });
+  check('the edit modal prefills the body', (await page.inputValue('#note-edit-body')) === 'Prefere contato à tarde');
+  await page.fill('#note-edit-title', 'Preferência de contato');
+  await page.click('#note-edit-save');
+  await page.waitForFunction(
+    () => document.querySelector('.note-title').textContent.includes('Preferência de contato'),
+    null, { timeout: 6000 });
+  check('the explicit title was saved', state.notes[0].title === 'Preferência de contato');
+
+  await page.click('.note-body-wrap');
+  await page.waitForSelector('#note-edit-delete', { timeout: 6000 });
+  await page.click('#note-edit-delete');
+  await page.waitForSelector('#confirm-ok', { timeout: 6000 });
+  await page.click('#confirm-ok');
+  await page.waitForFunction(() => document.querySelector('.notes-card .note-empty'), null, { timeout: 6000 });
+  check('the note was deleted', state.notes.length === 0);
 
   await page.screenshot({ path: path.join(SHOTS, 'cliente_detalhe.png'), fullPage: true });
   await browser.close();

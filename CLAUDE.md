@@ -9,6 +9,112 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-16): Notes/Notebooks — a new `notas.html` + `shared-notes.js` panel on all seven object detail pages, env-gated like Hoje/Tarefas
+
+Backend half (`notebooks`/`notes` tables, the new `notas` domain, the
+five retired `notes` columns) is in `sbralg/maga-api`'s own CLAUDE.md
+entry — this one is the front-end half. Direct ask: notes on an object
+should be dated and accumulate, not overwrite a single line, and the
+user should also be able to make their OWN notebooks with no object
+behind them, in a new menu section sibling to Hoje/Tarefas.
+
+- **New `shared-notes.js`/`shared-notes.css`**: a self-contained notes
+  panel — newest-pinned-first list, an always-visible "Nova anotação" box
+  (capture has to be one tap), tap a note to edit (title/body, plus a
+  "Remover" footer button mirroring `tarefas.html`'s edit-modal shape),
+  a ⭐/☆ pin toggle. `wireNotesPanel(container, kind, ref)` resolves or
+  lazily creates the object's notebook server-side (`notebook_detail`
+  with `{kind, ref}`) — the calling page never handles a notebook id
+  directly. `kind === "notebook"` is the one reserved exception, used
+  only by `notas.html`: there `ref` IS a notebook id already, since a
+  user-created notebook has no `{kind, ref}` of its own.
+- **`noteTitle()`**: title is optional server-side, so this derives a
+  display title from the first line/words of the body when absent,
+  truncating on a whole word rather than mid-word. A row skips repeating
+  the body underneath its title when the title IS the whole body (a
+  short, single-line, untitled note) — showing the same short string
+  twice would just be noise.
+- **Dropped into all seven object detail pages** — `clientes.html`,
+  `eventos.html`, `produtos.html`, `receitas.html`, `fornecedores.html`,
+  `insumos.html` (keyed on `gtin`, not a uuid — the one kind that
+  differs), `ingredientes.html` — each adding one `<div class="notes-card">`
+  + one `wireNotesPanel(...)` call. **The five pages that had a one-line
+  "Notas" field lost it** from both the create/edit dialog and the
+  detail-page display: `clientes.html`/`eventos.html`/`fornecedores.html`
+  dropped an `<input>`+payload key, `produtos.html`/`receitas.html`
+  dropped a closure-tracked `let notes` variable too (per this repo's own
+  2026-08-25 lesson that a field living only in a redraw's DOM node gets
+  silently discarded — the fix there was tracking it in a variable; the
+  fix here is simpler, there's nothing left to track).
+- **New `notas.html`**: every notebook — user-created ones always, plus
+  object-backed ones with at least one note (server-filtered, so an
+  empty object-backed notebook doesn't clutter the list) — sorted by
+  the notebook's own `updated_at` (bumped by every note write, so this
+  IS "most recently active first"). A global search box folds accents
+  the same way every other search box in this app does
+  (`foldSearchText()`) and matches across every note's title+body via a
+  new `notes_all` action, rendering hits with a link back to their
+  notebook. "+ Novo caderno" creates a user notebook by name (no emoji
+  picker in v1 — a deliberate scope cut, kept simple since `notebook_create`
+  already accepts one server-side if a later pass wants it).
+  Opening an object-backed notebook shows a "Ver X →" link into its own
+  page (`clientes.html?id=…`, `insumos.html?gtin=…`, etc. — the same
+  `?id=` deep-link convention every one of those seven pages already
+  supports) instead of rename/delete controls, since an object-backed
+  notebook's identity and lifetime both follow its object; a
+  user-created notebook gets rename/delete instead (refusal-first with
+  a note count, then `force:true`, same shape as every other
+  refusal-first delete in this app).
+- **New menu section "Anotações"**, a sibling of "Dia a dia" right after
+  it in `shared-menu.js`'s `MENU_GROUPS`/`MENU_ITEMS` — one entry,
+  `notas.html`, 📓. **Env-gated exactly like Hoje/Tarefas**, per the
+  user's explicit instruction: `ENV_GATED_GROUPS` in `shared-menu.js`
+  generalizes what used to be a single hardcoded `"dia"` check into a
+  `Set`, now covering both groups, so `visibleMenuItems()` drops
+  Anotações from the drawer/dashboard on a non-default environment the
+  same way it already dropped Hoje/Tarefas — and `notas.html` itself
+  carries the same direct-navigation guard those two pages have
+  (`isDefaultEnv()` checked right after the passphrase, rendering
+  `personalPageBlockedHtml()` and making ZERO API calls when blocked, so
+  a bookmark or typed URL can't bypass it). **Deliberately NOT extended
+  to the notes PANEL on the seven object detail pages** — a note on a
+  cliente is part of that cliente's record, and hiding it while the rest
+  of that record (phone, payment history, etc.) still shows through
+  would be incoherent; those pages are already env-scoped by construction
+  (each environment is its own Supabase project). The gate's real
+  meaning is narrower than "notes are private": it keeps the
+  cross-cutting notebook view and user-created notebooks out of a
+  borrowed environment, not an object's own notes off that object's own
+  page.
+- **`sw.js`'s `SHELL_FILES`** gained `notas.html`, `shared-notes.js`,
+  `shared-notes.css` — without this the PWA offline shell would serve a
+  stale cache missing the new page/files.
+- **`index.html`**: one `TILE_DESC` entry, one `GROUP_HINT` entry for
+  `anotacoes`.
+- **New `test/notas.test.js`** (the page's own list/search/user-notebook
+  behavior — object-backed notebook mechanics are covered per-object,
+  see below) plus a notes-panel case appended to all seven existing
+  per-object test files (`clientes.test.js`/`eventos.test.js`/
+  `produtos.test.js`/`receitas.test.js`/`fornecedores.test.js`/
+  `stock.test.js` for `insumos.html`/`ingredientes.test.js`), each with
+  its own minimal `notebooks`/`notes` fake sharing the same shape
+  (get-or-create by `{kind, ref}`, matching `maga-api`'s own
+  `domains/notas.ts`). **`test/env-scope.test.js` extended** with the
+  same blocked/normal-load pair Hoje/Tarefas already had, plus Anotações
+  added to the drawer/dashboard-tile assertions in both directions
+  (hidden on non-default, present on default). **The five `#cli-notes`/
+  `#forn-notes`-style test fields were removed** from
+  `clientes.test.js`/`fornecedores.test.js` (the other three never had a
+  standalone notes-field assertion). **Full 16-file suite run and green**
+  (`for t in test/*.test.js; do node "$t"; done`, Playwright available in
+  this session — confirmed on every file, not just the new ones).
+- **Not yet deployed** — this repo has no build step, so "deploy" is a
+  push to `main`; not done yet, pending review. **Depends on the
+  `maga-api` side being migrated + redeployed** (see that repo's own
+  entry) — until then every new action 400s, and the panel/`notas.html`
+  degrade in words (the same "republish the Edge Function" pattern
+  `ingredientes.html` already established) rather than failing silently.
+
 ## Status (2026-09-09, even later): `preferencias.html` reorganized into tabs, and `index.html` finally consumes the configured landing page — closing the two cuts phase 3 left open
 
 Direct feedback: the Preferências page had grown too crowded and confusing
@@ -1327,7 +1433,7 @@ front-end-focused version.
 ## What this is
 
 The public GitHub Pages front end deployed from this repo's `main` branch,
-served at https://sbralg.github.io/maga-web/. Twelve pages sharing a
+served at https://sbralg.github.io/maga-web/. Thirteen pages sharing a
 set of `shared-*.js`/`shared-*.css` files (see "Shared files" below), no
 build step, no framework:
 
@@ -1339,6 +1445,12 @@ build step, no framework:
   manual task creation with an optional due date, a ⭐ star for importance,
   and an edit modal for text/category/due date/delete). Renamed from
   `index.html` when the dashboard took over that filename.
+- `notas.html` — every notebook in one place plus a global search across
+  every note's text; opening an object-backed notebook (cliente/evento/
+  produto/receita/fornecedor/ingrediente/insumo) links back to that
+  object's own page, opening a user-created one offers rename/delete.
+  Env-gated like `hoje.html`/`tarefas.html` — this account's own personal
+  data, hidden while looking at a different environment.
 - `compras.html` — the shopping-list manager (multiple named lists,
   per-item price + quantity, purchased toggle, running totals, barcode
   scanning against the product catalogue). Renamed from `shopping.html`.
@@ -1482,6 +1594,13 @@ what that changes and what stays the same).
   different entity with different fields, so its picker is its own small
   page-local implementation (`clientePickerModal` in `eventos.html`) rather
   than a forced generalization of the ingredient one.
+- `shared-notes.js`/`shared-notes.css` — the notes panel dropped into all
+  seven object detail pages (clientes/eventos/produtos/receitas/
+  fornecedores/insumos/ingredientes) and reused by `notas.html` for a
+  single already-known notebook: `noteTitle()`, `notesPanelHtml()`,
+  `wireNotesPanel(container, kind, ref)` (lazily resolves/creates the
+  object's notebook server-side — the calling page never handles a
+  notebook id directly), and `noteEditModal()`.
 - Matching CSS files (`shared-base.css`, `shared-menu.css`,
   `shared-modal.css`, `shared-toast.css`, `shared-inputs.css`) for the
   palette/reset, the menu, the modal shell, the toast, and the compact

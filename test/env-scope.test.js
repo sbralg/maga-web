@@ -79,6 +79,8 @@ async function seedEnv(page, { envId, defaultEnv, menuHidden, landingPage } = {}
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ actions: [] }) });
       } else if (body.action === 'daily_report') {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ report: null }) });
+      } else if (body.action === 'notebooks') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ notebooks: [] }) });
       } else {
         await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'bad action' }) });
       }
@@ -115,6 +117,37 @@ async function seedEnv(page, { envId, defaultEnv, menuHidden, landingPage } = {}
     const text = await page.textContent('#root');
     check('hoje.html shows the blocked message on a non-default env', /não está disponível para esta conta neste ambiente/.test(text));
     check('hoje.html never called maga-api at all while blocked', calls.length === 0);
+    await ctx.close();
+  }
+
+  // --- same for notas.html — personal notes are the same class of data
+  // as the daily triage/task checklist ------------------------------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const calls = await withApiFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/notas.html');
+    await seedEnv(page, { envId: 'dev', defaultEnv: 'prod' });
+    await page.reload();
+    await page.waitForSelector('.msg', { timeout: 6000 });
+    const text = await page.textContent('#root');
+    check('notas.html shows the blocked message on a non-default env', /não está disponível para esta conta neste ambiente/.test(text));
+    check('notas.html never called maga-api at all while blocked', calls.length === 0);
+    await ctx.close();
+  }
+
+  // --- notas.html loads normally on the account's own default env --------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const calls = await withApiFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/notas.html');
+    await seedEnv(page, { envId: 'prod', defaultEnv: 'prod' });
+    await page.reload();
+    await page.waitForSelector('.searchrow', { timeout: 6000 });
+    check('notas.html loads normally on the default env', calls.includes('notebooks'));
+    const text = await page.textContent('#root');
+    check('no blocked message on the default env', !/não está disponível/.test(text));
     await ctx.close();
   }
 
@@ -168,6 +201,7 @@ async function seedEnv(page, { envId, defaultEnv, menuHidden, landingPage } = {}
     const labels = await page.$$eval('.menu-item', els => els.map(el => el.textContent));
     check('Hoje is not in the drawer on a non-default env, got: ' + JSON.stringify(labels), !labels.some(l => l.includes('Hoje')));
     check('Tarefas is not in the drawer on a non-default env, got: ' + JSON.stringify(labels), !labels.some(l => l.includes('Tarefas')));
+    check('Anotações is not in the drawer on a non-default env, got: ' + JSON.stringify(labels), !labels.some(l => l.includes('Anotações')));
     check('Insumos (a non-personal page) is still in the drawer, got: ' + JSON.stringify(labels), labels.some(l => l.includes('Insumos')));
 
     await page.goto(ORIGIN + '/index.html');
@@ -175,6 +209,7 @@ async function seedEnv(page, { envId, defaultEnv, menuHidden, landingPage } = {}
     const tiles = await page.$$eval('.tile .label', els => els.map(el => el.textContent));
     check('Hoje is not a dashboard tile on a non-default env, got: ' + JSON.stringify(tiles), !tiles.includes('Hoje'));
     check('Tarefas is not a dashboard tile on a non-default env, got: ' + JSON.stringify(tiles), !tiles.includes('Tarefas'));
+    check('Anotações is not a dashboard tile on a non-default env, got: ' + JSON.stringify(tiles), !tiles.includes('Anotações'));
     check('Produção-group tiles are unaffected, got: ' + JSON.stringify(tiles), tiles.includes('Insumos'));
     await ctx.close();
   }
@@ -192,6 +227,7 @@ async function seedEnv(page, { envId, defaultEnv, menuHidden, landingPage } = {}
     const tiles = await page.$$eval('.tile .label', els => els.map(el => el.textContent));
     check('Hoje IS a dashboard tile on the default env, got: ' + JSON.stringify(tiles), tiles.includes('Hoje'));
     check('Tarefas IS a dashboard tile on the default env, got: ' + JSON.stringify(tiles), tiles.includes('Tarefas'));
+    check('Anotações IS a dashboard tile on the default env, got: ' + JSON.stringify(tiles), tiles.includes('Anotações'));
     await ctx.close();
   }
 

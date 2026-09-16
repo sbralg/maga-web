@@ -76,10 +76,62 @@ const state = {
   // A live recipe line, so the blocking delete has something real to block on.
   receitaItens: [{ id: 'RI1', ingredient_id: 'I1' }],
   produtoEmbalagens: [],
+  notebooks: [],
+  notes: [],
   seq: 100,
 };
 
 const ingredientOf = (id) => state.ingredients.find(i => i.id === id);
+const uid = (p) => p + (++state.seq);
+
+// Minimal notebooks/notes fake, shared in shape across every page's test
+// that loads shared-notes.js.
+function notebookFor(kind, ref) {
+  let nb = state.notebooks.find(n => n[kind + '_id'] === ref);
+  if (!nb) {
+    nb = { id: uid('NB'), name: null, emoji: null, updated_at: new Date().toISOString() };
+    nb[kind + '_id'] = ref;
+    state.notebooks.push(nb);
+  }
+  return nb;
+}
+function handleNotesAction(body) {
+  if (body.action === 'notebook_detail') {
+    const nb = body.id
+      ? state.notebooks.find(n => n.id === body.id)
+      : notebookFor(body.kind, body.ref);
+    if (!nb) return { found: false };
+    const notes = state.notes.filter(n => n.notebook_id === nb.id)
+      .sort((a, b) => (b.pinned - a.pinned) || b.created_at.localeCompare(a.created_at));
+    return { found: true, notebook: nb, notes };
+  }
+  if (body.action === 'note_create') {
+    const nb = body.notebook_id
+      ? state.notebooks.find(n => n.id === body.notebook_id)
+      : notebookFor(body.kind, body.ref);
+    const now = new Date().toISOString();
+    const note = {
+      id: uid('N'), notebook_id: nb.id, title: body.title || null, body: body.body,
+      pinned: false, created_at: now, updated_at: now,
+    };
+    state.notes.push(note);
+    return { ok: true, note };
+  }
+  if (body.action === 'note_update') {
+    const n = state.notes.find(x => x.id === body.id);
+    if (!n) return { error: 'unknown note' };
+    if ('title' in body) n.title = body.title;
+    if ('body' in body) n.body = body.body;
+    if ('pinned' in body) n.pinned = body.pinned;
+    n.updated_at = new Date().toISOString();
+    return { ok: true, note: n };
+  }
+  if (body.action === 'note_delete') {
+    state.notes = state.notes.filter(n => n.id !== body.id);
+    return { ok: true, id: body.id };
+  }
+  return null;
+}
 
 (async () => {
   const failures = [];
@@ -94,6 +146,11 @@ const ingredientOf = (id) => state.ingredients.find(i => i.id === id);
 
   await ctx.route('**/functions/v1/maga-api', async route => {
     const body = route.request().postDataJSON();
+    const notesResp = handleNotesAction(body);
+    if (notesResp) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(notesResp) });
+      return;
+    }
     let resp;
     let status = 200;
 
@@ -393,6 +450,18 @@ const ingredientOf = (id) => state.ingredients.find(i => i.id === id);
     menuItems.length === menuCount + 1);
   check('Ingredientes renders as an inert label on its own page',
     menuItems.some(m => m.tag === 'SPAN' && m.text === '🧂 Ingredientes'));
+
+  // --- notes panel --- (I2, since I1 was deleted above)
+  await page.goto(PAGE + '?id=I2');
+  await page.waitForSelector('.notes-card', { timeout: 6000 });
+  await page.waitForFunction(() => document.querySelector('.notes-card .note-empty'), null, { timeout: 6000 });
+  await page.fill('.note-add-body', 'Comprar sempre o tamanho 20cm');
+  await page.click('.note-add-btn');
+  await page.waitForSelector('.note-row', { timeout: 6000 });
+  check('a note was created against the ingredient notebook',
+    state.notes.some(n => n.body === 'Comprar sempre o tamanho 20cm'));
+  check('the notebook is object-backed to this ingredient',
+    state.notebooks.some(nb => nb.ingredient_id === 'I2'));
 
   await page.screenshot({ path: path.join(SHOTS, 'final.png'), fullPage: true });
   await browser.close();

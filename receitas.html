@@ -32,6 +32,7 @@
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-inputs.css">
+<link rel="stylesheet" href="shared-notes.css">
 <style>
   body{ padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom)); }
   .wrap{max-width:640px;margin:0 auto}
@@ -145,6 +146,7 @@ const PAGE_LOGIN = {
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
 <script src="shared-produto-panel.js"></script>
+<script src="shared-notes.js"></script>
 <script src="shared-pwa.js"></script>
 <script>
 
@@ -302,8 +304,6 @@ function openReceitaModal(r){
             'value="' + esc(isEdit ? fmtPriceInput(r.labor_rate_per_hour) : "") + '"></span>' +
         '</div>' +
       '</div>' +
-      '<label for="rec-notes">Notas (opcional)</label>' +
-      '<input type="text" id="rec-notes" value="' + esc(isEdit ? (r.notes || "") : "") + '">' +
       '<div class="modal-actions">' +
         '<button class="cancel" id="rec-cancel">Cancelar</button>' +
         '<button class="save" id="rec-ok">Salvar</button>' +
@@ -339,7 +339,6 @@ function openReceitaModal(r){
       safety_margin_pct: marginRaw === null ? 0 : marginRaw / 100,
       prep_minutes: parseQtyInput(prepMinEl.value),
       labor_rate_per_hour: centsToPrice(priceDigits(prepRateEl.value)),
-      notes: backdrop.querySelector("#rec-notes").value.trim() || null,
     };
     try{
       if(isEdit){
@@ -609,9 +608,11 @@ function renderReceita(data){
     (costHtml || '<div class="card"><p class="msg small">Adicione ingredientes para ver o custo.</p></div>') +
     warnHtml +
     '<div class="sec-head"><h3>Categoria</h3></div>' +
-    '<div id="rec-categoria"></div>';
+    '<div id="rec-categoria"></div>' +
+    '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
   wireNav(loadReceitas);
+  wireNotesPanel(root.querySelector(".notes-card"), "receita", r.id);
 
   document.getElementById("rec-name").addEventListener("click", () => openReceitaModal(r));
   document.getElementById("edit-receita").addEventListener("click", () => openReceitaModal(r));

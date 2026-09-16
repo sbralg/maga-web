@@ -12,9 +12,10 @@
 <title>Clientes</title>
 <!--
   Data-free shell for the Clientes module — the contact record behind an
-  evento: name, organization, phone, e-mail, notes, plus everything Eventos
-  already knows about them (the pipeline, the payment ledger),
-  fetched through one `cliente_detail` call. Same pattern as every other
+  evento: name, organization, phone, e-mail, plus everything Eventos
+  already knows about them (the pipeline, the payment ledger, a dated
+  Anotações notebook — shared-notes.js), fetched through one
+  `cliente_detail` call. Same pattern as every other
   page here: hosted on public GitHub Pages, holds NO keys and NO data,
   asks for the shared passphrase, then talks only to the gated Supabase
   Edge Function (maga-api).
@@ -39,6 +40,7 @@
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-inputs.css">
+<link rel="stylesheet" href="shared-notes.css">
 <style>
   body{
     padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
@@ -136,6 +138,7 @@ const PAGE_LOGIN = {
 <script src="shared-menu.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
+<script src="shared-notes.js"></script>
 <script src="shared-pwa.js"></script>
 <script>
 
@@ -262,8 +265,8 @@ function wireListRows(){
 }
 
 // ---- create/edit modal ----
-// One modal for both: the full field set (name/organization/phone/email/
-// notes) either way, unlike eventos.html's inline picker which only ever
+// One modal for both: the full field set (name/organization/phone/email)
+// either way, unlike eventos.html's inline picker which only ever
 // creates by name — this page IS the place to fill in the rest.
 
 function openClienteModal(c){
@@ -282,8 +285,6 @@ function openClienteModal(c){
         'value="' + esc(isEdit ? (c.phone || "") : "") + '">' +
       '<label for="cli-email">E-mail (opcional)</label>' +
       '<input type="text" id="cli-email" inputmode="email" value="' + esc(isEdit ? (c.email || "") : "") + '">' +
-      '<label for="cli-notes">Notas (opcional)</label>' +
-      '<input type="text" id="cli-notes" value="' + esc(isEdit ? (c.notes || "") : "") + '">' +
       '<div class="modal-actions">' +
         '<button class="cancel" id="cli-cancel">Cancelar</button>' +
         '<button class="save" id="cli-ok">Salvar</button>' +
@@ -308,7 +309,6 @@ function openClienteModal(c){
       organization: backdrop.querySelector("#cli-org").value.trim() || null,
       phone: backdrop.querySelector("#cli-phone").value.trim() || null,
       email: backdrop.querySelector("#cli-email").value.trim() || null,
-      notes: backdrop.querySelector("#cli-notes").value.trim() || null,
     };
     try{
       if(isEdit){
@@ -394,7 +394,6 @@ function renderCliente(data){
     infoFieldHtml("Empresa / organização", c.organization) +
     infoFieldHtml("Telefone", c.phone) +
     infoFieldHtml("E-mail", c.email) +
-    infoFieldHtml("Notas", c.notes) +
     '<div class="detail-actions">' +
       '<button class="primary small alt" id="edit-cliente">✎ Editar</button>' +
       '<button class="primary small alt danger" id="del-cliente">🗑 Remover</button>' +
@@ -416,9 +415,11 @@ function renderCliente(data){
         : '<p class="wa-hint">Adicione um telefone ao cliente para enviar mensagens pelo WhatsApp.</p>') +
     '</div>' +
     '<h3>Eventos</h3>' + eventosHtml +
-    '<h3>Pagamentos</h3>' + paysHtml;
+    '<h3>Pagamentos</h3>' + paysHtml +
+    '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
   wireNav(loadClientes);
+  wireNotesPanel(root.querySelector(".notes-card"), "cliente", c.id);
 
   document.getElementById("edit-cliente").addEventListener("click", () => openClienteModal(c));
   document.getElementById("cliente-name").addEventListener("click", () => openClienteModal(c));

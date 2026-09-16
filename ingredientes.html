@@ -52,6 +52,7 @@
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-inputs.css">
 <link rel="stylesheet" href="shared-catalog.css">
+<link rel="stylesheet" href="shared-notes.css">
 <style>
   body{
     padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
@@ -178,6 +179,7 @@ const PAGE_LOGIN = {
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-catalog.js"></script>
+<script src="shared-notes.js"></script>
 <script src="shared-pwa.js"></script>
 <script>
 
@@ -581,9 +583,11 @@ function renderIngrediente(i){
     '</div>' +
     costHtml +
     haveHtml +
-    '<h3>Insumos</h3>' + insumosHtml;
+    '<h3>Insumos</h3>' + insumosHtml +
+    '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
   wireNav(loadIngredientes);
+  wireNotesPanel(root.querySelector(".notes-card"), "ingredient", i.id);
 
   document.getElementById("ing-name").addEventListener("click", () => ingredienteModal(i));
   document.getElementById("edit-ing").addEventListener("click", () => ingredienteModal(i));

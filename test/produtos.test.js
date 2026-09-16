@@ -49,10 +49,59 @@ function serve() {
   });
 }
 
-const state = { produtos: [], embalagens: [], receitas: [], ingredients: [], fornecedores: [], seq: 0 };
+const state = { produtos: [], embalagens: [], receitas: [], ingredients: [], fornecedores: [], notebooks: [], notes: [], seq: 0 };
 const uid = (p) => p + (++state.seq);
 function produtoOf(id) { return state.produtos.find(p => p.id === id); }
 function ingredientOf(id) { return state.ingredients.find(i => i.id === id); }
+
+// Minimal notebooks/notes fake, shared in shape across every page's test
+// that loads shared-notes.js.
+function notebookFor(kind, ref) {
+  let nb = state.notebooks.find(n => n[kind + '_id'] === ref);
+  if (!nb) {
+    nb = { id: uid('NB'), name: null, emoji: null, updated_at: new Date().toISOString() };
+    nb[kind + '_id'] = ref;
+    state.notebooks.push(nb);
+  }
+  return nb;
+}
+function handleNotesAction(body) {
+  if (body.action === 'notebook_detail') {
+    const nb = body.id
+      ? state.notebooks.find(n => n.id === body.id)
+      : notebookFor(body.kind, body.ref);
+    if (!nb) return { found: false };
+    const notes = state.notes.filter(n => n.notebook_id === nb.id)
+      .sort((a, b) => (b.pinned - a.pinned) || b.created_at.localeCompare(a.created_at));
+    return { found: true, notebook: nb, notes };
+  }
+  if (body.action === 'note_create') {
+    const nb = body.notebook_id
+      ? state.notebooks.find(n => n.id === body.notebook_id)
+      : notebookFor(body.kind, body.ref);
+    const now = new Date().toISOString();
+    const note = {
+      id: uid('N'), notebook_id: nb.id, title: body.title || null, body: body.body,
+      pinned: false, created_at: now, updated_at: now,
+    };
+    state.notes.push(note);
+    return { ok: true, note };
+  }
+  if (body.action === 'note_update') {
+    const n = state.notes.find(x => x.id === body.id);
+    if (!n) return { error: 'unknown note' };
+    if ('title' in body) n.title = body.title;
+    if ('body' in body) n.body = body.body;
+    if ('pinned' in body) n.pinned = body.pinned;
+    n.updated_at = new Date().toISOString();
+    return { ok: true, note: n };
+  }
+  if (body.action === 'note_delete') {
+    state.notes = state.notes.filter(n => n.id !== body.id);
+    return { ok: true, id: body.id };
+  }
+  return null;
+}
 function receitaOf(id) { return state.receitas.find(r => r.id === id); }
 function fornecedorOf(id) { return state.fornecedores.find(f => f.id === id); }
 function ingredientUnitCost(ing) {
@@ -126,7 +175,11 @@ function computeProdutoCost(id) {
 
   await ctx.route('**/functions/v1/maga-api', async route => {
     const body = route.request().postDataJSON();
-    let resp;
+    let resp = handleNotesAction(body);
+    if (resp) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(resp) });
+      return;
+    }
     if (body.action === 'ingredients') {
       resp = { ingredients: state.ingredients.map(i => ({
         id: i.id, name: i.name, base_unit: i.base_unit, kind: i.kind, insumo_count: 1,
@@ -331,6 +384,19 @@ function computeProdutoCost(id) {
   await page.waitForFunction(() => document.getElementById('no-match') !== null, null, { timeout: 6000 });
   check('an unrelated search term does not match the accented produto (no over-matching)',
     !(await page.textContent('#root')).includes('Café Especial'));
+
+  // --- notes panel ---
+  const someProduto = state.produtos[0];
+  await page.goto(PAGE + '?id=' + someProduto.id);
+  await page.waitForSelector('.notes-card', { timeout: 6000 });
+  await page.waitForFunction(() => document.querySelector('.notes-card .note-empty'), null, { timeout: 6000 });
+  await page.fill('.note-add-body', 'Cliente pediu embalagem reforçada');
+  await page.click('.note-add-btn');
+  await page.waitForSelector('.note-row', { timeout: 6000 });
+  check('a note was created against the produto notebook',
+    state.notes.some(n => n.body === 'Cliente pediu embalagem reforçada'));
+  check('the notebook is object-backed to this produto',
+    state.notebooks.some(nb => nb.produto_id === someProduto.id));
 
   await page.screenshot({ path: path.join(SHOTS, 'produto_detalhe.png'), fullPage: true });
   await browser.close();

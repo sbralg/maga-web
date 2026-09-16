@@ -16,7 +16,8 @@
   Pages, holds NO keys and NO data, asks for the shared passphrase, then
   talks only to the gated Supabase Edge Function (maga-api).
 
-  Deliberately minimal fields (name/phone/email/notes). Two SEPARATE
+  Deliberately minimal fields (name/phone/email), plus a dated Anotações
+  notebook (shared-notes.js). Two SEPARATE
   fornecedor relationships show on the detail page: "Produtos"
   (produtos.fornecedor_id — comprado items priced directly by hand, this
   is purely reference metadata, not a costing input) and "Compras"
@@ -34,6 +35,7 @@
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-inputs.css">
+<link rel="stylesheet" href="shared-notes.css">
 <style>
   body{
     padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
@@ -112,6 +114,7 @@ const PAGE_LOGIN = {
 <script src="shared-menu.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
+<script src="shared-notes.js"></script>
 <script src="shared-pwa.js"></script>
 <script>
 
@@ -236,8 +239,6 @@ function openFornecedorModal(f){
         'value="' + esc(isEdit ? (f.phone || "") : "") + '">' +
       '<label for="forn-email">E-mail (opcional)</label>' +
       '<input type="text" id="forn-email" inputmode="email" value="' + esc(isEdit ? (f.email || "") : "") + '">' +
-      '<label for="forn-notes">Notas (opcional)</label>' +
-      '<input type="text" id="forn-notes" value="' + esc(isEdit ? (f.notes || "") : "") + '">' +
       '<div class="modal-actions">' +
         '<button class="cancel" id="forn-cancel">Cancelar</button>' +
         '<button class="save" id="forn-ok">Salvar</button>' +
@@ -261,7 +262,6 @@ function openFornecedorModal(f){
       name,
       phone: backdrop.querySelector("#forn-phone").value.trim() || null,
       email: backdrop.querySelector("#forn-email").value.trim() || null,
-      notes: backdrop.querySelector("#forn-notes").value.trim() || null,
     };
     try{
       if(isEdit){
@@ -350,7 +350,6 @@ function renderFornecedor(data){
   root.innerHTML = navHeader(f.name, loadFornecedores) +
     infoFieldHtml("Telefone", f.phone) +
     infoFieldHtml("E-mail", f.email) +
-    infoFieldHtml("Notas", f.notes) +
     '<div class="detail-actions">' +
       '<button class="primary small alt" id="edit-forn">✎ Editar</button>' +
       '<button class="primary small alt danger" id="del-forn">🗑 Remover</button>' +
@@ -364,9 +363,11 @@ function renderFornecedor(data){
           '<a class="wa-send" id="wa-send" target="_blank" rel="noopener">Abrir contato no WhatsApp</a>'
         : '<p class="wa-hint">Adicione um telefone ao fornecedor para enviar mensagens pelo WhatsApp.</p>') +
     '</div>' +
-    '<h3>Compras (insumos)</h3>' + purchasesHtml;
+    '<h3>Compras (insumos)</h3>' + purchasesHtml +
+    '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
   wireNav(loadFornecedores);
+  wireNotesPanel(root.querySelector(".notes-card"), "fornecedor", f.id);
 
   document.getElementById("edit-forn").addEventListener("click", () => openFornecedorModal(f));
   document.getElementById("forn-name").addEventListener("click", () => openFornecedorModal(f));

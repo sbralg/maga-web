@@ -94,7 +94,59 @@ const INGREDIENTS = [
   { id: 'I1', name: 'Leite condensado', base_unit: null },
 ];
 
-const state = { movements: [], seq: 0, calls: [], ingSeq: 0 };
+const state = { movements: [], seq: 0, calls: [], ingSeq: 0, notebooks: [], notes: [] };
+
+// Minimal notebooks/notes fake, shared in shape across every page's test
+// that loads shared-notes.js. insumo's own ref is a gtin (text), not a
+// uuid, same as everywhere else in this app — notebookFor() doesn't care,
+// it just keys on whatever ref value it's given.
+function notebookFor(kind, ref) {
+  let nb = state.notebooks.find(n => n[kind + '_id'] === ref) ||
+    (kind === 'insumo' ? state.notebooks.find(n => n.insumo_gtin === ref) : null);
+  if (!nb) {
+    nb = { id: 'NB' + (++state.seq), name: null, emoji: null, updated_at: new Date().toISOString() };
+    nb[kind === 'insumo' ? 'insumo_gtin' : kind + '_id'] = ref;
+    state.notebooks.push(nb);
+  }
+  return nb;
+}
+function handleNotesAction(body) {
+  if (body.action === 'notebook_detail') {
+    const nb = body.id
+      ? state.notebooks.find(n => n.id === body.id)
+      : notebookFor(body.kind, body.ref);
+    if (!nb) return { found: false };
+    const notes = state.notes.filter(n => n.notebook_id === nb.id)
+      .sort((a, b) => (b.pinned - a.pinned) || b.created_at.localeCompare(a.created_at));
+    return { found: true, notebook: nb, notes };
+  }
+  if (body.action === 'note_create') {
+    const nb = body.notebook_id
+      ? state.notebooks.find(n => n.id === body.notebook_id)
+      : notebookFor(body.kind, body.ref);
+    const now = new Date().toISOString();
+    const note = {
+      id: 'N' + (++state.seq), notebook_id: nb.id, title: body.title || null, body: body.body,
+      pinned: false, created_at: now, updated_at: now,
+    };
+    state.notes.push(note);
+    return { ok: true, note };
+  }
+  if (body.action === 'note_update') {
+    const n = state.notes.find(x => x.id === body.id);
+    if (!n) return { error: 'unknown note' };
+    if ('title' in body) n.title = body.title;
+    if ('body' in body) n.body = body.body;
+    if ('pinned' in body) n.pinned = body.pinned;
+    n.updated_at = new Date().toISOString();
+    return { ok: true, note: n };
+  }
+  if (body.action === 'note_delete') {
+    state.notes = state.notes.filter(n => n.id !== body.id);
+    return { ok: true, id: body.id };
+  }
+  return null;
+}
 
 // Seed: 3 leite, 1 manteiga, 2 suco, 0 bolacha.
 function seed(gtin, n) {
@@ -184,7 +236,11 @@ function handleMove(body) {
   await page.route('**/functions/v1/maga-api', async route => {
     const body = route.request().postDataJSON();
     state.calls.push({ ...body });
-    let resp;
+    let resp = handleNotesAction(body);
+    if (resp) {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(resp) });
+      return;
+    }
     if (body.action === 'insumos') {
       resp = insumosResponse();
     } else if (body.action === 'insumo_detail') {
@@ -784,6 +840,17 @@ function handleMove(body) {
     (await page.textContent('.ins-title .name')) === 'Bolacha Maria');
   check('and the url is cleaned up so a reload is not stuck on it',
     !(await page.evaluate(() => location.search)));
+
+  // --- notes panel (insumo's ref is a gtin, not a uuid) ---
+  await page.waitForSelector('.notes-card', { timeout: 6000 });
+  await page.waitForFunction(() => document.querySelector('.notes-card .note-empty'), null, { timeout: 6000 });
+  await page.fill('.note-add-body', 'Pacote costuma vir amassado nesse fornecedor');
+  await page.click('.note-add-btn');
+  await page.waitForSelector('.note-row', { timeout: 6000 });
+  check('a note was created against the insumo notebook',
+    state.notes.some(n => n.body === 'Pacote costuma vir amassado nesse fornecedor'));
+  check('the notebook is keyed on the gtin, not a uuid',
+    state.notebooks.some(nb => nb.insumo_gtin === '7896004700236'));
 
   // This one has never been in stock, so it also proves the pantry link
   // opens the collapsed half rather than scrolling to a hidden row.

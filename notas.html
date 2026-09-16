@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Anotações">
+<meta name="theme-color" content="#17120f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#faf8f4" media="(prefers-color-scheme: light)">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<title>Anotações</title>
+<!--
+  Data-free shell for Anotações — every notebook in one place, plus a
+  search across every note's text. A notebook is either OBJECT-BACKED
+  (one per cliente/evento/produto/receita/fornecedor/ingrediente/insumo,
+  created lazily the moment a note is first written against that object —
+  see shared-notes.js, used identically on all seven of those detail
+  pages) or USER-CREATED (no object behind it, made from the "+ Novo
+  caderno" button here). Both kinds render through the SAME
+  wireNotesPanel() once opened — this page always opens by notebook id
+  (kind:"notebook"), never by {kind, ref}, since every notebook already
+  has an id the moment it's listed here.
+
+  Env-gated like Hoje/Tarefas: personal daily data and personal notes are
+  the same class of thing, so this page is hidden and blocked on a
+  non-default environment the same way (see isDefaultEnv()'s comment in
+  shared-api.js).
+-->
+<link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-menu.css">
+<link rel="stylesheet" href="shared-modal.css">
+<link rel="stylesheet" href="shared-toast.css">
+<link rel="stylesheet" href="shared-notes.css">
+<style>
+  body{ padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom)); }
+  .wrap{max-width:640px;margin:0 auto}
+  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
+  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
+  .subheader{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0;margin:0 0 16px}
+  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
+  .nb-title{font-size:16px;font-weight:650;margin:0;text-align:right;word-wrap:break-word}
+  .searchrow{display:flex;gap:8px;margin:0 0 14px}
+  .searchrow input[type=search]{
+    flex:1;min-width:0;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
+    border:1px solid var(--border-strong);background:var(--card);color:var(--text);
+    -webkit-appearance:none;
+  }
+  .row{display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background-color .15s ease}
+  .row:hover{background:rgba(127,127,127,.06)}
+  .row:last-child{border-bottom:none}
+  .row .ic{font-size:20px;flex:none}
+  .row .body{flex:1;min-width:0}
+  .row .nm{font-size:15px;font-weight:600;margin:0;word-wrap:break-word}
+  .row .meta{font-size:12.5px;color:var(--muted);margin:0}
+  .addrow-btn{margin:8px 0 0}
+  button.primary.full{width:100%}
+  .search-hits .row .snippet{font-size:12.5px;color:var(--text);margin:2px 0 0;white-space:pre-wrap;word-wrap:break-word}
+  .detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px}
+  .obj-link{font-size:13px;margin:0 0 14px}
+  .card.pad{padding:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div id="root"><p class="msg">Carregando…</p></div>
+</div>
+
+<script>
+const root = document.getElementById("root");
+
+const PAGE_LOGIN = {
+  title: "Anotações",
+  subtitle: "Faça o seu login para acessar suas anotações.",
+  onSuccess: () => load(),
+};
+</script>
+<script src="shared-api.js"></script>
+<script src="shared-menu.js"></script>
+<script src="shared-ui.js"></script>
+<script src="shared-format.js"></script>
+<script src="shared-notes.js"></script>
+<script src="shared-pwa.js"></script>
+<script>
+
+let notebooks = [];
+
+// Where an object-backed notebook's own record actually lives — the same
+// seven pages this panel is embedded in. Not every kind needs its own
+// entry keyed differently: insumo is the one exception (gtin, not id).
+const NOTEBOOK_KIND_LINKS = {
+  cliente:    (o) => ({ label: o.name, href: "clientes.html?id=" + encodeURIComponent(o.id) }),
+  evento:     (o) => ({ label: o.name, href: "eventos.html?id=" + encodeURIComponent(o.id) }),
+  produto:    (o) => ({ label: o.name, href: "produtos.html?id=" + encodeURIComponent(o.id) }),
+  receita:    (o) => ({ label: o.name, href: "receitas.html?id=" + encodeURIComponent(o.id) }),
+  fornecedor: (o) => ({ label: o.name, href: "fornecedores.html?id=" + encodeURIComponent(o.id) }),
+  ingredient: (o) => ({ label: o.name, href: "ingredientes.html?id=" + encodeURIComponent(o.id) }),
+  insumo:     (o) => ({ label: o.name, href: "insumos.html?gtin=" + encodeURIComponent(o.gtin) }),
+};
+const KIND_ICON = {
+  cliente: "👤", evento: "🥂", produto: "🏷️", receita: "📖",
+  fornecedor: "🚚", ingredient: "🧂", insumo: "🥖",
+};
+
+function notebookInfo(nb){
+  for(const kind of Object.keys(NOTEBOOK_KIND_LINKS)){
+    if(nb[kind]) return Object.assign({ kind }, NOTEBOOK_KIND_LINKS[kind](nb[kind]));
+  }
+  return { kind: null, label: nb.name || "Caderno sem nome", href: null, icon: nb.emoji };
+}
+
+function navHeader(title, backAction){
+  const topRow = '<header><div class="hleft">' +
+    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
+    '<h1 style="flex:1">' + (backAction ? "Anotações" : esc(title)) + '</h1>' +
+    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
+  if(!backAction) return topRow;
+  return topRow + '<div class="subheader">' +
+    '<button class="link" id="back">← Anotações</button>' +
+    (title ? '<h2 class="nb-title" id="nb-title">' + esc(title) + '</h2>' : '') +
+  '</div>';
+}
+function wireNav(backAction){
+  wireMenuButton();
+  if(backAction) document.getElementById("back").addEventListener("click", backAction);
+}
+
+// ---- list screen ----
+
+async function load(){
+  root.innerHTML = '<p class="msg">Carregando…</p>';
+  if(!getPass()){ showLogin(); return; }
+  if(!isDefaultEnv()){
+    root.innerHTML =
+      '<header><div class="hleft">' +
+        '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
+        '<h1>Anotações</h1>' +
+      '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>' +
+      personalPageBlockedHtml();
+    wireMenuButton();
+    return;
+  }
+  try{
+    const res = await api("notebooks");
+    notebooks = res.notebooks || [];
+    const wanted = new URLSearchParams(location.search).get("id");
+    if(wanted && notebooks.some(nb => nb.id === wanted)){
+      openNotebook(wanted);
+    }else{
+      renderList("");
+    }
+  }catch(e){
+    if(e.unauthorized){
+      localStorage.removeItem(PASS_KEY);
+      showLogin("Senha incorreta.");
+    }else if(e.badRequest && e.body && e.body.error === "bad action"){
+      root.innerHTML = navHeader("Anotações") +
+        '<p class="msg">Anotações ainda não disponíveis — republique a Edge Function.</p>';
+      wireMenuButton();
+    }else{
+      root.innerHTML = '<p class="msg err">Não foi possível carregar agora.</p>' +
+        '<p class="msg"><button class="link" onclick="load()">Tentar novamente</button></p>';
+    }
+  }
+}
+
+function notebookRowHtml(nb){
+  const info = notebookInfo(nb);
+  const icon = info.kind ? (KIND_ICON[info.kind] || "📓") : (nb.emoji || "📓");
+  const count = nb.note_count || 0;
+  return '<div class="row" data-id="' + esc(nb.id) + '">' +
+    '<span class="ic">' + icon + '</span>' +
+    '<span class="body">' +
+      '<p class="nm">' + esc(info.label) + '</p>' +
+      '<p class="meta">' + count + (count === 1 ? " anotação" : " anotações") + '</p>' +
+    '</span>' +
+  '</div>';
+}
+
+// A note whose body or title matches, across every notebook — folded
+// the same way every other search box in this app is (shared-format.js's
+// foldSearchText), fetched and folded client-side since there are no
+// server-side accent-insensitive indexes here (see that function's own
+// comment on why that's a reasonable, not a lazy, choice at this scale).
+let allNotesCache = null;
+async function searchHits(term){
+  if(!allNotesCache){
+    try{
+      allNotesCache = (await api("notes_all")).notes || [];
+    }catch(_){
+      allNotesCache = [];
+    }
+  }
+  const folded = foldSearchText(term);
+  return allNotesCache.filter(n =>
+    foldSearchText(n.title || "").includes(folded) || foldSearchText(n.body || "").includes(folded)
+  );
+}
+
+function noteHitRowHtml(n){
+  const info = n.notebook ? notebookInfo(n.notebook) : { label: "Caderno" };
+  return '<div class="row" data-notebook="' + esc(n.notebook_id) + '">' +
+    '<span class="ic">' + (info.kind ? (KIND_ICON[info.kind] || "📓") : "📓") + '</span>' +
+    '<span class="body">' +
+      '<p class="nm">' + esc(noteTitle(n)) + '</p>' +
+      '<p class="meta">' + esc(info.label) + '</p>' +
+      '<p class="snippet">' + esc(n.body || "") + '</p>' +
+    '</span>' +
+  '</div>';
+}
+
+async function renderList(term){
+  const q = (term || "").trim();
+  let listHtml;
+  if(q){
+    const hits = await searchHits(q);
+    listHtml = hits.length === 0
+      ? '<p class="msg small">Nenhuma anotação encontrada.</p>'
+      : '<div class="card search-hits" id="hits-card">' + hits.map(noteHitRowHtml).join("") + '</div>';
+  }else{
+    listHtml = notebooks.length === 0
+      ? '<p class="msg small">Nenhum caderno ainda. Anotações escritas em um cliente, ' +
+        'evento, produto, receita, fornecedor, ingrediente ou insumo aparecem aqui ' +
+        'automaticamente, ou crie um caderno seu.</p>'
+      : '<div class="card" id="nb-card">' + notebooks.map(notebookRowHtml).join("") + '</div>';
+  }
+
+  root.innerHTML = navHeader("Anotações") +
+    '<div class="searchrow">' +
+      '<input type="search" id="search" placeholder="Buscar em todas as anotações…" value="' + esc(q) + '">' +
+    '</div>' +
+    listHtml +
+    '<button class="primary full addrow-btn" id="new-notebook">+ Novo caderno</button>';
+
+  wireMenuButton();
+
+  const searchEl = document.getElementById("search");
+  searchEl.focus();
+  searchEl.setSelectionRange(q.length, q.length);
+  let searchTimer = null;
+  searchEl.addEventListener("input", () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => renderList(searchEl.value), 200);
+  });
+
+  root.querySelectorAll(".row[data-id]").forEach(row => {
+    row.addEventListener("click", () => openNotebook(row.dataset.id));
+  });
+  root.querySelectorAll(".row[data-notebook]").forEach(row => {
+    row.addEventListener("click", () => openNotebook(row.dataset.notebook));
+  });
+
+  document.getElementById("new-notebook").addEventListener("click", async () => {
+    const name = await promptModal("Novo caderno", "Nome", "");
+    if(name === null) return;
+    const trimmed = name.trim();
+    if(!trimmed){ alert("O nome não pode ficar vazio."); return; }
+    try{
+      const res = await api("notebook_create", { name: trimmed });
+      notebooks.unshift(Object.assign({ note_count: 0 }, res.notebook));
+      renderList("");
+      openNotebook(res.notebook.id);
+    }catch(e){
+      if(e.unauthorized) return handleAuthError(e, load);
+      listToast("Não foi possível criar o caderno", true);
+    }
+  });
+}
+
+// ---- notebook detail ----
+
+function openNotebook(id){
+  const nb = notebooks.find(n => n.id === id);
+  const info = nb ? notebookInfo(nb) : { kind: null, label: "Caderno", href: null };
+
+  root.innerHTML = navHeader(info.label, () => { history.replaceState(null, "", "notas.html"); renderList(""); }) +
+    (info.href
+      ? '<p class="obj-link"><a class="link" href="' + esc(info.href) + '">Ver ' +
+          (info.kind === "cliente" ? "cliente" : info.kind === "evento" ? "evento" :
+           info.kind === "produto" ? "produto" : info.kind === "receita" ? "receita" :
+           info.kind === "fornecedor" ? "fornecedor" : info.kind === "ingredient" ? "ingrediente" : "insumo") +
+          ' →</a></p>'
+      : '') +
+    (info.kind === null && nb
+      ? '<div class="detail-actions">' +
+          '<button class="primary small alt" id="rename-nb">✎ Renomear</button>' +
+          '<button class="primary small alt danger" id="del-nb">🗑 Remover</button>' +
+        '</div>'
+      : '') +
+    '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
+
+  wireNav(() => { history.replaceState(null, "", "notas.html"); renderList(""); });
+  wireNotesPanel(root.querySelector(".notes-card"), "notebook", id);
+
+  if(info.kind === null && nb){
+    document.getElementById("rename-nb").addEventListener("click", async () => {
+      const name = await promptModal("Renomear caderno", "Nome", nb.name || "");
+      if(name === null) return;
+      const trimmed = name.trim();
+      if(!trimmed){ alert("O nome não pode ficar vazio."); return; }
+      try{
+        const res = await api("notebook_rename", { id: nb.id, name: trimmed });
+        Object.assign(nb, res.notebook);
+        openNotebook(nb.id);
+      }catch(e){
+        if(e.unauthorized) return handleAuthError(e, load);
+        listToast("Não foi possível renomear", true);
+      }
+    });
+    document.getElementById("del-nb").addEventListener("click", async () => {
+      if(!(await confirmModal('Remover o caderno "' + nb.name + '"?', "Remover"))) return;
+      try{
+        let res = await api("notebook_delete", { id: nb.id });
+        if(res.ok === false && res.reason === "has_notes"){
+          if(!(await confirmModal(
+            "Este caderno tem " + res.notes + (res.notes === 1 ? " anotação" : " anotações") +
+            ". Removê-lo apaga tudo — não dá para desfazer.",
+            "Remover mesmo assim"))) return;
+          res = await api("notebook_delete", { id: nb.id, force: true });
+        }
+        notebooks = notebooks.filter(n => n.id !== nb.id);
+        listToast("Caderno removido");
+        history.replaceState(null, "", "notas.html");
+        renderList("");
+      }catch(e){
+        if(e.unauthorized) return handleAuthError(e, load);
+        listToast("Não foi possível remover", true);
+      }
+    });
+  }
+}
+
+load();
+</script>
+</body>
+</html>
