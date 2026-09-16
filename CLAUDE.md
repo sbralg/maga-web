@@ -9,6 +9,33 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-16, later): Anotações folded into "Dia a dia"; a real bug — its hamburger button was dead on arrival
+
+Direct feedback on the entry directly below, same day: a standalone
+"Anotações" menu section for one item was more ceremony than the page
+warranted, and — a real, separate bug — tapping the hamburger button on
+`notas.html` itself did nothing.
+
+- **`shared-menu.js`**: the `notas` entry's `group` moved from `anotacoes`
+  to `dia`, and the now-empty `anotacoes` key dropped from `MENU_GROUPS`.
+  `ENV_GATED_GROUPS` shrank back to just `Set(["dia"])` — Anotações stays
+  exactly as env-gated as before, since it now inherits `dia`'s own gating
+  rather than carrying its own entry in the set. `index.html`'s
+  `GROUP_HINT.anotacoes` line removed to match (no orphaned heading text
+  for a group that no longer renders).
+- **The hamburger bug, found while touching the file**: every other page
+  declares `const CURRENT_PAGE = "<page>";` before `shared-menu.js` loads,
+  so `openMenu()` can tell the active entry from a link. `notas.html` never
+  did — the click handler called `openMenu()`, which threw a
+  `ReferenceError` on the undeclared global `CURRENT_PAGE` before it ever
+  built the drawer markup, so nothing visibly happened on tap. This is
+  **the second time a newly-added page has shipped without this
+  declaration** (per the user's own note) — swept every `.html` file
+  loading `shared-menu.js` for the same gap; `notas.html` was the only one
+  missing it. Fixed with `const CURRENT_PAGE = "notas";`.
+- Full 17-file suite green (`for t in test/*.test.js; do node "$t"; done`).
+- **Already deployed** — pushed straight to `main`.
+
 ## Status (2026-09-16): Notes/Notebooks — a new `notas.html` + `shared-notes.js` panel on all seven object detail pages, env-gated like Hoje/Tarefas
 
 Backend half (`notebooks`/`notes` tables, the new `notas` domain, the
