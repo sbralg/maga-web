@@ -76,17 +76,13 @@
   .pill.st-lead{background:rgba(147,51,234,.14);color:#9333ea}
   .pill.st-orcamento{background:rgba(180,83,9,.14);color:var(--warn)}
   .pill.st-confirmado{background:rgba(var(--accent-rgb),.14);color:var(--accent)}
-  .pill.st-entregue{background:rgba(22,163,74,.14);color:#16a34a}
+  .pill.st-entregue{background:rgba(22,163,74,.14);color:var(--ok)}
   .pill.st-cancelado{background:rgba(220,38,38,.14);color:var(--danger)}
   .pill.pay-pend{background:rgba(127,127,127,.14);color:var(--muted)}
   .pill.pay-partial{background:rgba(180,83,9,.14);color:var(--warn)}
-  .pill.pay-paid{background:rgba(22,163,74,.14);color:#16a34a}
+  .pill.pay-paid{background:rgba(22,163,74,.14);color:var(--ok)}
   .pill.pay-overdue{background:rgba(220,38,38,.14);color:var(--danger)}
-  @media (prefers-color-scheme: dark){
-    .pill.st-lead{color:#c084fc}
-    .pill.st-entregue{color:#4ade80}
-    .pill.pay-paid{color:#4ade80}
-  }
+  @media (prefers-color-scheme: dark){ .pill.st-lead{color:#c084fc} }
   /* ---- detail ---- */
   .evento-head{margin:0 0 14px}
   .pills-row{display:flex;justify-content:flex-end;gap:6px;margin:0 0 10px}
@@ -112,9 +108,8 @@
   .totals-grid .t{grid-column:1 / -1;border-top:1px solid var(--border);margin-top:2px;padding-top:10px}
   .totals-grid .lbl{font-size:12px;color:var(--muted);margin:0}
   .totals-grid .val{font-size:16px;font-weight:650;margin:2px 0 0}
-  .totals-grid .val.pos{color:#16a34a}
+  .totals-grid .val.pos{color:var(--ok)}
   .totals-grid .val.neg{color:var(--danger)}
-  @media (prefers-color-scheme: dark){ .totals-grid .val.pos{color:#4ade80} }
   .item-row, .pay-row{
     display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);
   }

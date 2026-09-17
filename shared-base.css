@@ -13,6 +13,15 @@
   --border:#e8e2d6; --border-strong:#d9d1c1; --accent:#9b1c1c; --accent-rgb:155,28,28;
   --accent-text:#fdf3e7; --danger:#dc2626;
   --gold:#c8860b; --gold-rgb:200,134,11;
+  /* Success / money-positive. Every page that shows a profit, a paid
+     balance or a receita hand-maintained its own #16a34a plus its own
+     dark-mode override (clientes, eventos, financeiro, produtos all had
+     a private copy), and preferencias.html referenced a `--ok` that was
+     never defined anywhere — so its "resolved" success state rendered in
+     the danger/brand red via the var() fallback. One token, defined once.
+     #15803d rather than #16a34a: 3.30:1 on --card fails WCAG AA for the
+     11px-14px sizes this is actually used at; #15803d clears 4.5:1. */
+  --ok:#15803d;
   /* hoje.html-only tints (urgent/lead/incident row highlighting) — harmless
      and unused on every other page, so they live here rather than in a
      seventh file only one page would load. */
@@ -25,6 +34,7 @@
     --border:#372c24; --border-strong:#4a3c31; --accent:#c0392f; --accent-rgb:192,57,47;
     --accent-text:#fdf3e7; --danger:#f87171;
     --gold:#eab308; --gold-rgb:234,179,8;
+    --ok:#4ade80;
     --warn:#fbbf24; --lead:#60a5fa; --incident:#f472b6;
     --tint:rgba(255,255,255,.05);
   }

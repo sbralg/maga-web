@@ -224,6 +224,16 @@ function logoutMcpSession(){
   try { sessionStorage.removeItem(MCP_TOKEN_KEY); } catch(_){}
   localStorage.removeItem(ENV_ID_KEY);
   localStorage.removeItem(ENV_CACHE_KEY);
+  // Same argument as ENV_CACHE_KEY above, and it applies harder here:
+  // shared-prefs.js reads this cache offline-FIRST, before any network
+  // call, precisely so the page still works while the jump host sleeps.
+  // Left behind, the next account to sign in on this device sees the
+  // previous person's WhatsApp allow-list, muted-contacts roster,
+  // timezone and daily-summary context - and on a sleeping host the
+  // refresh that would correct it never arrives. The key is declared in
+  // shared-prefs.js, which not every page loads, so it is spelled out
+  // here rather than referenced through the constant.
+  localStorage.removeItem("maga_prefs_cache");
   location.href = MCP_BASE + "/logout?return=" + encodeURIComponent(location.href);
 }
 

@@ -306,9 +306,40 @@ function noteCountFor(notebookId) {
   await page.fill('#search', 'cafe');
   await page.waitForSelector('#hits-card', { timeout: 6000 });
   await page.click('#hits-card .row');
-  await page.waitForSelector('.notes-card', { timeout: 6000 });
+  // Wait for the note TEXT, not just the .notes-card container. openNotebook()
+  // renders the card synchronously and wireNotesPanel() fills it from a
+  // separate notebook_detail round trip afterwards, so waiting on the
+  // container alone resolves while the list still says "Carregando…" — a
+  // ~15% flake. Same lesson as the .ins-head stale-element race (see this
+  // repo's CLAUDE.md, 2026-09-05): wait for the state to actually settle.
+  await page.waitForFunction(
+    () => (document.querySelector('.notes-card')?.textContent || '')
+      .includes('Vende grãos direto da fazenda'),
+    null, { timeout: 6000 });
   check('clicking a search hit opens the right notebook',
     (await page.textContent('.notes-card')).includes('Vende grãos direto da fazenda'));
+
+  // A note written in an open notebook must be findable by search without a
+  // page reload. allNotesCache is filled once from notes_all and used for
+  // every subsequent keystroke; nothing dropped it on a write, so a new
+  // note stayed invisible to the search box for the page's whole life.
+  await page.click('.note-add-btn');
+  await page.waitForSelector('#note-new-body', { timeout: 4000 });
+  await page.fill('#note-new-body', 'Entrega combinada para quinta de manha');
+  await page.click('#note-new-save');
+  await page.waitForFunction(
+    () => (document.querySelector('.notes-card')?.textContent || '')
+      .includes('Entrega combinada'),
+    null, { timeout: 6000 });
+  await page.click('#back');
+  await page.waitForSelector('#search', { timeout: 6000 });
+  await page.fill('#search', 'Entrega combinada');
+  await page.waitForFunction(
+    () => (document.getElementById('root').textContent || '')
+      .includes('Entrega combinada para quinta'),
+    null, { timeout: 6000 });
+  check('a note written in this session is findable by search without a reload',
+    (await page.textContent('#root')).includes('Entrega combinada para quinta'));
 
   await page.screenshot({ path: path.join(SHOTS, 'notas_lista.png'), fullPage: true });
   await browser.close();

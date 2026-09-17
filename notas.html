@@ -132,7 +132,7 @@ function navHeader(title, backAction, icon){
   return topRow + '<div class="subheader">' +
     '<button class="link" id="back">← Cadernos</button>' +
     (title ? '<span class="nb-title-wrap">' +
-      (icon ? '<span class="nb-icon">' + icon + '</span>' : '') +
+      (icon ? '<span class="nb-icon">' + esc(icon) + '</span>' : '') +
       '<h2 class="nb-title" id="nb-title">' + esc(title) + '</h2></span>' : '') +
   '</div>';
 }
@@ -185,7 +185,7 @@ function notebookRowHtml(nb){
   const icon = info.kind ? (KIND_ICON[info.kind] || "🗒️") : (nb.emoji || "🗒️");
   const count = nb.note_count || 0;
   return '<div class="row" data-id="' + esc(nb.id) + '">' +
-    '<span class="ic">' + icon + '</span>' +
+    '<span class="ic">' + esc(icon) + '</span>' +
     '<span class="body">' +
       '<p class="nm">' + esc(info.label) + '</p>' +
       '<p class="meta">' + count + (count === 1 ? " nota" : " notas") + '</p>' +
@@ -198,14 +198,20 @@ function notebookRowHtml(nb){
 // foldSearchText), fetched and folded client-side since there are no
 // server-side accent-insensitive indexes here (see that function's own
 // comment on why that's a reasonable, not a lazy, choice at this scale).
+//
+// The cache is deliberately NOT written on failure. Caching `[]` after a
+// failed fetch made three different situations render identically as
+// "Nenhuma nota encontrada." — a network error, an expired session, and an
+// account that genuinely has no notes — and, because `if(!allNotesCache)`
+// then short-circuits on every later keystroke, one transient failure
+// disabled cross-notebook search for the rest of the page's life. Leaving
+// it null means the next keystroke retries; letting the error propagate
+// means a 401 reaches handleAuthError and the session-expiry re-login
+// actually fires, instead of being swallowed into an empty result.
 let allNotesCache = null;
 async function searchHits(term){
   if(!allNotesCache){
-    try{
-      allNotesCache = (await api("notes_all")).notes || [];
-    }catch(_){
-      allNotesCache = [];
-    }
+    allNotesCache = (await api("notes_all")).notes || [];
   }
   const folded = foldSearchText(term);
   return allNotesCache.filter(n =>
@@ -213,10 +219,20 @@ async function searchHits(term){
   );
 }
 
+// Every note write invalidates the search cache. Without this, a note
+// created or edited in an open notebook was invisible to the search box
+// until a full page reload — the cache is filled once and was never
+// dropped.
+function invalidateNotesCache(){ allNotesCache = null; }
+// shared-notes.js calls this after every successful note write. This page
+// is the only consumer — it is the only one holding a second, page-wide
+// view of the same notes.
+window.onNotesChanged = invalidateNotesCache;
+
 function noteHitRowHtml(n){
   const info = n.notebook ? notebookInfo(n.notebook) : { label: "Caderno" };
   return '<div class="row" data-notebook="' + esc(n.notebook_id) + '">' +
-    '<span class="ic">' + (info.kind ? (KIND_ICON[info.kind] || "🗒️") : (info.icon || "🗒️")) + '</span>' +
+    '<span class="ic">' + esc(info.kind ? (KIND_ICON[info.kind] || "🗒️") : (info.icon || "🗒️")) + '</span>' +
     '<span class="body">' +
       '<p class="nm">' + esc(noteTitle(n)) + '</p>' +
       '<p class="meta">' + esc(info.label) + '</p>' +
@@ -225,12 +241,32 @@ function noteHitRowHtml(n){
   '</div>';
 }
 
+// renderList awaits (searchHits can hit the network whenever the cache is
+// cold — which, now that a note write drops it, happens mid-session and
+// not only on first search). Two renders in flight can therefore finish
+// out of order, and the LOSER writing root.innerHTML last wins the screen:
+// type fast, or search right after writing a note, and a stale result
+// paints over a newer one. Each call takes a ticket; only the newest is
+// allowed to touch the DOM.
+let renderListSeq = 0;
 async function renderList(term){
+  const seq = ++renderListSeq;
   const q = (term || "").trim();
   let listHtml;
   if(q){
-    const hits = await searchHits(q);
-    listHtml = hits.length === 0
+    // searchHits can throw now (see its comment). An expired session hands
+    // the page back to the login screen; anything else says the search
+    // itself failed, which is a different statement from "found nothing" —
+    // and the cache stays null, so the next keystroke tries again.
+    let hits;
+    try{
+      hits = await searchHits(q);
+    }catch(e){
+      if(e.unauthorized) return handleAuthError(e, () => renderList(""));
+      listHtml = '<p class="msg err small">Não foi possível buscar agora.</p>';
+      hits = null;
+    }
+    if(hits) listHtml = hits.length === 0
       ? '<p class="msg small">Nenhuma nota encontrada.</p>'
       : '<div class="card search-hits" id="hits-card">' + hits.map(noteHitRowHtml).join("") + '</div>';
   }else{
@@ -249,6 +285,10 @@ async function renderList(term){
         'do próprio objeto — busque aqui para encontrá-las, ou crie um caderno seu.</p>'
       : '<div class="card" id="nb-card">' + userNotebooks.map(notebookRowHtml).join("") + '</div>';
   }
+
+  // A newer render started while this one was awaiting — drop this result
+  // rather than paint it over the fresher one.
+  if(seq !== renderListSeq) return;
 
   root.innerHTML = navHeader("Notas") +
     '<div class="searchrow">' +

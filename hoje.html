@@ -349,21 +349,30 @@ function triagemHtml(p){
   const has = (o) => o && (o.total === 0 || o.total || o.descricao);
   if(!has(email) && !has(wpp)) return "";
   const n = (v) => (v === 0 || v ? v : "—");
+  // The breakdown is built only from the parts that actually carry a
+  // number. Running every field through n() unconditionally produced
+  // "0 e-mails — — ruído, — com ação" on a payload that reported a total
+  // and no breakdown — an em-dash reads as "unknown" standing alone, but
+  // as broken copy in the middle of a sentence. A missing breakdown now
+  // simply leaves the total to speak for itself.
+  const breakdown = (parts) => {
+    const shown = parts.filter(([v]) => v === 0 || v).map(([v, label]) => n(v) + " " + label);
+    return shown.length ? " — " + shown.join(", ") : "";
+  };
   let inner = "";
   if(has(email)){
     inner += '<div class="entry">' +
       '<span class="badge">📧</span>' +
-      '<span class="body"><p class="txt">' + esc(n(email.total)) + ' e-mails — ' +
-        esc(n(email.ruido)) + ' ruído, ' + esc(n(email.acao)) + ' com ação</p>' +
+      '<span class="body"><p class="txt">' + esc(n(email.total)) + ' e-mails' +
+        esc(breakdown([[email.ruido, "ruído"], [email.acao, "com ação"]])) + '</p>' +
       (email.descricao ? '<p class="meta">' + esc(email.descricao) + '</p>' : '') +
       '</span></div>';
   }
   if(has(wpp)){
     inner += '<div class="entry">' +
       '<span class="badge">💬</span>' +
-      '<span class="body"><p class="txt">' + esc(n(wpp.total)) + ' mensagens — ' +
-        esc(n(wpp.grupos_ativos)) + ' grupos, ' + esc(n(wpp.diretas)) + ' diretas, ' +
-        esc(n(wpp.acao)) + ' com ação</p>' +
+      '<span class="body"><p class="txt">' + esc(n(wpp.total)) + ' mensagens' +
+        esc(breakdown([[wpp.grupos_ativos, "grupos"], [wpp.diretas, "diretas"], [wpp.acao, "com ação"]])) + '</p>' +
       (wpp.descricao ? '<p class="meta">' + esc(wpp.descricao) + '</p>' : '') +
       '</span></div>';
   }

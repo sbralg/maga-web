@@ -383,7 +383,6 @@ function renderFornecedor(data){
   });
 
   document.getElementById("del-forn").addEventListener("click", async () => {
-    let force = false;
     try{
       let res = await api("fornecedor_delete", { id: f.id });
       if(res.ok === false && res.reason === "has_history"){
@@ -394,11 +393,20 @@ function renderFornecedor(data){
           'Este fornecedor tem ' + parts.join(" e ") + ' registrado(s). Removê-lo mantém tudo, ' +
           'apenas sem o vínculo com o fornecedor. Não dá para desfazer.',
           "Remover mesmo assim"))) return;
-        force = true;
         res = await api("fornecedor_delete", { id: f.id, force: true });
       }
       fornecedores = [];
-      listToast(force ? "Fornecedor removido" : "Fornecedor removido");
+      // fornecedor_delete reports what it unlinked (produtos_unlinked /
+      // movements_unlinked). Saying so closes the loop on the warning the
+      // person just accepted — this used to be a ternary whose two
+      // branches were the same string, so the counts were fetched and
+      // thrown away.
+      const undone = [];
+      if(res.produtos_unlinked > 0) undone.push(res.produtos_unlinked + " produto(s)");
+      if(res.movements_unlinked > 0) undone.push(res.movements_unlinked + " compra(s)");
+      listToast(undone.length
+        ? "Fornecedor removido — " + undone.join(" e ") + " sem vínculo"
+        : "Fornecedor removido");
       loadFornecedores();
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadFornecedores);

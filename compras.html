@@ -253,7 +253,13 @@ function validScan(raw, format){
 
 // Remembers which physical lens works on this phone. Device ids are stable
 // per origin once camera permission has been granted.
-const CAM_KEY = "scan_camera_id";
+//
+// Prefixed, unlike the bare "scan_camera_id" it used to be. This app is
+// served from a GitHub Pages PROJECT path (sbralg.github.io/maga-web/),
+// and the whole sbralg.github.io ORIGIN shares one localStorage — an
+// unprefixed key there is a real collision with anything else ever hosted
+// under that user. Losing the old value costs one lens re-pick.
+const CAM_KEY = "maga_scan_camera_id";
 
 // THE rule for "does this lens actually focus": `manual` on its own is a
 // fixed-focus lens exposing a no-op knob. Only `continuous` / `single-shot`
@@ -1059,7 +1065,7 @@ function navHeader(title, backAction, emoji){
 
   // Items view: the list itself becomes a subtitle row below -- "← Listas"
   // on the left, the list's icon + name grouped on the right.
-  const emojiBtn = emoji ? '<span class="badge">' + emoji + '</span>' : '';
+  const emojiBtn = emoji ? '<span class="badge">' + esc(emoji) + '</span>' : '';
   const subRow = '<div class="subheader">' +
     '<button class="link" id="back">← Listas</button>' +
     '<span class="list-title">' + emojiBtn + '<h2>' + esc(title) + '</h2></span>' +
@@ -1090,7 +1096,7 @@ function renderLists(lists){
     : '<div class="card">' + lists.map(l => {
         const emoji = l.emoji || "🛒";
         return '<div class="row" data-id="' + esc(l.id) + '">' +
-          '<span class="badge">' + emoji + '</span>' +
+          '<span class="badge">' + esc(emoji) + '</span>' +
           '<span class="body list-open" style="cursor:pointer">' +
             '<p class="txt">' + esc(l.name) + '</p>' +
             '<p class="meta">' + l.purchased_count + '/' + l.item_count + ' itens · ' + fmtMoney(l.total_cart) + ' no carrinho</p>' +
@@ -1119,8 +1125,15 @@ function renderLists(lists){
     row.querySelector('[data-action="delete"]').addEventListener("click", async () => {
       const l = lists.find(x => x.id === id);
       if(!(await confirmModal('Excluir a lista "' + l.name + '" e todos os seus itens?'))) return;
+      // handleAuthError replaces the WHOLE screen with "Não foi possível
+      // carregar agora" — right for a failed page load, wrong for one
+      // failed row: it hid which row failed and threw away the list that
+      // was on screen. Only an expired session still takes that path.
       try{ await api("shopping_list_delete", { id }); loadLists(); }
-      catch(e){ handleAuthError(e, loadLists); }
+      catch(e){
+        if(e.unauthorized) return handleAuthError(e, loadLists);
+        listToast("Não foi possível excluir a lista.", true);
+      }
     });
   });
 
@@ -1134,7 +1147,11 @@ function renderLists(lists){
     addBtn.disabled = true;
     const emoji = emojiInput.value.trim();
     try{ await api("shopping_list_create", { name, emoji: emoji || undefined }); loadLists(); }
-    catch(e){ addBtn.disabled = false; handleAuthError(e, loadLists); }
+    catch(e){
+      addBtn.disabled = false;
+      if(e.unauthorized) return handleAuthError(e, loadLists);
+      listToast("Não foi possível criar a lista.", true);
+    }
   };
   addBtn.addEventListener("click", addList);
   nameInput.addEventListener("keydown", e => { if(e.key === "Enter") addList(); });
