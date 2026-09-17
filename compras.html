@@ -232,15 +232,13 @@ function scanningSupported(){
   return typeof window.BarcodeDetector === "function";
 }
 
-// Standard GS1 mod-10 check digit — the same algorithm normalizeGtin() runs
-// in maga-api. The server stays the authority; this copy exists so a
-// misread is thrown away before it costs a closed camera and a bogus
-// "insumo novo" prompt. Keep the two in step.
+// The GS1 mod-10 check itself is gtinCheckDigit(), shared with synthGtin()
+// in shared-inputs.js — one copy of the weights. This wraps it into the
+// verifier this page actually needs: a misread is thrown away before it
+// costs a closed camera and a bogus "insumo novo" prompt. The server
+// (normalizeGtin() in maga-api) stays the authority either way.
 function gtinCheckDigitOk(code){
-  const d = code.split("").map(Number);
-  const check = d.pop();
-  const sum = d.reverse().reduce((acc, n, i) => acc + n * (i % 2 === 0 ? 3 : 1), 0);
-  return (10 - (sum % 10)) % 10 === check;
+  return gtinCheckDigit(code.slice(0, -1)) === Number(code.slice(-1));
 }
 
 // Returns the code if it's a plausible GTIN, or null to keep scanning.

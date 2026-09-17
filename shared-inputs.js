@@ -172,3 +172,27 @@ function fieldsToNetQty(rawQty, rawUnit){
   if(n === null || !u) return null;
   return { net_qty: n * u.mult, net_unit: u.unit };
 }
+
+// Standard GS1 mod-10 check digit — the same algorithm maga-api's
+// normalizeGtin runs. `lead` is every digit of a GTIN EXCEPT the check
+// digit itself (11 for an EAN-13, 7 for an EAN-8, ...). The one shared
+// copy: compras.html's gtinCheckDigitOk() (a verifier) is expressed in
+// terms of this, and synthGtin() below (a generator) is built on it too —
+// one copy of the weights, not several kept in step by hand.
+function gtinCheckDigit(lead){
+  const d = String(lead).split("").map(Number);
+  const sum = d.reverse().reduce((acc, n, i) => acc + n * (i % 2 === 0 ? 3 : 1), 0);
+  return (10 - (sum % 10)) % 10;
+}
+
+// A synthetic EAN-13 for an insumo that has no real barcode — bulk flour,
+// loose produce, anything sold unbarcoded. Leads with "2": GS1's
+// restricted-circulation range, reserved for exactly this (store-internal
+// codes), so a generated code can never collide with a real retail barcode.
+// The remaining 11 leading digits are random; the 13th is the check digit,
+// so the result passes the same validation maga-api's insumo_upsert runs.
+function synthGtin(){
+  let lead = "2";
+  for(let i = 0; i < 11; i++) lead += Math.floor(Math.random() * 10);
+  return lead + gtinCheckDigit(lead);
+}

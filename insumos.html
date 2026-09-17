@@ -381,8 +381,8 @@ function insumoRowHtml(p){
 function renderCatalog(){
   const shown = catalog.filter(p => matchesFilters(p, searchTerm, kindFilter));
   const rowsHtml = catalog.length === 0
-    ? '<p class="msg">Nenhum insumo no catálogo ainda. Eles entram sozinhos ao ' +
-      'ler um código de barras na lista de compras.</p>'
+    ? '<p class="msg">Nenhum insumo no catálogo ainda. Toque em "+ Novo insumo" ' +
+      'para criar um, ou leia um código de barras na lista de compras.</p>'
     : (shown.length === 0
         ? '<p class="msg" id="no-match">Nenhum insumo encontrado.</p>'
         : '<div class="card" id="cat-card">' + shown.map(insumoRowHtml).join("") + '</div>');
@@ -398,6 +398,7 @@ function renderCatalog(){
       '<button type="button" class="chip' + (kindFilter === "embalagem" ? " active" : "") + '" aria-pressed="' + (kindFilter === "embalagem" ? "true" : "false") + '" data-kind="embalagem">📦 Embalagens</button>' +
     '</div>' +
     rowsHtml +
+    '<button class="primary full addrow-btn" id="new-insumo">+ Novo insumo</button>' +
     '<p class="msg small">' + catalog.length + ' insumo' +
       (catalog.length === 1 ? '' : 's') + ' no catálogo</p>';
 
@@ -429,6 +430,60 @@ function renderCatalog(){
     });
   });
   wireCatalogRows();
+
+  // The only way an insumo used to come into existence was scanning a
+  // barcode — bulk flour, loose produce, anything sold unbarcoded simply
+  // could not be entered, and a new user who opens Insumos first had no
+  // way forward at all. This reuses insumoEditModal() as-is (handed `{}`
+  // it renders every field empty) rather than forking it.
+  document.getElementById("new-insumo").addEventListener("click", async () => {
+    let categories;
+    try{
+      if(!categoryCache) categoryCache = (await api("insumo_categories")).categories || [];
+      categories = categoryCache;
+    }catch(e){
+      if(e.unauthorized) return handleAuthError(e, loadCatalog);
+      categories = [];
+    }
+    const edited = await insumoEditModal({}, categories, {
+      title: "Novo insumo",
+      note: "Sem código de barras? Sem problema — um código interno é " +
+        "gerado automaticamente. Você o verá na ficha do insumo.",
+    });
+    if(!edited) return;
+    // 11 random digits make a collision with something already in the
+    // catalogue vanishingly unlikely — but insumo_upsert upserts on
+    // conflict, so a collision would silently OVERWRITE an existing insumo
+    // rather than error. The whole catalogue is already in memory, so it
+    // costs nothing to rule that out instead of trusting the odds.
+    const existing = new Set(catalog.map(p => p.gtin));
+    let gtin = null;
+    for(let i = 0; i < 10 && !gtin; i++){
+      const candidate = synthGtin();
+      if(!existing.has(candidate)) gtin = candidate;
+    }
+    if(!gtin){
+      listToast("Não foi possível gerar um código único, tente de novo", true);
+      return;
+    }
+    try{
+      await api("insumo_upsert", {
+        gtin,
+        name: edited.name,
+        brand: edited.brand,
+        net_qty: edited.size ? edited.size.net_qty : null,
+        net_unit: edited.size ? edited.size.net_unit : null,
+        kind: edited.kind,
+        category_id: edited.category_id,
+      });
+      listToast("Insumo criado");
+      listLoaded = false;
+      route.navToDetail(gtin);
+    }catch(e){
+      if(e.unauthorized) return handleAuthError(e, loadCatalog);
+      listToast("Não foi possível criar o insumo", true);
+    }
+  });
 }
 
 function wireCatalogRows(){
@@ -846,7 +901,13 @@ function renderInsumo(data){
 // Resolves with {name, brand, size} or null. `size` is null when the amount
 // is blank, which means "no size known" — this dialog CAN clear it, unlike
 // the scan dialog, because correcting metadata is the whole point here.
-function insumoEditModal(p, categories){
+//
+// `p:{}` (every field absent) is also how "+ Novo insumo" reuses this: every
+// field just renders empty. `opts.title`/`opts.note` are the only things
+// that differ for that caller — a different heading, and a line explaining
+// the synthetic barcode it's about to generate — so there is no fork.
+function insumoEditModal(p, categories, opts){
+  opts = opts || {};
   categories = categories || [];
   const pack = netQtyToFields(p.net_qty, p.net_unit);
   return new Promise(resolve => {
@@ -856,7 +917,8 @@ function insumoEditModal(p, categories){
     const catOptions = categories.filter(c => c.kind === kind);
     backdrop.innerHTML =
       '<div class="modal-card">' +
-        '<h3>Editar insumo</h3>' +
+        '<h3>' + esc(opts.title || "Editar insumo") + '</h3>' +
+        (opts.note ? '<p class="hint">' + esc(opts.note) + '</p>' : '') +
         '<label for="pe-name">Nome do insumo</label>' +
         '<input type="text" id="pe-name" value="' + esc(p.name || "") + '">' +
         '<label for="pe-brand">Marca (opcional)</label>' +
