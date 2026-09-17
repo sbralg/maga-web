@@ -925,10 +925,9 @@ function productFieldsModal(opts){
       if(netQtyNow && (netQtyNow !== pack.qty || netUnitNow !== pack.unit)){
         size = fieldsToNetQty(netQtyNow, netUnitNow);
         if(!size){
-          alert(netUnitNow
-            ? "quantidade do pacote inválida"
-            : "escolha a unidade do pacote (kg, g, L, ml ou un)");
-          (netUnitNow ? netQtyEl : netUnitEl).focus();
+          fieldError(netUnitNow ? netQtyEl : netUnitEl, netUnitNow
+            ? "Quantidade do pacote inválida."
+            : "Escolha a unidade do pacote (kg, g, L, ml ou un).");
           return;
         }
       }
@@ -1042,7 +1041,7 @@ function openListEditModal(list, onSaved){
   document.getElementById("edit-list-save").addEventListener("click", async () => {
     const name = nameInput.value.trim();
     const emoji = document.getElementById("edit-list-emoji").value.trim();
-    if(!name){ alert("O nome não pode ficar vazio."); return; }
+    if(!name){ fieldError(nameInput, "O nome não pode ficar vazio."); return; }
     close();
     const tasks = [];
     if(name !== list.name) tasks.push(api("shopping_list_rename", { id: list.id, name }));
@@ -1060,12 +1059,29 @@ function openListEditModal(list, onSaved){
 // flex:none vs. this page's old 20px `.badge` — confirmed visually close
 // enough that no page-local override was needed).
 
+// Two shell shapes, one per screen — a loading state renders the header of
+// whichever screen it's ON THE WAY TO, not a bare "Carregando…" that wipes
+// the header/hamburger/back-link and puts them back a moment later once
+// the fetch resolves (the flash preferencias.html's own renderShell() was
+// built to avoid).
+function renderListsShell(inner){
+  root.innerHTML = navHeader("Listas de compras") + inner;
+  wireNav();
+}
+function renderItemsShell(inner){
+  root.innerHTML = navHeader("", { backLabel: "Listas", backAction: loadLists, listTitle: "Listas de compras" }) + inner;
+  wireNav(loadLists);
+}
+
 // ---- lists screen ----
 
 async function loadLists(){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
   currentList = null;
+  // getPass() has to be checked BEFORE any shell renders — showLogin() takes
+  // over the whole root itself, and a shell rendered first would just be
+  // discarded a moment later.
   if(!getPass()){ showLogin(); return; }
+  renderListsShell('<p class="msg">Carregando…</p>');
   try{
     const data = await api("shopping_lists");
     renderLists(data.lists || []);
@@ -1143,7 +1159,7 @@ function renderLists(lists){
 // ---- items screen ----
 
 async function openList(id){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
+  renderItemsShell('<p class="msg">Carregando…</p>');
   try{
     const [listsData, itemsData] = await Promise.all([
       api("shopping_lists"),
@@ -1345,7 +1361,7 @@ function renderItems(list, items){
         e.target.checked = prevPurchased;
         row.querySelector(".txt").classList.toggle("done", prevPurchased);
         recomputeTotals();
-        alert("Não foi possível salvar. Tente novamente.");
+        listToast("Não foi possível salvar. Tente novamente.", true);
       }
     });
     const priceEl = row.querySelector(".price-input");
@@ -1366,7 +1382,7 @@ function renderItems(list, items){
         priceEl.value = fmtPriceInput(prevPrice);
         refreshLineTotal(row, it);
         recomputeTotals();
-        alert("Não foi possível salvar. Tente novamente.");
+        listToast("Não foi possível salvar. Tente novamente.", true);
       }
     });
     const qtyEl = row.querySelector(".qty-input");
@@ -1392,7 +1408,7 @@ function renderItems(list, items){
         qtyEl.value = fmtQty(qtyOf(it));
         refreshLineTotal(row, it);
         recomputeTotals();
-        alert("Não foi possível salvar. Tente novamente.");
+        listToast("Não foi possível salvar. Tente novamente.", true);
       }
     }
     qtyEl.addEventListener("change", (e) => setQty(e.target.value));
@@ -1445,7 +1461,7 @@ function renderItems(list, items){
         recomputeTotals();
       }catch(err){
         if(err.unauthorized){ handleAuthError(err, loadLists); return true; }
-        alert("Não foi possível remover o item duplicado. Tente novamente.");
+        listToast("Não foi possível remover o item duplicado. Tente novamente.", true);
       }
       return true;
     }
@@ -1473,9 +1489,12 @@ function renderItems(list, items){
         recomputeTotals();
       }catch(err){
         if(err.unauthorized){ handleAuthError(err, loadLists); return; }
-        alert(err.badRequest
+        // The edit dialog is already closed by the time this runs (saveItemEdit
+        // is called AFTER itemEditModal() resolves), so there's no field left
+        // to hang the message on — a toast, not fieldError.
+        listToast(err.badRequest
           ? "Verifique o peso/volume (ex: 380 g) e o código de barras."
-          : "Não foi possível salvar. Tente novamente.");
+          : "Não foi possível salvar. Tente novamente.", true);
       }
     }
     row.querySelector('[data-action="rename-item"]').addEventListener("click", async () => {
@@ -1535,7 +1554,7 @@ function renderItems(list, items){
         if(emptyMsg) emptyMsg.replaceWith(parent);
         parent.insertBefore(row, nextSibling);
         recomputeTotals();
-        alert("Não foi possível remover. Tente novamente.");
+        listToast("Não foi possível remover. Tente novamente.", true);
       }
     });
   }
@@ -1576,9 +1595,12 @@ function renderItems(list, items){
     }catch(err){
       if(err.unauthorized){ handleAuthError(err, loadLists); }
       else if(err.badRequest){
-        alert("Não entendi o peso/volume. Use algo como 380 g, 1 kg ou 500 ml.");
+        // The quick-add row only sends name+quantity — no size field of its
+        // own — so a 400 here is about the QUANTITY typed, not a package
+        // size; qtyInput is the field this message actually applies to.
+        fieldError(qtyInput, "Não entendi o peso/volume. Use algo como 380 g, 1 kg ou 500 ml.");
       }
-      else alert("Não foi possível adicionar. Tente novamente.");
+      else listToast("Não foi possível adicionar. Tente novamente.", true);
     }finally{
       addBtn.disabled = false;
     }

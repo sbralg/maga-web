@@ -213,6 +213,12 @@ async function load(){
     return;
   }
 
+  // The static "Carregando…" in the page's own <body> markup (below) has no
+  // header — fine as the very first paint before any script runs, but the
+  // token/env checks above can take a beat and loadPreferences() itself is
+  // a real network round trip. renderShell() here closes that gap the same
+  // way it already does for every OTHER exit path in this function.
+  renderShell('<p class="msg">Carregando…</p>');
   try {
     const result = await loadPreferences();
     prefs = result.data;
@@ -860,7 +866,10 @@ function wireDailySummaryTab(){
   if(addBtn){
     addBtn.addEventListener("click", async () => {
       if(rosterState.length >= ROSTER_MAX_ROWS){
-        alert("Limite de " + ROSTER_MAX_ROWS + " pessoas cadastradas.");
+        // A limit reached on a click, not a value the person typed into a
+        // field — there's no input to hang a fieldError() under, so this is
+        // a transient status pill like any other failed action.
+        listToast("Limite de " + ROSTER_MAX_ROWS + " pessoas cadastradas.", true);
         return;
       }
       const result = await rosterEntryModal(null);
@@ -903,7 +912,11 @@ function wirePassword(){
       if(await handledAuthFailure(e)) return;
       const field = e.body && e.body.field ? e.body.field : null;
       if(field) fieldError(field, e.message);
-      else alert("Não foi possível trocar a senha: " + e.message);
+      // No field named — a transient operation failure, not something to
+      // hang under one input. e.message is still the server's own reason
+      // (wrong current password, etc.), just carried in the toast instead
+      // of OS chrome.
+      else listToast("Não foi possível trocar a senha: " + e.message, true);
     }
   });
 
@@ -917,7 +930,7 @@ function wirePassword(){
     } catch(e){
       status.textContent = "";
       if(await handledAuthFailure(e)) return;
-      alert("Não foi possível encerrar as outras sessões: " + e.message);
+      listToast("Não foi possível encerrar as outras sessões: " + e.message, true);
     }
   });
 }
@@ -951,7 +964,7 @@ function wireBackup(){
       a.click();
       URL.revokeObjectURL(a.href);
       status.textContent = "Cópia baixada.";
-    } catch(e){ status.textContent = ""; alert("Não foi possível baixar: " + e.message); }
+    } catch(e){ status.textContent = ""; listToast("Não foi possível baixar: " + e.message, true); }
   });
 
   const file = document.getElementById("import-file");
@@ -961,7 +974,7 @@ function wireBackup(){
     if(!file.files || !file.files[0]) return;
     let payload;
     try { payload = JSON.parse(await file.files[0].text()); }
-    catch(_){ alert("Esse arquivo não é uma cópia válida."); file.value = ""; return; }
+    catch(_){ listToast("Esse arquivo não é uma cópia válida.", true); file.value = ""; return; }
     if(!await confirmModal("Restaurar preferências deste arquivo? Os valores atuais serão substituídos.")){ file.value = ""; return; }
     status.textContent = "Restaurando…";
     try {
@@ -983,7 +996,7 @@ function wireBackup(){
     } catch(e){
       status.textContent = "";
       if(await handledAuthFailure(e)) return;
-      alert("Não foi possível restaurar: " + e.message);
+      listToast("Não foi possível restaurar: " + e.message, true);
     } finally { file.value = ""; }
   });
 }
@@ -993,7 +1006,11 @@ function wireBackup(){
 function fieldError(field, message){
   const holder = document.querySelector('[data-field="' + field + '"] .err');
   if(holder){ holder.textContent = message; holder.hidden = false; }
-  else alert(message);
+  // No inline slot for this field (shouldn't happen for anything the
+  // server actually names today — every current .err-bearing field has
+  // one — but a future field could still land here before its markup
+  // catches up), so fall back to a toast rather than OS chrome.
+  else listToast(message, true);
 }
 
 // A 428 means "type your password again", not "something broke" - so it gets
@@ -1006,7 +1023,12 @@ async function handledAuthFailure(e){
     return true;
   }
   if(e.name === "PrefsAuthError"){
-    alert("Sua sessão expirou. Entre de novo.");
+    // Same shape as the PrefsReauthError branch just above: the person is
+    // about to be redirected either way (there's no "cancel" that keeps
+    // them here with an expired session), so this is an explanation to
+    // read before that happens, not a decision — confirmModal's own
+    // "Entendi" reads that way, unlike Cancelar/OK.
+    await confirmModal("Sua sessão expirou. Entre de novo.", "Entendi");
     startOAuth("padrao");
     return true;
   }
@@ -1356,7 +1378,7 @@ async function saveSection(section, btn){
     const field = e.body && e.body.field ? String(e.body.field).split(".").pop() : null;
     const holder = field ? document.querySelector('[data-field="' + field + '"] .err') : null;
     if(holder){ holder.textContent = e.message; holder.hidden = false; }
-    else alert("Não foi possível salvar: " + e.message);
+    else listToast("Não foi possível salvar: " + e.message, true);
   } finally {
     btn.disabled = false;
   }

@@ -109,6 +109,11 @@ const REPORTS = {
   // request shape reached maga-api, not just that some call happened).
   await ctx.addInitScript(() => {
     window.__pushCalls = { subscribe: 0, unsubscribe: 0 };
+    // Set from the test to exercise the generic-failure path (a real error
+    // that is neither "denied" nor "unsupported" — see shared-push.js) —
+    // the one case that used to fall through to a native alert() in
+    // hoje.html's own catch block.
+    window.__pushForceFail = false;
     let subscribed = null;
     const fakeSubscription = {
       endpoint: 'https://fake.push.example/ep1',
@@ -118,7 +123,10 @@ const REPORTS = {
     const fakeRegistration = {
       pushManager: {
         getSubscription: async () => subscribed,
-        subscribe: async () => { window.__pushCalls.subscribe++; subscribed = fakeSubscription; return fakeSubscription; },
+        subscribe: async () => {
+          if (window.__pushForceFail) throw new Error('AbortError');
+          window.__pushCalls.subscribe++; subscribed = fakeSubscription; return fakeSubscription;
+        },
       },
     };
     Object.defineProperty(navigator, 'serviceWorker', {
@@ -290,6 +298,22 @@ const REPORTS = {
     pushActionCalls.some(c => c.action === 'push_unsubscribe' && c.endpoint === 'https://fake.push.example/ep1'));
   check('the card reverts to the not-yet-subscribed message',
     (await page.textContent('#push-optin-msg')).includes('Clique aqui para ser notificado'));
+
+  // --- a generic subscribe failure uses the shared toast, not a native
+  // alert() -- regression guard for the alert()->listToast() conversion.
+  // A `dialog` listener is a trap: if this ever regresses, the dialog
+  // fires and the check below catches it. ---
+  let pushDialogFired = false;
+  page.once('dialog', async d => { pushDialogFired = true; await d.dismiss(); });
+  await page.evaluate(() => { window.__pushForceFail = true; });
+  await page.click('#push-optin-btn');
+  await page.waitForSelector('#list-toast.show', { timeout: 6000 });
+  check('the failed subscribe shows the shared toast with its own message, got: ' +
+    await page.textContent('#list-toast'),
+    (await page.textContent('#list-toast')).includes('Não foi possível ativar as notificações agora.'));
+  check('no native dialog fired for the failed subscribe', !pushDialogFired);
+  check('the opt-in button is still offering to activate (the click never subscribed)',
+    (await page.textContent('#push-optin-btn')).trim() === 'Ativar notificações');
 
   await page.screenshot({ path: path.join(SHOTS, 'hoje.png'), fullPage: true });
   await browser.close();

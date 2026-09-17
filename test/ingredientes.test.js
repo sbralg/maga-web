@@ -312,14 +312,25 @@ function handleNotesAction(body) {
     (await page.getAttribute('.ins-row', 'data-gtin')) === '7891000100103');
 
   // --- rename: refused when the name already exists ---
+  // (ingredient_rename's fake refusal below deliberately mirrors a raw
+  // Postgres unique-constraint message, "duplicate key value" — NOT the
+  // "already exists" substring ingredient_create's own refusal uses — so
+  // this exercises the OTHER branch of the app's already/not-already split:
+  // a toast, not fieldError, same as any other unrecognized save failure.)
   await page.click('#edit-ing');
   await page.waitForSelector('#ing-name-i', { timeout: 6000 });
   await page.fill('#ing-name-i', 'Caixa Kraft');
-  page.once('dialog', d => d.dismiss());
+  // No native dialog any more — this is listToast(), not alert().
+  let sawDialog = false;
+  page.once('dialog', d => { sawDialog = true; d.dismiss(); });
   await page.click('#ing-ok');
-  await page.waitForTimeout(300);
+  await page.waitForSelector('.toast.show', { timeout: 6000 });
   check('renaming onto an existing name is refused, not silently merged',
     ingredientOf('I1').name === 'Leite Condensado');
+  check('no native dialog fired', !sawDialog);
+  check('a toast reports the save failure, got: ' +
+    (await page.textContent('#list-toast')),
+    (await page.textContent('#list-toast')).indexOf('Não foi possível salvar') >= 0);
   await page.click('#ing-cancel');
 
   // --- rename: a real correction goes through, and the insumos follow.
@@ -400,11 +411,13 @@ function handleNotesAction(body) {
   await page.click('#new-ing');
   await page.waitForSelector('#ing-name-i', { timeout: 6000 });
   await page.fill('#ing-name-i', 'farinha de trigo');
-  page.once('dialog', d => d.dismiss());
   await page.click('#ing-ok');
-  await page.waitForTimeout(300);
+  await page.waitForSelector('.field-error', { timeout: 6000 });
   check('a duplicate name does not create a second ingredient',
     state.ingredients.filter(i => /farinha/i.test(i.name)).length === 1);
+  check('a field-error message names the duplicate, got: ' +
+    (await page.textContent('.field-error')),
+    (await page.textContent('.field-error')).indexOf('Já existe') >= 0);
   await page.click('#ing-cancel');
   await page.click('.row[data-id="' + created.id + '"]');
   await page.waitForSelector('#edit-ing', { timeout: 6000 });

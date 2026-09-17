@@ -589,12 +589,20 @@ function handleScan(body) {
 
   // An amount with no unit is refused rather than guessed: "1,5" could be
   // grams or kilos, and guessing corrupts the number the recipes add up.
-  page.once('dialog', d => d.dismiss());
+  // No native dialog fires any more — this is fieldError(), inline under
+  // the unit field, not alert().
+  let sawDialog = false;
+  page.once('dialog', d => { sawDialog = true; d.dismiss(); });
   await page.click('#scan-ok');
   await page.waitForTimeout(250);
   check('amount without a unit keeps the dialog open',
     (await page.$$('#scan-net-qty')).length === 1);
   check('amount without a unit is never sent', state.upserts.length === 0);
+  check('no native dialog fired', !sawDialog);
+  check('a field-error message names the unit field, got: ' +
+    (await page.locator('.field-error').last().textContent()),
+    (await page.locator('.field-error').last().textContent())
+      .indexOf('unidade do pacote') >= 0);
 
   await page.selectOption('#scan-net-unit', 'kg');
   await page.click('#scan-ok');

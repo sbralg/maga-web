@@ -354,6 +354,16 @@ function wireHeader(){
   wireNav();
 }
 
+// This page's list screen never has a subheader/back button, so the
+// loading placeholder and the generic-failure retry state can both use
+// the same plain header + inner markup — matching render()'s own header
+// (built inline there, since it's combined with the add-form/done-list in
+// one innerHTML replace) so the header never disappears mid-load.
+function renderShell(inner){
+  root.innerHTML = navHeader("Tarefas pendentes") + inner;
+  wireNav();
+}
+
 function wireAddForm(){
   const btn = document.getElementById("add-btn");
   const input = document.getElementById("new-text");
@@ -402,7 +412,7 @@ async function saveEdit(id, patch){
     await load();
   }catch(e){
     if(e.unauthorized){ handleAuthError(e, load); return; }
-    alert("Não foi possível salvar.");
+    listToast("Não foi possível salvar.", true);
   }
 }
 
@@ -463,7 +473,7 @@ function openEditModal(it){
       await load();
     }catch(e){
       if(e.unauthorized){ handleAuthError(e, load); return; }
-      alert("Não foi possível excluir.");
+      listToast("Não foi possível excluir.", true);
     }
   });
 
@@ -471,7 +481,7 @@ function openEditModal(it){
     const text = textInput.value.trim();
     const source = document.getElementById("edit-cat-select").value;
     const dueDate = dueInput.value || null;
-    if(!text){ alert("O texto não pode ficar vazio."); return; }
+    if(!text){ fieldError(textInput, "O texto não pode ficar vazio."); return; }
     const patch = {};
     if(text !== it.text) patch.text = text;
     if(source !== it.source) patch.source = source;
@@ -518,7 +528,7 @@ function wireStarButtons(){
         btn.classList.toggle("important", it.important);
         btn.title = it.important ? "Remover importância" : "Marcar como importante";
         btn.disabled = false;
-        alert("Não foi possível salvar.");
+        listToast("Não foi possível salvar.", true);
       }
     });
   });
@@ -618,14 +628,17 @@ function renderDoneSection(){
 }
 
 async function load(){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
   bar.style.display = "none";
+  // getPass()/showLogin() must run before any shell renders — showLogin()
+  // takes over the whole root itself, and a header behind it would just be
+  // wasted work (see shared-ui.js's showLogin()).
   if(!getPass()){ showLogin(); return; }
   if(!isDefaultEnv()){
     root.innerHTML = navHeader("Tarefas pendentes") + personalPageBlockedHtml();
     wireNav();
     return;
   }
+  renderShell('<p class="msg">Carregando…</p>');
   try{
     const data = await api("list");
     render(data.actions || []);
@@ -634,8 +647,8 @@ async function load(){
       localStorage.removeItem(PASS_KEY);
       showLogin("Senha incorreta.");
     }else{
-      root.innerHTML = '<p class="msg err">Não foi possível carregar agora.</p>' +
-        '<p class="msg"><button class="link" onclick="load()">Tentar novamente</button></p>';
+      renderShell('<p class="msg err">Não foi possível carregar agora.</p>' +
+        '<p class="msg"><button class="link" onclick="load()">Tentar novamente</button></p>');
     }
   }
 }

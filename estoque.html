@@ -151,11 +151,21 @@ function parseCountInput(raw){
 // subheader (no detail view), so navHeader("Estoque") with no opts is the
 // plain top-row-only render.
 
+// Renders the header + whatever's passed for the body, instead of a bare
+// "Carregando…" that wipes the header/hamburger and puts them back once the
+// fetch resolves — same reasoning as preferencias.html's own renderShell().
+function renderShell(inner){
+  root.innerHTML = navHeader("Estoque") + inner;
+  wireNav();
+}
+
 // ---- the pantry screen ----
 
 async function loadStock(){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
+  // getPass() first — showLogin() takes over the whole root itself, so a
+  // shell rendered before it would just be discarded.
   if(!getPass()){ showLogin(); return; }
+  renderShell('<p class="msg">Carregando…</p>');
   try{
     const data = await api("insumos");
     stock = data.insumos || [];
@@ -528,7 +538,7 @@ function countModal(p){
     };
     const ok = () => {
       const n = parseCountInput(input.value);
-      if(n === null){ alert("Quantidade inválida."); input.focus(); return; }
+      if(n === null){ fieldError(input, "Quantidade inválida."); return; }
       close(n);
     };
     function onKey(e){
@@ -604,12 +614,11 @@ function shortfallModal(p, info, wanted){
     };
     const ok = () => {
       const n = parseQtyInput(qtyEl.value);
-      if(n === null){ alert("Quantidade inválida."); qtyEl.focus(); return; }
+      if(n === null){ fieldError(qtyEl, "Quantidade inválida."); return; }
       // Fewer than the shortfall would leave the balance short and the
       // consumption would be refused all over again.
       if(n < deficit){
-        alert("Precisa ser pelo menos " + fmtStockQty(deficit) + " para cobrir o que falta.");
-        qtyEl.focus();
+        fieldError(qtyEl, "Precisa ser pelo menos " + fmtStockQty(deficit) + " para cobrir o que falta.");
         return;
       }
       close({ qty: n, price: centsToPrice(priceDigits(priceEl.value)), fornecedor_id: fornecedorId });

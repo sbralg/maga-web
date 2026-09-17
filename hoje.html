@@ -190,6 +190,15 @@ function headerHtml(){
   return navHeader("Resumo do dia");
 }
 
+// Used for the loading placeholder and the generic-failure retry state so
+// the header never disappears mid-load — render()'s two branches already
+// build the header inline as part of a single innerHTML replace, so only
+// these two extra call sites in load() needed it.
+function renderShell(inner){
+  root.innerHTML = headerHtml() + inner;
+  wireNav();
+}
+
 // The assistant's daily hello. `saudacao` is free text written by the
 // morning report generator (kept short there); when it is missing we show
 // a fixed, friendly line rather than nothing. `assets/avatar-maga.png` is a
@@ -458,7 +467,7 @@ async function wirePushOptIn(){
         msg.textContent = "Notificações não são compatíveis com este navegador.";
         btn.hidden = true;
       }else{
-        alert("Não foi possível ativar as notificações agora.");
+        listToast("Não foi possível ativar as notificações agora.", true);
       }
     }finally{
       btn.disabled = false;
@@ -501,13 +510,15 @@ function render(data){
 }
 
 async function load(){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
+  // getPass()/showLogin() must run before any shell renders — showLogin()
+  // takes over the whole root itself (see shared-ui.js).
   if(!getPass()){ showLogin(); return; }
   if(!isDefaultEnv()){
     root.innerHTML = headerHtml() + personalPageBlockedHtml();
     wireNav();
     return;
   }
+  renderShell('<p class="msg">Carregando…</p>');
   try{
     const data = await api("daily_report", currentDate ? { date: currentDate } : {});
     render(data);
@@ -516,8 +527,8 @@ async function load(){
       localStorage.removeItem(PASS_KEY);
       showLogin("Senha incorreta.");
     }else{
-      root.innerHTML = '<p class="msg err">Não foi possível carregar agora.</p>' +
-        '<p class="msg"><button class="link" onclick="load()">Tentar novamente</button></p>';
+      renderShell('<p class="msg err">Não foi possível carregar agora.</p>' +
+        '<p class="msg"><button class="link" onclick="load()">Tentar novamente</button></p>');
     }
   }
 }
