@@ -9,6 +9,198 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-17, phase 2b): new capabilities — an insumo can finally be created without a barcode, category CRUD gets a caller, the shopping list stops being an island, and three pages gain search
+
+Phase 2b of the audit (`65fa16e`, `98b5655`, `bdf6777`, `e2c3405`), the plan
+for which was committed and read from `PLAN-2b.md` (now deleted — its
+content is this entry). Pushed straight to `main` as each of the four
+commits went green, per this repo's own convention. **Front-end only: no
+`maga-api` change, no migration, no redeploy** — every action used here was
+already live.
+
+### 1. `+ Novo insumo` — a synthetic in-store EAN-13
+
+An insumo could previously only come into existence by scanning a real
+barcode, so bulk flour, loose produce, anything sold unbarcoded was simply
+uncreatable — and a new user who opened Insumos first had no way forward at
+all. `gtinCheckDigit(lead)`/`synthGtin()` land in `shared-inputs.js` — one
+shared copy of the GS1 mod-10 weights; `compras.html`'s `gtinCheckDigitOk()`
+now delegates to `gtinCheckDigit()` instead of keeping its own copy.
+`synthGtin()` generates a 13-digit code in GS1's restricted-circulation
+range (prefix `"2"`, reserved for store-internal codes — a real retail
+barcode can never collide), verified with a bounded retry against the
+in-memory catalogue before insert (a collision would otherwise silently
+**overwrite** an existing insumo via `insumo_upsert`'s upsert-on-conflict).
+`insumos.html` gets a `+ Novo insumo` button reusing `insumoEditModal()` as-
+is — it now takes an `opts.title`/`opts.note` pair rather than being forked.
+`test/shared-inputs.test.js` is new: a browser-free unit test (Node's `vm`,
+same shape as `css-tokens.test.js`) asserting `gtinCheckDigit()` against
+known-good real EAN-13/UPC-A codes and asserting every `synthGtin()` output
+is a valid 13-digit `"2"`-prefixed code.
+
+### 2. Category management
+
+`insumo_category_rename`/`_delete` had been live and deployed for weeks with
+no caller — a category could be created inline from the insumo edit modal
+and then never fixed or removed. New `🏷️ Categorias` control on the
+catalogue screen opens a manage modal (list → rename/remove per row, plus
+create) — one modal, not a new page or route. Every row shows its kind
+badge (`ingrediente`/`embalagem`), since categories are themselves typed and
+a bare name list would render two different "Doces" as duplicates. Deleting
+a category **unlinks** insumos rather than blocking, matching what
+`insumo_category_delete` already does server-side; the confirm states the
+affected count up front, read from the catalogue already in memory rather
+than a second round trip. `categoryCache` is invalidated on every rename/
+create/delete, so the insumo edit modal never offers a stale category.
+
+### 3. "Adicionar à lista de compras" (B3) — the shopping list stops being an island
+
+Two mechanisms, because the two sources carry genuinely different things:
+
+- **From `estoque.html` and `insumos.html` — a real barcode.**
+  `shopping_item_scan` with `remote:false`, the merge-aware path: adding the
+  same insumo twice increments the existing row instead of duplicating it,
+  resolved locally with no Open Food Facts round trip.
+- **From `receitas.html` — an ingredient, no barcode.**
+  `shopping_item_add` with `name` + `net_text` (the line's own quantity +
+  `base_unit`, e.g. `"450 g"`), per-ingredient-line and as `🛒 Adicionar
+  todos` for the whole recipe at once — deliberately uses the recipe's OWN
+  written quantity, never a batch-scaled one (the scale field only affects
+  what's shown; piggybacking a second meaning onto it would surprise the
+  moment someone scales the view just to look, not to shop).
+  `shopping_item_add` has no merge/dedup by name (only `shopping_item_scan`
+  merges, by gtin), so re-adding an already-listed ingredient makes a second
+  row — a known, accepted limitation, not fixed here. `Adicionar todos`
+  reports partial failure honestly (e.g. `"2 de 3 adicionados — 1 falhou"`)
+  rather than a blanket success toast.
+
+New `shared-shopping.js`/`.css`: `shoppingListPickerModal()`, the "which
+list?" find-or-create picker all three pages share (same shape as
+`shared-catalog.js`'s `ingredientModal()`), kept **separate** from
+`shared-catalog.css` since that file is documented as estoque/insumos-only
+and `receitas.html` is one of this picker's three callers. Remembers the
+last-used list in `localStorage` under a `maga_`-prefixed key (gotcha E9)
+and sorts it first on reopen, so adding several items in one visit doesn't
+mean re-picking the list every time.
+
+**`estoque.html`'s placement took a real measurement, not a guess:** a 40px
+`icon-btn` as a 4th row cluster (alongside the thumbnail and the qty
+stepper) squeezed the product-name column down to ~60px and broke words
+mid-word at 360px — screenshotted, confirmed, reverted. The action lives
+INSIDE `.body` instead, as a wrapping text link on its own line (same
+`stopPropagation` treatment the row's existing ingredient chip already
+needs, since both sit inside the row's own tap target) — costs the row no
+width at all.
+
+`sw.js`: `shared-shopping.js`/`.css` added to `SHELL_FILES`, `CACHE_NAME`
+v5 → v6 (`test/sw.test.js` exists specifically to catch this class of miss
+— see its own header comment).
+
+### 4. Search on compras/tarefas/financeiro (B11), and "Limpar comprados" (B12)
+
+Three search boxes, all following the established fold-accents-both-sides
+pattern (`clientes.html`'s `matchesSearch()`/`foldSearchText()`):
+
+- **`financeiro.html` and `tarefas.html` were nearly free** — both already
+  computed a filtered array from an existing predicate (`render()`/
+  `redraw()`'s `tipoFilter`, and `render()`/`redrawPendingCard()`'s
+  star-sort respectively), so search is one more term on that same
+  predicate. `tarefas.html`'s search filters the pending card only; the
+  done-tasks section (its own separate lazy-load/pagination mechanism) is
+  untouched, per the plan's own explicit call.
+- **`compras.html` is the one that must NOT re-render.** Item rows carry
+  deep per-row wiring (checkbox, qty stepper, scan-merge, edit modal)
+  attached individually as each row is created, never from an array —
+  re-rendering the card would silently drop all of it. Filtering toggles
+  `row.hidden` instead; `rowForGtin()` reads the `items` **array**, not the
+  DOM, so the scanner's merge logic is unaffected by what's currently
+  hidden. **Totals stay unfiltered** (`recomputeTotals()` reads `items`,
+  not what's visible) — a search box must not appear to change what the
+  trip costs.
+
+**"Limpar comprados"** (`compras.html` only — there is no bulk-delete
+action, so this is N × `shopping_item_delete`): shown only when at least
+one item is purchased (the lesson of audit C13's permanently half-visible
+bulk-complete bar — verified both ways: visible with purchased items
+present, hidden once none remain); `confirmModal` names the count first;
+removes each row as its own call succeeds and leaves the rest on screen
+otherwise (verified with a simulated single-item failure: the other row is
+removed, the failing one survives, and the toast reads `"1 de 2 removidos —
+1 falhou"` rather than claiming success); recomputes totals after.
+Deliberately does **not** route a failure through `handleAuthError` unless
+`e.unauthorized` — that exact over-reach was phase 0's A5 bug on this same
+page.
+
+### Process notes
+
+**Three of the four commits were built directly in this session** (deep,
+already-loaded context on the files involved made that faster than
+re-briefing a fresh agent); **commit 4's two simpler, well-isolated pieces**
+(the `financeiro.html` and `tarefas.html` search boxes) **were built by two
+Sonnet subagents running in parallel**, each scoped to exactly one file with
+the target pattern spelled out, then **independently re-verified here** —
+syntax-checked fresh and driven through a real browser against a mocked
+API, not trusted from their own reports. Both came back clean; one
+subagent's hand-back correctly flagged that a second file
+(`financeiro.html`) showed as modified in `git status` mid-run — a true
+observation (the other subagent's own concurrent, legitimate edit), not a
+bug, but exactly the kind of "a subagent contradicting an assumption is
+data" signal worth surfacing rather than silently discarding.
+
+**A standing environment limitation surfaced and worked around, not fixed:**
+this session's sandbox headless Chromium never fires
+`requestAnimationFrame` at all (confirmed with a minimal `<button>` repro
+with zero page code involved, and confirmed as pre-existing/environment-
+wide — not caused by any change here — by reproducing the identical hang
+against the untouched pre-2b `main`). Playwright's own actionability waits
+(`.click()`'s stability check, `.waitForFunction()`'s default rAF-based
+polling) depend on that signal and hang indefinitely without it, which
+means **the real `test/*.test.js` Playwright suite could not be run to
+completion in this session** — every UI-driving test file timed out on its
+first real click, on both branches, independent of anything this work
+changed. What verification actually happened instead, for all four commits:
+(1) every changed file's inline `<script>` block re-parsed with
+`new Function()` after every edit; (2) `test/shared-inputs.test.js` and the
+other browser-free static tests (`css-tokens`, `history-wiring`, `sw`) ran
+for real and are genuinely green; (3) every interactive flow (the new-insumo
+save, category rename/create/delete, both shopping-list-add mechanisms
+including the merge-not-duplicate case, both search boxes, and
+`Limpar comprados` including its partial-failure path) was driven end-to-end
+in a real headless-Chromium page against a mocked `maga-api`, using
+`{force:true}` clicks (which skip only the pixel-stability wait, not the
+click itself) and real-timer `waitForTimeout` in place of the broken
+rAF-based waits — genuine behavioural coverage, just not through the
+committed test files, and not a substitute for the next session (with a
+working Chromium) actually running `test/*.test.js` for real. **Geometry
+(`scrollWidth === innerWidth` at 360px/390px) was measured for every new
+element** (the estoque.html row change, the categories modal, the receitas
+row/heading additions, the compras search/clear-row) using this same
+working-but-limited harness — those numbers are trustworthy regardless of
+the rAF issue, since they read layout directly rather than waiting on it.
+**Next session with a working local Chromium should run the full suite for
+real** before trusting "20/20" again; this session cannot make that claim.
+
+### Still open
+
+**2c — error surfacing and in-place updates, needs a `maga-api`
+redeploy**: show `e.body.error` in the ~67 generic "Não foi possível"
+messages; convert `compras.html`'s four full-screen reloads now that phase
+0 made those handlers return rows; unify the three delete-refusal
+protocols; delete the dead `shopping_item_rename`; the two financeiro
+cross-links (evento/cliente → lançamento, blocked on a missing backend
+field); "Usado em" (B7, surfacing the reference lists the delete handlers
+already compute — needs a backend field, see `PLAN-2b.md`'s reasoning,
+preserved here since that file is now gone: `ingredient_delete` returns
+counts only, `receita_delete` returns names but only as a 400 refusal, and
+no read action carries reverse references); and folding in `maga-api`'s
+loose `15f9834` ("Record audit phase 0 in CLAUDE.md") commit, which sits on
+`claude/app-audit-improvements-n54adl` in that repo but not on that repo's
+own `main` — that repo keeps PRs, so it needs one opened, and 2c is already
+getting a redeploy.
+
+**Phases 3–5 unchanged**: the "Confirmar compra" loop, the live dashboard,
+and the test/tidy pass.
+
 ## Status (2026-09-17, phase 2a): the URL becomes the source of truth — hardware Back works, detail screens are linkable, and list rows/chips are real controls
 
 Phase 2a of the audit (`96a9328`, `3f3c474`, `09eada4`), pushed straight to
