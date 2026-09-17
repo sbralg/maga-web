@@ -246,7 +246,7 @@ const state = {
   check('the star button shows as important', await page.$eval(
     '.row:has-text("Ligar para o Igor") [data-star-id]', el => el.classList.contains('important')));
   check('the star glyph switches to filled once important', (await page.textContent(
-    '.row:has-text("Ligar para o Igor") [data-star-id]')) === '★');
+    '.row:has-text("Ligar para o Igor") [data-star-id]')) === '⭐');
   check('toggling the star did not trigger a full reload (no extra list fetch)',
     listCalls === listCallsBeforeStar);
   check('clicking the star did not open the edit modal', (await page.$$('.modal-backdrop')).length === 0);

@@ -69,14 +69,15 @@
   }
   .star-btn:hover{background:rgba(127,127,127,.15)}
   .star-btn:active{transform:scale(.9)}
-  /* A stroke affects the two glyphs very differently, so they're NOT given
-     the same weight: ☆'s outline is already thin lines, so any stroke at
-     all reads as heavy-handed and was reported too thick -- left at the
-     browser default. ★'s filled body barely shows a stroke at the same
-     width, so it keeps a small one to look a touch bolder, per the same
-     feedback. Gold, not var(--accent) -- "starred" reads as a universal
-     gold star regardless of this app's own (red) brand accent. */
-  .star-btn.important{color:#eab308;font-weight:900;-webkit-text-stroke:0.8px currentColor}
+  /* Important uses the ⭐ color emoji (not a styled text glyph) -- matching
+     notas.html's own pin icon (shared-notes.css's .note-pin), so the two
+     "starred" affordances in the app look identical. A color emoji bakes
+     in its own palette and ignores `color`/`font-weight`/text-stroke
+     entirely (see CLAUDE.md's calendar-icon gotcha for the same class of
+     bug), so there's no CSS override here for the important state --
+     .important only exists as a hook for anything that still needs to key
+     off it (none does today, kept for parity with the class always being
+     present in the markup either way). */
   .date-btn{
     background:none;border:none;color:var(--muted);font-size:19px;line-height:1;padding:0;cursor:pointer;
     flex:none;min-width:40px;min-height:40px;border-radius:10px;
@@ -263,7 +264,7 @@ function pendingRowsHtml(rows){
       '</div>' +
       '<button class="star-btn' + (it.important ? " important" : "") + '" data-star-id="' + esc(it.id) + '" ' +
         'title="' + (it.important ? "Remover importância" : "Marcar como importante") + '" ' +
-        'aria-label="Marcar como importante">' + (it.important ? "★" : "☆") + '</button>' +
+        'aria-label="Marcar como importante">' + (it.important ? "⭐" : "☆") + '</button>' +
       '</div>';
   }).join("");
 }
@@ -484,7 +485,7 @@ function wireStarButtons(){
       const next = !it.important;
       const prevGlyph = btn.textContent;
       btn.disabled = true;
-      btn.textContent = next ? "★" : "☆";
+      btn.textContent = next ? "⭐" : "☆";
       btn.classList.toggle("important", next);
       btn.title = next ? "Remover importância" : "Marcar como importante";
       try{

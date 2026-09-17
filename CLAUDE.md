@@ -9,6 +9,32 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-17, latest of all): tarefas.html's ⭐ and notas.html's ⭐ now match — same unselected size, same selected glyph
+
+Direct ask, comparing the two "star" affordances the app now has side by
+side: tarefas.html's important-star (`.star-btn`) and notas.html's
+pin-star (`.note-pin`, `shared-notes.js`) had drifted to look like two
+different controls — different unselected sizes, and a different
+selected glyph (tarefas used a styled `★` text glyph, notas used the
+`⭐` color emoji).
+
+- **Unselected (`☆`) size unified at 21px** — `shared-notes.css` gained
+  `.note-pin{font-size:21px}`, overriding the generic `.icon-btn` default
+  of 17px it was inheriting, to match `tarefas.html`'s own
+  `.star-btn{font-size:21px}`.
+- **Selected glyph unified on `⭐` (the color emoji), not `★` (a styled
+  text glyph)** — `tarefas.html`'s important-star now renders `⭐`
+  instead of `★`, matching notas.html's pin exactly. This also means
+  `.star-btn.important`'s old `color:#eab308;font-weight:900;
+  -webkit-text-stroke:0.8px currentColor` rule was dead weight and
+  removed: a color emoji bakes in its own palette and ignores `color`/
+  `font-weight`/stroke entirely (the same class of bug as the 📅
+  calendar-icon gotcha elsewhere in this file) — that styling only ever
+  did anything back when the glyph was the plain-text `★`.
+- `test/tarefas.test.js`'s glyph assertion updated from `'★'` to `'⭐'`.
+  Full 16-file suite green.
+- **Already deployed** — pushed straight to `main`.
+
 ## Status (2026-09-17, even later): "Anotações"/"Anotação" renamed to "Notas"/"Nota" everywhere; the section heading loses its icon; notas.html's own notebook view drops the now-duplicate heading
 
 Direct feedback on the entry right below, from a screenshot of an open

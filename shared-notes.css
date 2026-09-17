@@ -14,3 +14,6 @@
 .note-body{font-size:13.5px;margin:0 0 4px;white-space:pre-wrap;word-wrap:break-word;color:var(--text)}
 .note-date{font-size:11.5px;color:var(--muted);margin:0}
 .note-actions{flex:none;display:flex;gap:2px}
+/* Matches tarefas.html's .star-btn size (21px) -- .icon-btn's own default
+   (17px) reads noticeably smaller for the same glyph, ☆. */
+.note-pin{font-size:21px}
