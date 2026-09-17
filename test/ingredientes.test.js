@@ -331,7 +331,7 @@ function handleNotesAction(body) {
   await page.fill('#ing-name-i', 'Leite Condensado Integral');
   await page.click('#ing-ok');
   await page.waitForFunction(
-    () => (document.getElementById('ing-name') || {}).textContent === 'Leite Condensado Integral',
+    () => (document.getElementById('detail-title') || {}).textContent === 'Leite Condensado Integral',
     null, { timeout: 6000 });
   check('the rename is stored', ingredientOf('I1').name === 'Leite Condensado Integral');
 
@@ -438,7 +438,7 @@ function handleNotesAction(body) {
   await page.goto(PAGE + '?id=I2');
   await page.waitForSelector('.have-card', { timeout: 6000 });
   check('the deep link opens the right ingredient',
-    (await page.textContent('#ing-name')).includes('Caixa Kraft'));
+    (await page.textContent('#detail-title')).includes('Caixa Kraft'));
 
   // --- the menu carries this page, and marks it as the current one ---
   await page.click('#menu-btn');

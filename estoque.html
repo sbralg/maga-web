@@ -32,20 +32,16 @@
   at the last known price instead of being silently swallowed.
 -->
 <link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
 <link rel="stylesheet" href="shared-menu.css">
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-inputs.css">
 <link rel="stylesheet" href="shared-catalog.css">
 <style>
-  body{
-    padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
-  }
-  .wrap{max-width:640px;margin:0 auto}
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
-  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
-  h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
+  /* ---- page chrome (body/.wrap/header/.hleft/h1/h3/.searchrow) now lives
+     in shared-page.css — this page never has a subheader/detail view, so
+     nothing else there applies here. */
   .sec-toggle{
     background:none;border:none;padding:0;margin:22px 0 8px;cursor:pointer;
     font:inherit;font-size:14px;font-weight:650;color:var(--muted);
@@ -55,9 +51,10 @@
   .sec-toggle .caret{transition:transform .2s ease;display:inline-block}
   .sec-toggle.open .caret{transform:rotate(90deg)}
   .card.hidden{display:none}
-  .row{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);transition:background-color .15s ease}
-  .row:hover{background:rgba(127,127,127,.06)}
-  .row:last-child{border-bottom:none}
+  /* .row's shell (border/hover/transition) is now shared-page.css's; the
+     flex layout and the 12px-14px padding (vs. the shared default of 14px
+     all around) are page-specific and stay here. */
+  .row{display:flex;align-items:center;gap:10px;padding:12px 14px}
   .body{min-width:0;flex:1;cursor:pointer}
   .body .txt{font-size:15px;line-height:1.35;margin:0;word-wrap:break-word}
   .body .meta{font-size:12px;color:var(--muted);margin:3px 0 0}
@@ -101,12 +98,6 @@
   }
   .qty-val:hover{background:rgba(127,127,127,.1)}
   .qty-val.zero{color:var(--muted)}
-  .searchrow{display:flex;gap:8px;margin:0 0 14px}
-  .searchrow input[type=search]{
-    flex:1;min-width:0;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
-    border:1px solid var(--border-strong);background:var(--card);color:var(--text);
-    -webkit-appearance:none;
-  }
   /* .fields-row is the shared amount-field row layout (shared-inputs.css);
      .num-input.solo is this page's own override for a single standalone
      field inside it (the recount / shortfall dialogs have no .prefix chip
@@ -131,6 +122,7 @@ const PAGE_LOGIN = {
 </script>
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
@@ -155,12 +147,9 @@ function parseCountInput(raw){
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
 }
 
-function navHeader(title){
-  return '<header><div class="hleft">' +
-    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-    '<h1 style="flex:1">' + esc(title) + '</h1>' +
-    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
-}
+// navHeader()/wireNav() now live in shared-nav.js. This page never has a
+// subheader (no detail view), so navHeader("Estoque") with no opts is the
+// plain top-row-only render.
 
 // ---- the pantry screen ----
 
@@ -288,7 +277,7 @@ function renderStock(){
     inHtml +
     emptyHtml;
 
-  wireMenuButton();
+  wireNav();
 
   const search = document.getElementById("search");
   search.addEventListener("input", () => {
