@@ -38,6 +38,7 @@
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-inputs.css">
 <link rel="stylesheet" href="shared-catalog.css">
+<link rel="stylesheet" href="shared-shopping.css">
 <style>
   /* ---- page chrome (body/.wrap/header/.hleft/h1/h3/.searchrow) now lives
      in shared-page.css — this page never has a subheader/detail view, so
@@ -74,6 +75,10 @@
   .ing-chip:hover{filter:brightness(1.12)}
   .ing-chip:active{transform:scale(.97)}
   .ing-chip.none{background:rgba(127,127,127,.12);color:var(--muted)}
+  /* Always its own line, never crowding the chip beside it — a plain
+     inline-block would sometimes sit next to a short chip and sometimes
+     wrap, which reads as random rather than deliberate. */
+  .add-list-link{display:block;margin:6px 0 0;font-size:12px}
   /* The stepper, same shape as the shopping list's: − and + flank the
      count and carry the rounded ends, so the three read as one control.
      The count in the middle is a BUTTON, not an input — typing a number
@@ -130,6 +135,7 @@ const PAGE_LOGIN = {
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
 <script src="shared-catalog.js"></script>
+<script src="shared-shopping.js"></script>
 <script src="shared-pwa.js"></script>
 <script>
 // The whole catalogue with its balances, loaded once and filtered in the
@@ -255,6 +261,13 @@ function stockRowHtml(p){
       '<p class="txt">' + esc(p.name) + '</p>' +
       (meta ? '<p class="meta" data-meta>' + esc(meta) + '</p>' : '<p class="meta" data-meta></p>') +
       ingredientChipHtml(p) +
+      // A text link, not a 4th fixed-width row cluster: the row already
+      // spends thumb+qty-field's width on two fixed clusters, and a THIRD
+      // (a 40px icon-btn) squeezed the name column down to ~60px and broke
+      // words mid-word at 360px — measured, not guessed. This one lives
+      // INSIDE .body instead, wrapping onto its own line the same way the
+      // ing-chip already does, so it costs no row width at all.
+      '<button type="button" class="link add-list-link" data-add-list>🛒 Adicionar à lista</button>' +
     '</span>' +
     '<span class="qty-field">' +
       '<button class="step-btn" data-step="-1" aria-label="Tirar um"' +
@@ -368,6 +381,32 @@ function wireStockRow(row){
       const step = Number(btn.getAttribute("data-step"));
       enqueue(gtin, () => step > 0 ? addOne(p, row) : removeOne(p, row));
     });
+  });
+
+  // A real barcode, so shopping_item_scan (remote:false) — merge-aware:
+  // scanning/adding the same gtin twice increments the existing row rather
+  // than duplicating it. This is the one place on the page that's about
+  // running OUT of something rather than having it, so it's reachable from
+  // every row, not just the "fora do estoque" section.
+  //
+  // Lives inside the [data-open] tap target (same as the ing-chip above),
+  // so it needs the same stopPropagation or tapping it would also navigate
+  // to the insumo sheet.
+  row.querySelector("[data-add-list]").addEventListener("click", async (e) => {
+    e.stopPropagation();
+    const list = await shoppingListPickerModal();
+    if(!list) return;
+    try{
+      const res = await api("shopping_item_scan", {
+        list_id: list.id, gtin: p.gtin, name: p.name, quantity: 1, remote: false,
+      });
+      listToast(res.merged
+        ? 'Quantidade atualizada em "' + list.name + '"'
+        : 'Adicionado a "' + list.name + '"');
+    }catch(err){
+      if(err.unauthorized) return handleAuthError(err, loadStock);
+      listToast("Não foi possível adicionar à lista", true);
+    }
   });
 
   row.querySelector("[data-qty]").addEventListener("click", () => {

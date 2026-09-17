@@ -31,6 +31,7 @@
 <link rel="stylesheet" href="shared-inputs.css">
 <link rel="stylesheet" href="shared-catalog.css">
 <link rel="stylesheet" href="shared-notes.css">
+<link rel="stylesheet" href="shared-shopping.css">
 <style>
   /* ---- page chrome (body/.wrap/header/.hleft/h1/h3/.subheader/
      .searchrow/.row shell) now lives in shared-page.css — see that file
@@ -236,6 +237,7 @@ const PAGE_LOGIN = {
 <script src="shared-inputs.js"></script>
 <script src="shared-catalog.js"></script>
 <script src="shared-notes.js"></script>
+<script src="shared-shopping.js"></script>
 <script src="shared-pwa.js"></script>
 <script>
 
@@ -737,6 +739,7 @@ function renderInsumo(data){
         '</div>' +
       '</div>' +
       '<div class="detail-actions">' +
+        '<button class="primary small alt" id="add-to-list">🛒 Adicionar à lista</button>' +
         '<button class="primary small alt" id="edit-insumo">✎ Editar dados</button>' +
         '<button class="primary small alt danger" id="del-insumo">🗑 Remover</button>' +
       '</div>' +
@@ -774,6 +777,28 @@ function renderInsumo(data){
   wireNav(route.navToList);
   wireChart(prices);
   wireNotesPanel(root.querySelector(".notes-card"), "insumo", p.gtin);
+
+  // A real barcode, so shopping_item_scan (remote:false) — the merge-aware
+  // path: scanning/adding the same gtin twice increments the existing row
+  // instead of creating a duplicate, which is exactly "I need another one
+  // of these". Its own name is already known, so it's sent too — belt and
+  // suspenders against the needs_name case, which only fires for a gtin
+  // this insumo's own record wouldn't produce.
+  document.getElementById("add-to-list").addEventListener("click", async () => {
+    const list = await shoppingListPickerModal();
+    if(!list) return;
+    try{
+      const res = await api("shopping_item_scan", {
+        list_id: list.id, gtin: p.gtin, name: p.name, quantity: 1, remote: false,
+      });
+      listToast(res.merged
+        ? 'Quantidade atualizada em "' + list.name + '"'
+        : 'Adicionado a "' + list.name + '"');
+    }catch(e){
+      if(e.unauthorized) return handleAuthError(e, loadCatalog);
+      listToast("Não foi possível adicionar à lista", true);
+    }
+  });
 
   document.getElementById("edit-insumo").addEventListener("click", async () => {
     let categories;

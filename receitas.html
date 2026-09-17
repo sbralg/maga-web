@@ -35,6 +35,7 @@
 <link rel="stylesheet" href="shared-inputs.css">
 <link rel="stylesheet" href="shared-produto-panel.css">
 <link rel="stylesheet" href="shared-notes.css">
+<link rel="stylesheet" href="shared-shopping.css">
 <style>
   /* ---- page chrome (body/.wrap/header/.hleft/h1/h3/.subheader/.searchrow/
      .row shell/.detail-actions/.addrow-btn/.detail-title) now lives in
@@ -52,6 +53,12 @@
   .sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:22px 0 8px}
   .sec-head h3{margin:0}
   .sec-head .cnt{font-size:12.5px;color:var(--muted);flex:none}
+  /* Wraps the "Adicionar todos" link + the count together so space-between
+     still only sees TWO top-level children (h3 | this) — otherwise a third
+     child would get its own share of the row instead of sitting flush with
+     the count on the right. */
+  .sec-head-right{display:flex;align-items:baseline;gap:10px;flex:none}
+  .sec-head-right .link{font-size:12.5px}
   .scale-card{padding:14px;margin:0 0 10px}
   .scale-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .scale-top label{font-size:13.5px;font-weight:600;color:var(--text);flex:1;min-width:140px}
@@ -123,6 +130,7 @@ const PAGE_LOGIN = {
 <script src="shared-inputs.js"></script>
 <script src="shared-produto-panel.js"></script>
 <script src="shared-notes.js"></script>
+<script src="shared-shopping.js"></script>
 <script src="shared-pwa.js"></script>
 <script>
 
@@ -544,6 +552,13 @@ function itemRowHtml(it, scale, itemCosts){
       costHtml +
     '</span>' +
     '<span class="row-actions">' +
+      // Only an ingredient line has a name+unit pair shopping_item_add can
+      // use — a sub-receita line points at another RECEITA, which isn't
+      // something the shopping list has any concept of.
+      (isIng
+        ? '<button class="icon-btn" data-add-item-list title="Adicionar à lista de compras" ' +
+            'aria-label="Adicionar à lista de compras">🛒</button>'
+        : '') +
       '<button class="icon-btn" data-edit-item title="Editar quantidade" aria-label="Editar quantidade">✎</button>' +
       '<button class="icon-btn danger" data-del-item title="Remover item" aria-label="Remover item">🗑</button>' +
     '</span>' +
@@ -606,7 +621,12 @@ function renderReceita(data){
       '<button class="primary small alt danger" id="del-receita">🗑 Remover</button>' +
     '</div>' +
     '<div class="sec-head"><h3>Ingredientes</h3>' +
-      '<span class="cnt">' + itens.length + (itens.length === 1 ? ' item' : ' itens') + '</span></div>' +
+      '<span class="sec-head-right">' +
+        (itens.some(it => it.kind === "ingrediente" && it.ingredient)
+          ? '<button type="button" class="link" id="add-all-list">🛒 Adicionar todos</button>'
+          : '') +
+        '<span class="cnt">' + itens.length + (itens.length === 1 ? ' item' : ' itens') + '</span>' +
+      '</span></div>' +
     '<div class="card scale-card">' +
       '<div class="scale-top">' +
         '<label for="scale-yield">Calcular para outra fornada</label>' +
@@ -696,6 +716,7 @@ function renderReceita(data){
     }
   });
   wireItemRowActions(data);
+  wireAddAllList(data);
   renderCategoria(data);
 }
 
@@ -854,6 +875,38 @@ function redrawItems(data){
 function wireItemRowActions(data){
   const r = data.receita;
   const itens = data.itens || [];
+
+  // A written-down ingredient line, no barcode — shopping_item_add with
+  // net_text, not shopping_item_scan. Deliberately uses the recipe's OWN
+  // quantity (it.quantity), never a batch-scaled one: this page's scale
+  // field only affects what's SHOWN, and piggybacking a second meaning
+  // (also drive what's added to the list) onto that same field would be
+  // surprising the moment someone scales the view just to look, not to
+  // shop. Add more of an ingredient the same way you'd fix any quantity
+  // once it's on the list — compras.html's own stepper.
+  root.querySelectorAll("[data-add-item-list]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.closest(".item-row").dataset.item;
+      const it = itens.find(x => x.id === id);
+      if(!it || !it.ingredient) return;
+      const list = await shoppingListPickerModal();
+      if(!list) return;
+      try{
+        await api("shopping_item_add", {
+          list_id: list.id,
+          name: it.ingredient.name,
+          net_text: it.ingredient.base_unit
+            ? fmtStockQty(it.quantity) + " " + it.ingredient.base_unit
+            : "",
+        });
+        listToast('Adicionado a "' + list.name + '"');
+      }catch(e){
+        if(e.unauthorized) return handleAuthError(e, loadReceitas);
+        listToast("Não foi possível adicionar à lista", true);
+      }
+    });
+  });
+
   root.querySelectorAll("[data-edit-item]").forEach(btn => {
     btn.addEventListener("click", async () => {
       const id = btn.closest(".item-row").dataset.item;
@@ -887,6 +940,52 @@ function wireItemRowActions(data){
         listToast("Não foi possível remover", true);
       }
     });
+  });
+}
+
+// Separate from wireItemRowActions() on purpose: "#add-all-list" lives in
+// the .sec-head, OUTSIDE #itens-card, so it survives redrawItems()'s
+// innerHTML replacement untouched — re-wiring it on every redraw (as the
+// scale field's live update does for the row buttons) would stack a new
+// listener on the SAME button each time and fire the add once per redraw
+// that had happened. Called once, from renderReceita() only.
+function wireAddAllList(data){
+  const addAllBtn = document.getElementById("add-all-list");
+  if(!addAllBtn) return;
+  const itens = data.itens || [];
+  addAllBtn.addEventListener("click", async () => {
+    const list = await shoppingListPickerModal();
+    if(!list) return;
+    const ingItens = itens.filter(it => it.kind === "ingrediente" && it.ingredient);
+    // One line at a time is the wrong granularity for planning a bake —
+    // but each call is independent, so a partial failure must not read as
+    // total success. shopping_item_add has no merge/dedup by name (only
+    // shopping_item_scan merges, by gtin), so adding an ingredient already
+    // on the list creates a second row for it — a known, accepted
+    // limitation, not something this pass fixes.
+    let ok = 0, fail = 0;
+    for(const it of ingItens){
+      try{
+        await api("shopping_item_add", {
+          list_id: list.id,
+          name: it.ingredient.name,
+          net_text: it.ingredient.base_unit
+            ? fmtStockQty(it.quantity) + " " + it.ingredient.base_unit
+            : "",
+        });
+        ok++;
+      }catch(e){
+        if(e.unauthorized) return handleAuthError(e, loadReceitas);
+        fail++;
+      }
+    }
+    if(fail === 0){
+      listToast(ok + (ok === 1 ? ' ingrediente adicionado a "' : ' ingredientes adicionados a "') +
+        list.name + '"');
+    }else{
+      listToast(ok + " de " + (ok + fail) + " adicionados — " + fail +
+        (fail === 1 ? " falhou" : " falharam"), true);
+    }
   });
 }
 

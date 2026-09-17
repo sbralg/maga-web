@@ -1,0 +1,25 @@
+/* shared-shopping.css — pairs with shared-shopping.js's
+   shoppingListPickerModal(), loaded by estoque.html, insumos.html and
+   receitas.html. Visually the same picker-row treatment shared-catalog.css
+   already has for the ingredient picker (.ing-list/.ing-opt), kept as a
+   SEPARATE set of classes rather than reused: shared-catalog.css is
+   documented as scoped to estoque/insumos only, and receitas.html — one of
+   this file's three callers — never loads it. */
+.pick-list{max-height:44vh;overflow-y:auto;margin:0 0 14px;-webkit-overflow-scrolling:touch}
+.pick-opt{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  background:none;border:none;border-bottom:1px solid var(--border);
+  color:var(--text);font:inherit;font-size:15px;padding:11px 4px;cursor:pointer;
+  transition:background-color .15s ease;
+}
+.pick-opt:last-child{border-bottom:none}
+.pick-opt:hover{background:rgba(127,127,127,.08)}
+.pick-opt .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pick-opt.create{color:var(--accent)}
+/* The remembered last-used list, shown only while the field is empty (a
+   search narrows the list to the user's own words, which already answers
+   "which one" without this badge repeating it). */
+.pick-badge{
+  font-size:11px;padding:2px 7px;border-radius:999px;flex:none;
+  background:rgba(var(--accent-rgb),.14);color:var(--accent);
+}
