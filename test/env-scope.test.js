@@ -201,7 +201,7 @@ async function seedEnv(page, { envId, defaultEnv, menuHidden, landingPage } = {}
     const labels = await page.$$eval('.menu-item', els => els.map(el => el.textContent));
     check('Hoje is not in the drawer on a non-default env, got: ' + JSON.stringify(labels), !labels.some(l => l.includes('Hoje')));
     check('Tarefas is not in the drawer on a non-default env, got: ' + JSON.stringify(labels), !labels.some(l => l.includes('Tarefas')));
-    check('Anotações is not in the drawer on a non-default env, got: ' + JSON.stringify(labels), !labels.some(l => l.includes('Anotações')));
+    check('Notas is not in the drawer on a non-default env, got: ' + JSON.stringify(labels), !labels.some(l => l.includes('Notas')));
     check('Insumos (a non-personal page) is still in the drawer, got: ' + JSON.stringify(labels), labels.some(l => l.includes('Insumos')));
 
     await page.goto(ORIGIN + '/index.html');
@@ -209,7 +209,7 @@ async function seedEnv(page, { envId, defaultEnv, menuHidden, landingPage } = {}
     const tiles = await page.$$eval('.tile .label', els => els.map(el => el.textContent));
     check('Hoje is not a dashboard tile on a non-default env, got: ' + JSON.stringify(tiles), !tiles.includes('Hoje'));
     check('Tarefas is not a dashboard tile on a non-default env, got: ' + JSON.stringify(tiles), !tiles.includes('Tarefas'));
-    check('Anotações is not a dashboard tile on a non-default env, got: ' + JSON.stringify(tiles), !tiles.includes('Anotações'));
+    check('Notas is not a dashboard tile on a non-default env, got: ' + JSON.stringify(tiles), !tiles.includes('Notas'));
     check('Produção-group tiles are unaffected, got: ' + JSON.stringify(tiles), tiles.includes('Insumos'));
     await ctx.close();
   }
@@ -227,7 +227,7 @@ async function seedEnv(page, { envId, defaultEnv, menuHidden, landingPage } = {}
     const tiles = await page.$$eval('.tile .label', els => els.map(el => el.textContent));
     check('Hoje IS a dashboard tile on the default env, got: ' + JSON.stringify(tiles), tiles.includes('Hoje'));
     check('Tarefas IS a dashboard tile on the default env, got: ' + JSON.stringify(tiles), tiles.includes('Tarefas'));
-    check('Anotações IS a dashboard tile on the default env, got: ' + JSON.stringify(tiles), tiles.includes('Anotações'));
+    check('Notas IS a dashboard tile on the default env, got: ' + JSON.stringify(tiles), tiles.includes('Notas'));
     await ctx.close();
   }
 

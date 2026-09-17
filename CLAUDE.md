@@ -9,6 +9,44 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-17, even later): "Anotações"/"Anotação" renamed to "Notas"/"Nota" everywhere; the section heading loses its icon; notas.html's own notebook view drops the now-duplicate heading
+
+Direct feedback on the entry right below, from a screenshot of an open
+user-created notebook: the page's own top header already reads
+"Anotações" (now "Notas"), and the just-added section `<h3>` directly
+underneath it repeated the exact same word — a real duplicate, not two
+different things that happen to share a name, since on `notas.html` the
+whole page IS that one notebook already.
+
+- **Every user-facing "Anotações"/"Anotação" (and lowercase) renamed to
+  "Notas"/"Nota"** — the menu entry and dashboard tile label
+  (`shared-menu.js`'s `MENU_ITEMS`, kept its own 📓 emoji, that's the nav
+  icon, untouched), `index.html`'s tile description, `notas.html`'s page
+  `<title>`/`apple-mobile-web-app-title`/login screen copy/every in-page
+  heading and message, and every string in `shared-notes.js` (the empty-
+  state message, both modals' titles/labels, every toast/confirm
+  wording). A few English file-comment mentions on `clientes.html`/
+  `fornecedores.html` updated too, for consistency.
+- **The section `<h3>` on the seven object detail pages lost its 📓 icon**
+  — now plain `<h3>Notas</h3>`, matching the plain-text `<h3>Eventos</h3>`/
+  `<h3>Pagamentos</h3>` headings right above it on `clientes.html` (which
+  never carried an icon either).
+- **`notas.html`'s own notebook-detail view (`openNotebook()`) no longer
+  renders this heading at all** — the seven OTHER consumers keep it (a
+  cliente/evento/etc.'s own page has no other "Notas" label on screen, so
+  the heading is the only cue), but `notas.html`'s top header already
+  says "Notas" for every screen this page renders, including an open
+  notebook — a second "Notas" directly under "Renomear"/"Remover" added
+  nothing. `notesPanelHtml()` itself is unchanged; this is purely the one
+  page-local call site that stopped prepending the heading.
+- **Historical dated entries in this file were deliberately left saying
+  "Anotações"** — same standing convention as every prior rename here
+  (see the 2026-08-31 big-bang note at the top): they describe the app as
+  it was when written.
+- `test/env-scope.test.js`/`test/clientes.test.js`/`test/notas.test.js`
+  updated to match the new copy. Full 16-file suite green.
+- **Already deployed** — pushed straight to `main`.
+
 ## Status (2026-09-17, latest): the shared notes panel gets a "📓 Anotações" heading, and "+ Adicionar" moves below the note list
 
 Two more direct polish requests, from a screenshot comparing the notes

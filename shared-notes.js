@@ -80,7 +80,7 @@ async function wireNotesPanel(container, kind, ref){
 
   function redraw(){
     if(notes.length === 0){
-      listEl.innerHTML = '<p class="note-empty">Nenhuma anotação ainda.</p>';
+      listEl.innerHTML = '<p class="note-empty">Nenhuma nota ainda.</p>';
       return;
     }
     listEl.innerHTML = notes.map(noteRowHtml).join("");
@@ -109,8 +109,8 @@ async function wireNotesPanel(container, kind, ref){
       redraw();
     }catch(e){
       listEl.innerHTML = notesNotDeployed(e)
-        ? '<p class="note-empty">Anotações ainda não disponíveis — republique a Edge Function.</p>'
-        : '<p class="note-empty">Não foi possível carregar as anotações.</p>';
+        ? '<p class="note-empty">Notas ainda não disponíveis — republique a Edge Function.</p>'
+        : '<p class="note-empty">Não foi possível carregar as notas.</p>';
     }
   }
 
@@ -132,8 +132,8 @@ async function wireNotesPanel(container, kind, ref){
       redraw();
     }catch(e){
       listToast(notesNotDeployed(e)
-        ? "Anotações ainda não disponíveis — republique a Edge Function."
-        : "Não foi possível salvar a anotação.", true);
+        ? "Notas ainda não disponíveis — republique a Edge Function."
+        : "Não foi possível salvar a nota.", true);
     }finally{
       addBtn.disabled = false;
     }
@@ -150,7 +150,7 @@ async function wireNotesPanel(container, kind, ref){
       note.pinned = !wantPinned;
       notes.sort((a, b) => (b.pinned - a.pinned) || 0);
       redraw();
-      listToast("Não foi possível fixar a anotação.", true);
+      listToast("Não foi possível fixar a nota.", true);
     }
   }
 
@@ -158,14 +158,14 @@ async function wireNotesPanel(container, kind, ref){
     const result = await noteEditModal(note);
     if(!result) return;
     if(result.action === "delete"){
-      const ok = await confirmModal("Excluir esta anotação?");
+      const ok = await confirmModal("Excluir esta nota?");
       if(!ok) return;
       try{
         await api("note_delete", { id: note.id });
         notes = notes.filter(n => n.id !== note.id);
         redraw();
       }catch(_){
-        listToast("Não foi possível excluir a anotação.", true);
+        listToast("Não foi possível excluir a nota.", true);
       }
       return;
     }
@@ -178,7 +178,7 @@ async function wireNotesPanel(container, kind, ref){
       notes.sort((a, b) => (b.pinned - a.pinned) || 0);
       redraw();
     }catch(e){
-      listToast(e.badRequest ? "O texto da anotação não pode ficar vazio." : "Não foi possível salvar a anotação.", true);
+      listToast(e.badRequest ? "O texto da nota não pode ficar vazio." : "Não foi possível salvar a nota.", true);
     }
   }
 
@@ -198,10 +198,10 @@ function noteAddModal(){
     backdrop.className = "modal-backdrop";
     backdrop.innerHTML =
       '<div class="modal-card">' +
-        '<h3>Nova anotação</h3>' +
+        '<h3>Nova nota</h3>' +
         '<label for="note-new-title">Título (opcional)</label>' +
         '<input type="text" id="note-new-title" value="">' +
-        '<label for="note-new-body">Anotação</label>' +
+        '<label for="note-new-body">Nota</label>' +
         '<textarea id="note-new-body" rows="6"></textarea>' +
         '<div class="modal-actions">' +
           '<button class="cancel" id="note-new-cancel">Cancelar</button>' +
@@ -238,10 +238,10 @@ function noteEditModal(note){
     backdrop.className = "modal-backdrop";
     backdrop.innerHTML =
       '<div class="modal-card">' +
-        '<h3>Editar anotação</h3>' +
+        '<h3>Editar nota</h3>' +
         '<label for="note-edit-title">Título (opcional)</label>' +
         '<input type="text" id="note-edit-title" value="' + esc(note.title || "") + '">' +
-        '<label for="note-edit-body">Anotação</label>' +
+        '<label for="note-edit-body">Nota</label>' +
         '<textarea id="note-edit-body" rows="6">' + esc(note.body || "") + '</textarea>' +
         '<div class="modal-actions">' +
           '<button class="remove" id="note-edit-delete">Remover</button>' +

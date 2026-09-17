@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Anotações">
+<meta name="apple-mobile-web-app-title" content="Notas">
 <meta name="theme-color" content="#17120f" media="(prefers-color-scheme: dark)">
 <meta name="theme-color" content="#faf8f4" media="(prefers-color-scheme: light)">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="assets/icon-192.png">
-<title>Anotações</title>
+<title>Notas</title>
 <!--
-  Data-free shell for Anotações. A notebook is either OBJECT-BACKED (one
+  Data-free shell for Notas. A notebook is either OBJECT-BACKED (one
   per cliente/evento/produto/receita/fornecedor/ingrediente/insumo,
   created lazily the moment a note is first written against that object —
   see shared-notes.js, used identically on all seven of those detail
@@ -76,8 +76,8 @@ const root = document.getElementById("root");
 const CURRENT_PAGE = "notas";
 
 const PAGE_LOGIN = {
-  title: "Anotações",
-  subtitle: "Faça o seu login para acessar suas anotações.",
+  title: "Notas",
+  subtitle: "Faça o seu login para acessar suas notas.",
   onSuccess: () => load(),
 };
 </script>
@@ -118,7 +118,7 @@ function notebookInfo(nb){
 function navHeader(title, backAction){
   const topRow = '<header><div class="hleft">' +
     '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-    '<h1 style="flex:1">' + (backAction ? "Anotações" : esc(title)) + '</h1>' +
+    '<h1 style="flex:1">' + (backAction ? "Notas" : esc(title)) + '</h1>' +
     '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
   if(!backAction) return topRow;
   return topRow + '<div class="subheader">' +
@@ -140,7 +140,7 @@ async function load(){
     root.innerHTML =
       '<header><div class="hleft">' +
         '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-        '<h1>Anotações</h1>' +
+        '<h1>Notas</h1>' +
       '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>' +
       personalPageBlockedHtml();
     wireMenuButton();
@@ -160,8 +160,8 @@ async function load(){
       localStorage.removeItem(PASS_KEY);
       showLogin("Senha incorreta.");
     }else if(e.badRequest && e.body && e.body.error === "bad action"){
-      root.innerHTML = navHeader("Anotações") +
-        '<p class="msg">Anotações ainda não disponíveis — republique a Edge Function.</p>';
+      root.innerHTML = navHeader("Notas") +
+        '<p class="msg">Notas ainda não disponíveis — republique a Edge Function.</p>';
       wireMenuButton();
     }else{
       root.innerHTML = '<p class="msg err">Não foi possível carregar agora.</p>' +
@@ -178,7 +178,7 @@ function notebookRowHtml(nb){
     '<span class="ic">' + icon + '</span>' +
     '<span class="body">' +
       '<p class="nm">' + esc(info.label) + '</p>' +
-      '<p class="meta">' + count + (count === 1 ? " anotação" : " anotações") + '</p>' +
+      '<p class="meta">' + count + (count === 1 ? " nota" : " notas") + '</p>' +
     '</span>' +
   '</div>';
 }
@@ -221,7 +221,7 @@ async function renderList(term){
   if(q){
     const hits = await searchHits(q);
     listHtml = hits.length === 0
-      ? '<p class="msg small">Nenhuma anotação encontrada.</p>'
+      ? '<p class="msg small">Nenhuma nota encontrada.</p>'
       : '<div class="card search-hits" id="hits-card">' + hits.map(noteHitRowHtml).join("") + '</div>';
   }else{
     // The default (no search) list shows only USER-CREATED notebooks —
@@ -234,15 +234,15 @@ async function renderList(term){
     // exactly as before.
     const userNotebooks = notebooks.filter(nb => !notebookInfo(nb).kind);
     listHtml = userNotebooks.length === 0
-      ? '<p class="msg small">Nenhum caderno seu ainda. Anotações escritas em um cliente, ' +
+      ? '<p class="msg small">Nenhum caderno seu ainda. Notas escritas em um cliente, ' +
         'evento, produto, receita, fornecedor, ingrediente ou insumo continuam na página ' +
         'do próprio objeto — busque aqui para encontrá-las, ou crie um caderno seu.</p>'
       : '<div class="card" id="nb-card">' + userNotebooks.map(notebookRowHtml).join("") + '</div>';
   }
 
-  root.innerHTML = navHeader("Anotações") +
+  root.innerHTML = navHeader("Notas") +
     '<div class="searchrow">' +
-      '<input type="search" id="search" placeholder="Buscar em todas as anotações…" value="' + esc(q) + '">' +
+      '<input type="search" id="search" placeholder="Buscar em todas as notas…" value="' + esc(q) + '">' +
     '</div>' +
     listHtml +
     '<button class="primary full addrow-btn" id="new-notebook">+ Novo caderno</button>';
@@ -311,7 +311,6 @@ function openNotebook(id){
 
   root.innerHTML = navHeader(info.label, () => { history.replaceState(null, "", "notas.html"); renderList(""); }) +
     (actions.length ? '<div class="detail-actions">' + actions.join("") + '</div>' : '') +
-    '<h3>📓 Anotações</h3>' +
     '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
   wireNav(() => { history.replaceState(null, "", "notas.html"); renderList(""); });
@@ -338,7 +337,7 @@ function openNotebook(id){
         let res = await api("notebook_delete", { id: nb.id });
         if(res.ok === false && res.reason === "has_notes"){
           if(!(await confirmModal(
-            "Este caderno tem " + res.notes + (res.notes === 1 ? " anotação" : " anotações") +
+            "Este caderno tem " + res.notes + (res.notes === 1 ? " nota" : " notas") +
             ". Removê-lo apaga tudo — não dá para desfazer.",
             "Remover mesmo assim"))) return;
           res = await api("notebook_delete", { id: nb.id, force: true });

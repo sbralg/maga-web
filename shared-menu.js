@@ -31,7 +31,7 @@ const MENU_ITEMS = [
   { page: "home", href: "index.html?dash=1", emoji: "🏠", label: "Home" },
   { page: "hoje", href: "hoje.html", emoji: "☀️", label: "Hoje", group: "dia" },
   { page: "tarefas", href: "tarefas.html", emoji: "✓", label: "Tarefas", group: "dia" },
-  { page: "notas", href: "notas.html", emoji: "📓", label: "Anotações", group: "dia" },
+  { page: "notas", href: "notas.html", emoji: "📓", label: "Notas", group: "dia" },
   { page: "compras", href: "compras.html", emoji: "🛒", label: "Compras", group: "producao" },
   { page: "estoque", href: "estoque.html", emoji: "📦", label: "Estoque", group: "producao" },
   { page: "insumos", href: "insumos.html", emoji: "🥖", label: "Insumos", group: "producao" },
@@ -45,7 +45,7 @@ const MENU_ITEMS = [
   { page: "preferencias", href: "preferencias.html", emoji: "⚙️", label: "Preferências", group: "conta" },
 ];
 
-// The "dia" group (Hoje, Tarefas, Anotações) is this account's own personal
+// The "dia" group (Hoje, Tarefas, Notas) is this account's own personal
 // data - the daily-summary triage, the task checklist, and personal notes -
 // not something that belongs on screen while looking at a DIFFERENT,
 // non-default environment (see shared-api.js's isDefaultEnv() comment: e.g.

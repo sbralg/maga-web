@@ -219,7 +219,7 @@ function noteCountFor(notebookId) {
   await page.waitForSelector('#nb-card', { timeout: 6000 });
   check('the user-created notebook appears in the default list, got: ' + await page.textContent('#nb-card'),
     (await page.textContent('#nb-card')).includes('Ideias para o cardápio de verão'));
-  check('its note count shows 0 anotações', (await page.textContent('#nb-card')).includes('0 anotações'));
+  check('its note count shows 0 notas', (await page.textContent('#nb-card')).includes('0 notas'));
   await page.click('.row[data-id="' + userNbId + '"]');
   await page.waitForSelector('.notes-card', { timeout: 6000 });
 
@@ -286,7 +286,7 @@ function noteCountFor(notebookId) {
 
   await page.fill('#search', 'ninguem tem isso');
   await page.waitForFunction(
-    () => (document.getElementById('root').textContent || '').includes('Nenhuma anotação encontrada'),
+    () => (document.getElementById('root').textContent || '').includes('Nenhuma nota encontrada'),
     null, { timeout: 6000 });
   check('an unmatched search shows the empty state', true);
 

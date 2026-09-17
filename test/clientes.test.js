@@ -337,7 +337,7 @@ function handleNotesAction(body) {
   await page.goto(PAGE + '?id=' + cliente2.id);
   await page.waitForSelector('.notes-card', { timeout: 6000 });
   await page.waitForFunction(() => document.querySelector('.notes-card .note-empty'), null, { timeout: 6000 });
-  check('empty notes state shown', (await page.textContent('.notes-card')).includes('Nenhuma anotação'));
+  check('empty notes state shown', (await page.textContent('.notes-card')).includes('Nenhuma nota'));
   await page.click('.note-add-btn');
   await page.waitForSelector('#note-new-body', { timeout: 4000 });
   await page.fill('#note-new-body', 'Prefere contato à tarde');
