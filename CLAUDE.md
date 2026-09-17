@@ -9,6 +9,154 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-17, phase 2a): the URL becomes the source of truth — hardware Back works, detail screens are linkable, and list rows/chips are real controls
+
+Phase 2a of the audit (`96a9328`, `3f3c474`, `09eada4`), pushed straight to
+`main` — back to this repo's own convention after the deliberate PR exception
+phase 0/1 used. The user's reason for reverting to it is worth recording: a
+navigation change has to be *felt* on the phone, and the PR made the previous
+phase invisible there until merge. **Phase 2 was split into 2a/2b/2c at the
+user's call** — as written it was ten items across ~15 files, roughly phase 0
+and phase 1 combined. 2b and 2c are listed at the bottom.
+
+### The bug underneath all of it
+
+Every detail page carried the same four lines at the top of its `load*()`:
+read `?id=`, `history.replaceState()` to **erase** it, open the detail, return.
+Eight pages did this. Erasing the URL is what made the app's two worst
+navigation faults: **the Android hardware Back button left the PWA from any
+detail screen** (nothing ever pushed an entry to go back to), and **a detail
+screen could not be bookmarked, shared or returned to**. The worst case was
+`compras.html` — the one screen used standing in a supermarket aisle — which
+had no deep link at all; a list opened purely in memory.
+
+### `shared-history.js` (new)
+
+`wireHistoryRoute({param, openDetail, renderList})` returns
+`routeFromUrl`/`navToDetail`/`navToList`/`routeNotFound` and registers one
+`popstate` listener. Ten pages use it. Three decisions carry weight:
+
+- **Re-rendering the detail you are already on replaces rather than pushes.**
+  Saving an edit calls `open*()` again to redraw; without this, Back would
+  land on an identical entry and appear to do nothing.
+- **Back does not re-fetch synchronously.** That would put a "Carregando…"
+  flash on the most common gesture in the app — the exact thing phase 1
+  removed everywhere else — and cost a round trip in an aisle. `showList()`
+  paints from memory and `refreshList()` reconciles in the background,
+  repainting only if the payload actually moved **and** the URL still has no
+  id (a fast Back-then-tap can open a detail while the refresh is in flight).
+  `listLoaded`, not `array.length`, is the cache flag: an account with
+  genuinely zero records must not read as a cache miss and re-fetch forever.
+- **One treatment for a stale id** (a bookmark to a record deleted from
+  another device): say so, show the list, and **clean the URL** — leaving the
+  bad `?id=` in place repeats the error on every reload.
+
+New deep links: **`compras.html?list=`**, **`hoje.html?date=`** (which also
+makes each day a history entry, so Back steps back a day), and a one-shot
+`?id=` into the edit modal on `tarefas`/`financeiro`. Those two have no detail
+*screen*, only a modal over the list, so the param is consumed once and
+cleaned off rather than reopening the modal on every later re-render.
+
+**`estoque.html` is deliberately the exception** — it has no detail screen of
+its own (its rows navigate to `insumos.html`), so it loads no router and only
+stops erasing its own `?gtin=`.
+
+### Rows, chips and headings become what they were pretending to be
+
+Phase 1 shipped `:focus-visible` rings onto elements that could not receive
+focus at all; this is the pass that fixes the reachability, exactly as that
+entry said it would.
+
+- **List rows are `<button type="button" class="row">`**, with the button
+  reset in `shared-page.css`. **`<button>` takes phrasing content**, so a
+  row's children are `<span>`s — a `<p>` or `<div>` in there is invalid and
+  gets reparented. **A row containing its own controls can never be a
+  button**: `compras.html`'s list *opener* is the button instead, and
+  `estoque.html`'s opener keeps `role="button"` + `tabindex` + an Enter/Space
+  handler and its own focus ring.
+- **Filter chips are `<button>`s with `aria-pressed`** mirroring `.active`.
+  Where a handler toggles `.active` in place (the pay-method and
+  lançamento-tipo chips inside modals) it sets `aria-pressed` too — **an ARIA
+  state that goes stale is worse than none**, the same objection the audit
+  raised against `preferencias.html`'s half-built tab pattern. The four
+  byte-identical page-local `.chip` blocks moved into `shared-page.css`;
+  `financeiro` keeps its own tighter `.chiprow` margin, which is a real
+  difference (it stacks a second filter row) rather than drift.
+- **The detail title stops being click-to-edit.** It was a `<h2>` with
+  `cursor:pointer` on six pages. A heading cannot be focused and is not
+  announced as actionable — and five of the six already had an "✎ Editar"
+  button doing the identical thing. `eventos.html` was the one page with **no
+  edit button at all** (audit C7) and gained "✎ Renomear"; that rename had
+  never been tested, because clicking the heading was the only way to reach
+  it.
+- **`tarefas.html`'s `.row` no longer inherits `cursor:pointer`** — the
+  cosmetic regression phase 1 left explicitly for this pass. Closed.
+
+### Cross-links (B6), and the one that could not be done here
+
+A produto's receita/fornecedor and a fornecedor's purchased insumos rendered
+as **dead text although the ids — and the gtin — were already in the
+payload**; reaching them meant going out to the menu and searching by name.
+Now real `<a href>`s (so middle-click and open-in-new-tab work), with the
+invisible `::after` hit-area expansion phase 1 introduced. **The evento- and
+cliente-to-financeiro links are NOT done**: unlike these, `evento_detail`
+does not return a lançamento id per payment row, so they need a backend
+field, not a front-end change.
+
+### Two new test files, and why a static one earns its place
+
+**`test/history-wiring.test.js` reads the source rather than driving a
+browser, and it exists because the pilot's own bug was invisible to every
+per-page suite.** The back *button* called `showList()` — which renders the
+list but never touches the URL — while hardware Back went through the router,
+so the two disagreed about which screen you were on. The symptom was remote
+from the cause: the background refresh silently stopped repainting, because
+it correctly saw an id still in the URL. **Clicking `#back` looked right.**
+Several pages' suites never click a list row at all, so they would not have
+noticed either. The guard was confirmed to fail against a deliberately
+reintroduced copy of that bug before being trusted.
+
+**`test/history.test.js`** measures behaviour: Back, Forward, the subheader
+button agreeing with hardware Back, a cold deep link keeping its id, a stale
+id, Tab+Enter reaching a row, the compras deep link, and
+`scrollWidth === innerWidth` at 360px and 390px — a button's default width is
+shrink-to-fit, and `width:100%` is only safe because `box-sizing:border-box`
+is global in `shared-base.css`.
+
+**20/20 test files exit 0** (18 before). One assertion was inverted, correctly:
+`stock.test.js` expected `?gtin=` to have been erased. The param surviving is
+the point.
+
+### Process note
+
+Three Sonnet subagents did the page edits, partitioned by file ownership so no
+two touched the same file; every claim was re-verified here by exit code. Two
+of them independently flagged the same real gap — list-row navigation had no
+direct coverage on their pages — which is what prompted the static wiring
+test. **A subagent contradicting or extending an assumption is data**, the
+lesson phase 1 paid for.
+
+### Still open
+
+**2b — new capabilities**: `+ Novo insumo` (an insumo can only exist by
+scanning a barcode, so bulk flour is uncreatable) **via a synthetic EAN-13 in
+the GS1 restricted-circulation range, prefix `2`** — the range reserved for
+store-internal codes, decided with the user; no schema change, and a real
+barcode can never collide. Plus category CRUD (`insumo_category_rename`/
+`_delete` still have no caller), "Adicionar à lista de compras" from estoque/
+insumos/receitas (the shopping list is still an island), "Usado em" surfacing
+the reference lists the delete handlers already compute, search on compras/
+tarefas/financeiro, and "limpar comprados".
+
+**2c — error surfacing and in-place updates, needs a `maga-api` redeploy**:
+show `e.body.error` in the ~67 generic "Não foi possível" messages; convert
+`compras.html`'s four full-screen reloads now that phase 0 made those handlers
+return rows; unify the three delete-refusal protocols; delete the dead
+`shopping_item_rename`; and the two financeiro cross-links above.
+
+**Phases 3–5 unchanged**: the "Confirmar compra" loop, the live dashboard, and
+the test/tidy pass.
+
 ## Status (2026-09-17, after everything below): an app-wide audit — phase 0's real bugs, then phase 1: shared page chrome, one error system, and an accessibility foundation
 
 Direct ask: *"Make an extensive check of the application. Look for areas of
