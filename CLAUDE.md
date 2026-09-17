@@ -9,6 +9,211 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-17, after everything below): an app-wide audit — phase 0's real bugs, then phase 1: shared page chrome, one error system, and an accessibility foundation
+
+Direct ask: *"Make an extensive check of the application. Look for areas of
+improvement... Also check for visual design and UI improvements. This app was
+built incrementally and may be missing best practices or not be consistent
+across all pages."* The audit read all three repos, ran the then-15-file suite
+green as a baseline, and captured real screenshots of 14 screens at 390px
+rather than inferring the visual layer. Nothing it found was a regression —
+it was ten weeks of accumulated drift, which is exactly what an app that grew
+one page at a time collects. The full finding list (A1–A17 bugs, B1–B15
+missing paths, C1–C18 visual/consistency, D1–D6 accessibility, E1–E12 code
+quality) and phases 2–5 live in the session plan file,
+`make-an-extensive-check-toasty-whistle.md`; the open items that matter are
+restated at the bottom of this entry so they survive that file being lost.
+
+Shipped as two PRs rather than straight to `main` — **a deliberate override of
+this repo's own convention**, at the user's request, so the whole thing could
+be reverted in one move. The cost was real and worth recording: a 15-page
+visual refactor was invisible on their phone until merge, which is precisely
+why the no-PR rule exists here. `maga-api`'s half is `338790c` (PR #36),
+merged and **redeployed by the user**.
+
+### Phase 0 (`ae56718`) — real bugs, no refactor
+
+- **`sw.js` had never cached `assets/logo-badge.svg`** — the header brand mark
+  on all 15 pages, the login screen and the drawer. Offline, every page
+  rendered logo-less, and had since the logo was introduced. Also missing:
+  `shared-pwa.js` (loaded by all 15 pages), `assets/avatar-maga.webp`,
+  `oauth.html`.
+- **`CACHE_NAME` had never been bumped**, across five separate commits that
+  changed `SHELL_FILES`. The purge in `activate` deletes caches whose name
+  differs from `CACHE_NAME`, so with a constant name **it never ran once** —
+  entries for deleted files (`shopping.html`) were still being served.
+  Bumped v1 → v4 across this work.
+- **The durable lesson, and why this went unnoticed for months: `install`
+  swallows a failed `cache.add` by design**, so this entire class of bug is
+  silent — no console error, no failed load, just a stale or incomplete
+  offline shell. That is what **new `test/sw.test.js`** exists for: it walks
+  the real pages, extracts everything they reference, and fails on anything
+  `SHELL_FILES` misses. It strips `//` comments first, or a commented-out
+  entry reads as cached.
+- **`notas.html`'s `searchHits()` cached `[]` on failure** — a network error,
+  a 401 and "no notes" all rendered identically, the 401 never reached
+  `handleAuthError`, and the cached `[]` short-circuited every later
+  keystroke, so one transient failure disabled cross-notebook search for the
+  page's life. Now distinguishes failure from empty and rethrows on
+  `e.unauthorized`. Also added `invalidateNotesCache()` (wired to
+  `window.onNotesChanged`) — writing a note then searching for it used to
+  find nothing until a reload — and a `renderListSeq` guard so a slow render
+  can't overwrite a newer one that started while it was awaiting.
+- **`logoutMcpSession()` never cleared `maga_prefs_cache`.** After "trocar de
+  conta", `preferencias.html` rendered the *previous person's* WhatsApp
+  allow-list, roster, timezone and context — and since that cache is read
+  offline-first, with the jump host asleep there was no refresh coming to
+  correct it. Same class as the 2026-09-09 stale-cache bug two entries down.
+- **`--ok` was referenced and never defined** (`preferencias.html`'s
+  `.resolved.ok`), so every success state rendered in the danger/brand red.
+  Now a real token — **`#15803d`, deliberately not `#16a34a`**: that lighter
+  green measures 3.30:1 on `--card` and fails WCAG AA at the 11–14px sizes
+  this is actually used at; `#15803d` clears 4.5:1. **New
+  `test/css-tokens.test.js`** fails on any `var(--token)` that resolves to
+  nothing, and checks every light token is redefined for dark.
+- `compras.html` called `handleAuthError` for non-auth failures too, wiping
+  the whole screen for one failed row; `hoje.html`'s TRIAGEM card rendered
+  `0 e-mails — — ruído, — com ação` when counts were absent (em-dashes as
+  missing-value placeholders); the five unescaped `emoji` interpolations got
+  `esc()`; `shared-menu.js` got a `typeof CURRENT_PAGE` guard — a missing
+  declaration throws inside `openMenu()` before any markup is built, so the
+  hamburger silently does nothing, **which has now shipped twice**.
+
+### Phase 1 (`030991f`, `607b950`, `d3b5089`, `a51fb71`, `c480fad`, `30fcec0`, `8b63062`)
+
+- **`shared-page.css` (new)** — the page chrome that was duplicated across 15
+  `<style>` blocks: `body` padding, `.wrap`, `header`, `.hleft`, `h1`, `h3`,
+  `.subheader`, `#back`, `.searchrow`, `.detail-actions`, the `.row` shell,
+  `.row-actions`, `.addrow-btn`. **`.row`'s flex layout stayed page-local on
+  purpose** — it genuinely differs per page, and merging it would have been
+  the "looks similar, isn't the same thing" trap this file already warns
+  about. `.wrap` carries `width:100%`, which is the 2026-09-01 overflow fix
+  generalised rather than re-derived.
+- **`shared-nav.js` (new)** — one `navHeader(title, opts)` + `wireNav()`
+  replacing 11 and 9 hand-written copies whose signature had already drifted
+  four ways (`(title,back)`, `(title,back,emoji)`, `(title,back,icon)`,
+  `(title)`). `opts` is `{backLabel, backAction, titleClass, icon,
+  listTitle}`; the seven `.cli-title`/`.evt-title`/`.rec-title`… classes
+  collapse to one `.detail-title`.
+- **`shared-produto-panel.css` (new)** — the shared produto panel shipped no
+  stylesheet at all, so its classes were copy-pasted into both hosts and had
+  already diverged. **The load-bearing detail: `.item-row` means two
+  different things** — the panel's embalagem rows on `produtos.html`, and
+  `receitas.html`'s own ingredient lines. Extracting it naively would have
+  silently restyled the recipe list, so the shared rules are scoped under
+  `#pp-emb-list` (which also makes them win regardless of `<style>` load
+  order) and receitas keeps its own.
+- **One error system.** `shared-ui.js` gained `fieldError(inputEl, message)` /
+  `clearFieldError(inputEl)` (inline validation with `aria-invalid` +
+  `aria-describedby`, auto-clearing on the next input) — the ten separate
+  copies of `alert("O nome não pode ficar vazio.")` become one mechanism that
+  puts the message under the field that caused it. Transient failures go to
+  `listToast(msg, true)`. **52 native `alert()` calls at the start, zero
+  now.**
+- **An accessibility foundation, inherited rather than retrofitted.** New
+  `openModal(html, opts)` in `shared-ui.js` carries `role="dialog"`,
+  `aria-modal`, `aria-labelledby`, a focus trap, focus restore and a scroll
+  lock; `confirmModal`/`promptModal` route through it **at unchanged
+  signatures**, so every existing call site inherits all of it for free.
+  `listToast()` gained `role="status"` + `aria-live="polite"`.
+  `:focus-visible` rings landed across the shared sheets — the codebase had
+  **zero** focus rules before this, and several custom buttons actively
+  suppress the UA outline.
+  - **The hit-area technique worth reusing**: `.link` and friends sit in
+    baseline-aligned flex rows, so growing the box would shift layout. An
+    invisible `::after{position:absolute;inset:-10px -8px}` expands the
+    *effective* target without moving a pixel — and `test/a11y.test.js`
+    probes it with `elementFromPoint`, not by reading a class.
+- **The header stops flashing on load.** Every page's `load()` did
+  `root.innerHTML = 'Carregando…'`, so list→detail was: header vanishes, one
+  centred line, header reappears. `preferencias.html` already documented the
+  fix and — found while applying it — **didn't actually do the thing it was
+  cited for**: it rendered the shell on its four early-return branches but
+  not around its own happy-path round trip, so it still flashed in exactly
+  the window its comment claims to close. Now all of them render the shell
+  first. Verified with a harness that samples the DOM during load and
+  confirms both directions: clean now, and catching the flash at +31–47ms
+  against the stashed originals.
+
+### Measured outcomes, not adjectives
+
+**18/18 test files exit 0.** `scrollWidth === innerWidth` on all 15 pages at
+both 360px and 390px, with a header present on every one. Zero native
+`alert()` calls (52 before). Zero bare header-wipes on load. Page-local
+`<style>` went 1355 → 1204 lines while shared CSS went 361 → 550 — the point
+being that the shared growth is one copy of what used to be fifteen.
+
+### Three visible changes that are not pure refactor
+
+Called out so a later session doesn't read them as regressions: `header`'s
+bottom margin tightened 8px on `tarefas.html`/`hoje.html` (they were the
+outliers against thirteen pages); `.subheader` (16px) and `.searchrow` (14px)
+standardised on eventos/produtos/receitas; `--ok` moved as described above.
+
+### Deliberately left, and why
+
+- **`tarefas.html`'s `.row` now inherits `cursor:pointer`** from the shared
+  row shell although only `.rowbody` is clickable. Cosmetic, and it belongs
+  with the pass that makes rows real buttons rather than a special-case
+  override now.
+- **The new focus rings land on elements that are still not keyboard
+  reachable** — list rows are `<div>` + click handler on 9 pages, every
+  filter chip is a `<span>`, 7 detail titles are click-to-edit `<h2>`s. The
+  rings are correct and the reachability is the next phase's first item;
+  shipping the rings first is not an oversight.
+
+### Two findings checked and dropped rather than shipped
+
+- **A7** (`.wrap` overflow on `hoje.html`/`index.html`, by analogy to the
+  2026-09-01 `tarefas.html` bug) **did not reproduce** — measured
+  `scrollWidth === innerWidth` at 360px; both already carried the
+  `width:100%` fix.
+- **A9** (insumos' missing `.detail-actions` bottom margin) **is documented
+  in this very file as deliberate** — it sits inside a `.card.pad` whose next
+  block has its own divider. The audit had flagged it from the pattern, not
+  the reason.
+
+### The process lesson, in the same spirit as this file's CSS-bug entries
+
+**A real `compras.test.js` failure sat through four commits because
+verification grepped stdout for `/^FAIL/`** — and `compras.test.js` is the
+only one of the suite whose `check()` pushes a bare label instead of
+`'FAIL: ' + label`. It printed its failures, exited 1, and the harness
+reported green. The failure itself was small (phase 0 renamed
+`scan_camera_id` → `maga_scan_camera_id` and missed three references in the
+test); the blindness was not. **The exit code is the signal, not the
+output** — fixed in `1032c51`, along with that file's reporting. Two
+independent Sonnet agents reported the failure and were overridden both
+times: a subagent contradicting an assumption is data, not noise.
+
+Two pre-existing flakes were also diagnosed and fixed while here:
+`notas.test.js` (~15%, waited on `.notes-card`, which `openNotebook()`
+renders synchronously while `wireNotesPanel()` fills it from a separate round
+trip — 2/12 failures before, 0/15 after) and `fornecedores.test.js` (~50%, a
+`page.url()` read racing `produtos.html`'s own `history.replaceState()` —
+0/6 after).
+
+### Still open — phase 2 onward, deferred at the user's request
+
+Restated here so they survive the plan file: **keyboard reachability** (rows
+as real buttons, chips as `<button>`, an explicit edit affordance on the 7
+`<h2>` titles); **a visual-weight pass** (the notes "+ Adicionar" is
+`class="primary"` — full-width crimson — and out-shouts every real action on
+the 8 pages embedding it; the produto pricing card is a flat wall of 7 numbers
+with the retail price no louder than a 5-centavo packaging cost; the dashboard
+is 3.6 screens of pure navigation); **the back button** (no page calls
+`pushState`, and 8 actively `replaceState` the URL away, so hardware Back
+exits the PWA from any detail screen); **deep links** (`?id=` on compras — the
+one screen used standing in a supermarket aisle — plus tarefas and
+financeiro); **dead cross-links** where the id is already in the payload
+(produto → receita/fornecedor, fornecedor → insumo, evento → financeiro);
+**category CRUD and "+ Novo insumo"** (`insumo_category_rename`/`_delete` have
+no caller at all, and an insumo can only exist by scanning a barcode — bulk
+flour is uncreatable); **the "Confirmar compra" loop** (ticking a shopping
+item writes a price and nothing else — no stock movement, no despesa — so no
+expense ever reaches Financeiro automatically and fornecedor purchase history
+is empty by construction); and **a live dashboard**.
+
 ## Status (2026-09-17, absolute latest): the notebook's icon now shows to the left of its name in the notebook-detail header
 
 Direct follow-up on the entry right below: now that a user-created
