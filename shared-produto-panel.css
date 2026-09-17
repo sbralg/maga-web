@@ -1,0 +1,76 @@
+/* shared-produto-panel.css — the packaging list, cost breakdown, margins
+   and reverse retail-price calculator rendered by shared-produto-panel.js
+   (renderProdutoPanel/embalagemPickerModal), used identically by
+   produtos.html and receitas.html. The component itself ships no
+   stylesheet (see that file's own header comment), so these classes had
+   been copy-pasted into both hosts and had already drifted apart — most
+   rules matched byte for byte, but `.item-row` (the embalagem row shell +
+   its name/meta text) did not, because receitas.html reuses the exact
+   same class name for its OWN ingredient-line rows, which are genuinely
+   different (bold name, an extra "scaled" line, a "sem custo" meta
+   variant) — see receitas.html's own <style> block for that copy, kept
+   page-local on purpose. The two `.item-row` rules were never meant to be
+   the same thing; they only looked alike because of the shared name.
+
+   Fix: the embalagem row's own shell/text rules below are scoped under
+   `#pp-emb-list` — the id renderProdutoPanel() gives the embalagem list's
+   wrapping card on BOTH host pages — so they win over a host's own
+   competing plain `.item-row` rule regardless of <style>-block load order
+   (an id-containing selector always outranks a plain class one). Values
+   are produtos.html's, the "pure" host with no other content competing
+   for the class. `.item-row .badge`/`.body` stay unscoped below since both
+   hosts' prior copies were byte-identical there — genuinely shared, no
+   collision to guard against. */
+
+#pp-emb-list .item-row{
+  display:flex;align-items:flex-start;gap:10px;padding:12px 14px;
+  border-bottom:1px solid var(--border);
+}
+#pp-emb-list .item-row:last-child{border-bottom:none}
+/* font-weight is spelled out (not just left at the browser default)
+   because receitas.html's OWN competing .item-row .body .txt rule sets
+   font-weight:600 for its ingredient-line names — an id-scoped selector
+   only outranks that rule for the properties it actually declares, so
+   leaving font-weight undeclared here let the bold leak through onto the
+   embalagem rows too. Caught by comparing computed styles against
+   produtos.html's rendering of the same row, not just a visual glance. */
+#pp-emb-list .item-row .body .txt{font-size:14.5px;font-weight:400;margin:0;word-wrap:break-word}
+#pp-emb-list .item-row .body .meta{font-size:12.5px;color:var(--muted);margin:3px 0 0}
+
+.item-row .badge{font-size:18px;flex:none;width:24px;text-align:center}
+.item-row .body{flex:1;min-width:0}
+
+.totals-card{padding:14px}
+.totals-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+.totals-grid .t{grid-column:1 / -1;border-top:1px solid var(--border);margin-top:2px;padding-top:10px}
+.totals-grid .lbl{font-size:12px;color:var(--muted);margin:0}
+.totals-grid .val{font-size:16px;font-weight:650;margin:2px 0 0}
+
+.warn-card{padding:12px 14px;background:rgba(180,83,9,.1);border-radius:12px;margin-top:10px}
+.warn-card p{font-size:13px;color:var(--warn);margin:0}
+
+.reverse-card{padding:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.reverse-card label{font-size:13px;color:var(--muted);flex:1;min-width:140px}
+.reverse-card .field{max-width:120px}
+.reverse-out{font-size:13px;color:var(--text);margin:10px 0 0;width:100%}
+.reverse-out p{margin:2px 0}
+
+/* Also emitted by shared-produto-panel.js: embalagemPickerModal()'s own
+   pick list/option rows. Byte-identical to what both host pages already
+   carried locally for their OTHER pickers (produtos.html's fornecedor/
+   receita pickers, receitas.html's ingredient/sub-receita picker) — moving
+   it here removes that duplication too, since both pages already load
+   this file. `.pick-opt .cnt` (the embalagem picker's "por <unidade>"
+   hint) was never styled in either host's prior copy either — left
+   unstyled here too, matching existing behavior rather than introducing a
+   new look mid-migration. */
+.pick-list{max-height:38vh;overflow-y:auto;margin:0 0 14px;-webkit-overflow-scrolling:touch}
+.pick-opt{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  background:none;border:none;border-bottom:1px solid var(--border);
+  color:var(--text);font:inherit;font-size:15px;padding:11px 4px;cursor:pointer;
+  transition:background-color .15s ease;
+}
+.pick-opt:last-child{border-bottom:none}
+.pick-opt:hover{background:rgba(127,127,127,.08)}
+.pick-opt .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

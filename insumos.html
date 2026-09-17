@@ -24,6 +24,7 @@
   the other is state that changes daily and sorts by what is running out.
 -->
 <link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
 <link rel="stylesheet" href="shared-menu.css">
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
@@ -31,20 +32,17 @@
 <link rel="stylesheet" href="shared-catalog.css">
 <link rel="stylesheet" href="shared-notes.css">
 <style>
-  body{
-    padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
-  }
-  .wrap{max-width:640px;margin:0 auto}
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
-  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-  .subheader{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0;margin:0 0 16px}
-  .list-title{display:flex;align-items:baseline;gap:8px;min-width:0}
-  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
+  /* ---- page chrome (body/.wrap/header/.hleft/h1/h3/.subheader/
+     .searchrow/.row shell) now lives in shared-page.css — see that file
+     for what moved and why. h2 stays page-local: this page never actually
+     renders one (its detail view passes no title to navHeader(), so the
+     subheader's h2 never appears — see the detail-view navHeader() call
+     below), but the bare-h2 rule is harmless to keep in case that changes. */
   h2{font-size:17px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
-  h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
-  .row{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);transition:background-color .15s ease}
-  .row:hover{background:rgba(127,127,127,.06)}
-  .row:last-child{border-bottom:none}
+  /* .row's shell (border/hover/transition) is now shared-page.css's; the
+     flex layout and the 12px-14px padding (vs. the shared default of 14px
+     all around) are page-specific and stay here. */
+  .row{display:flex;align-items:center;gap:10px;padding:12px 14px}
   .body{min-width:0;flex:1}
   .body .txt{font-size:15px;line-height:1.35;margin:0;word-wrap:break-word}
   .body .meta{font-size:12px;color:var(--muted);margin:3px 0 0}
@@ -86,7 +84,6 @@
   .kind-badge{flex:none;white-space:nowrap}
   .kind-badge.ing{background:rgba(180,83,9,.12);color:var(--warn)}
   .kind-badge.emb{background:rgba(127,127,127,.12);color:var(--muted)}
-  .searchrow{display:flex;gap:8px;margin:0 0 14px}
   .chiprow{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
   .chip{
     font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;cursor:pointer;
@@ -94,11 +91,6 @@
     transition:background-color .15s ease,color .15s ease;
   }
   .chip.active{background:var(--accent);color:var(--accent-text)}
-  .searchrow input[type=search]{
-    flex:1;min-width:0;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
-    border:1px solid var(--border-strong);background:var(--card);color:var(--text);
-    -webkit-appearance:none;
-  }
   /* ---- insumo detail ---- */
   .ins-head{display:flex;gap:14px;align-items:flex-start;margin:0 0 14px}
   .ins-head .thumb{width:72px;height:72px}
@@ -106,6 +98,10 @@
   .ins-title .name{font-size:17px;font-weight:650;margin:0;word-wrap:break-word}
   .ins-title .sub{font-size:13px;color:var(--muted);margin:4px 0 0}
   .ins-title .code{font-size:12px;color:var(--muted);margin:6px 0 0;font-variant-numeric:tabular-nums}
+  /* Deliberately overrides shared-page.css's .detail-actions (which adds a
+     14px/18px top/bottom margin) with none at all — this row sits inside a
+     .card.pad, and the next block's own border-top divider already
+     separates it, so the extra bottom margin would just be dead space. */
   .detail-actions{display:flex;gap:8px;flex-wrap:wrap}
   /* Why a row is a manual placeholder instead of real OFF data: OFF
      genuinely doesn't have the barcode, or the lookup itself never got an
@@ -224,6 +220,7 @@ const PAGE_LOGIN = {
 </script>
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
@@ -257,21 +254,11 @@ function kindBadgeHtml(p){
     : '<span class="kind-badge ing">🧂 ingrediente</span>';
 }
 
-function navHeader(title, backAction){
-  const topRow = '<header><div class="hleft">' +
-    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-    '<h1 style="flex:1">' + (backAction ? 'Insumos' : esc(title)) + '</h1>' +
-    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
-  if(!backAction) return topRow;
-  return topRow + '<div class="subheader">' +
-    '<button class="link" id="back">← Catálogo</button>' +
-  '</div>';
-}
-
-function wireNav(backAction){
-  wireMenuButton();
-  if(backAction) document.getElementById("back").addEventListener("click", backAction);
-}
+// navHeader()/wireNav() now live in shared-nav.js. This page's detail view
+// deliberately passes no `title` — the record name is never shown in the
+// subheader here (it sits in the .ins-head card below instead), so the h1
+// always just reads "Insumos" and the subheader shows only the back button.
+// See the openInsumo()/renderInsumo() calls below.
 
 // ---- catalogue screen ----
 
@@ -349,7 +336,7 @@ function renderCatalog(){
         ? '<p class="msg" id="no-match">Nenhum insumo encontrado.</p>'
         : '<div class="card" id="cat-card">' + shown.map(insumoRowHtml).join("") + '</div>');
 
-  root.innerHTML = navHeader("Insumos", null) +
+  root.innerHTML = navHeader("Insumos") +
     '<div class="searchrow">' +
       '<input type="search" id="search" placeholder="Buscar por nome, marca ou código" ' +
         'value="' + esc(searchTerm) + '">' +
@@ -363,7 +350,7 @@ function renderCatalog(){
     '<p class="msg small">' + catalog.length + ' insumo' +
       (catalog.length === 1 ? '' : 's') + ' no catálogo</p>';
 
-  wireNav(null);
+  wireNav();
 
   function redraw(){
     const card = document.getElementById("cat-card") || document.getElementById("no-match");
@@ -576,7 +563,7 @@ async function openInsumo(gtin){
   try{
     const data = await api("insumo_detail", { gtin });
     if(!data.found){
-      root.innerHTML = navHeader("Insumos", loadCatalog) +
+      root.innerHTML = navHeader(null, { backLabel: "Catálogo", backAction: loadCatalog, listTitle: "Insumos" }) +
         '<p class="msg">Insumo não encontrado.</p>';
       wireNav(loadCatalog);
       return;
@@ -617,7 +604,7 @@ function renderInsumo(data){
     ? '<p class="msg small">Nenhuma movimentação de estoque ainda.</p>'
     : '<div class="card" id="mov-card">' + movements.map(movementRowHtml).join("") + '</div>';
 
-  root.innerHTML = navHeader("Insumos", loadCatalog) +
+  root.innerHTML = navHeader(null, { backLabel: "Catálogo", backAction: loadCatalog, listTitle: "Insumos" }) +
     '<div class="card pad">' +
       '<div class="ins-head">' +
         thumbHtml(p) +

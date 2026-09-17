@@ -9,7 +9,13 @@
 // breaks that workflow outright. Network-first keeps a live push visible on
 // the very next load while still giving *something* when there's truly no
 // connection (a shelf in the pantry aisle with no signal).
-const CACHE_NAME = "maga-shell-v1";
+// Bump this whenever SHELL_FILES changes. The `activate` handler below
+// deletes every cache whose name is not the current one, so the version
+// string is the ONLY purge mechanism there is — leaving it fixed (as it was
+// from creation through five SHELL_FILES edits) means entries for files
+// that have since been renamed or deleted stay cached forever and are still
+// served offline. v1 -> v2 is the first such purge.
+const CACHE_NAME = "maga-shell-v4";
 
 const SHELL_FILES = [
   "./",
@@ -28,10 +34,19 @@ const SHELL_FILES = [
   "fornecedores.html",
   "financeiro.html",
   "preferencias.html",
+  // The OAuth return target. It needs the network to finish a login, but
+  // caching the page itself means a flaky connection lands on the real
+  // "Concluindo o login…" screen rather than a blank one.
+  "oauth.html",
   "shared-api.js",
+  // Registers this service worker. Loaded by all 15 app pages; without it
+  // here, the first offline visit to a page 404s the one script whose job
+  // is to make offline work at all.
+  "shared-pwa.js",
   "shared-push.js",
   "shared-prefs.js",
   "shared-menu.js",
+  "shared-nav.js",
   "shared-ui.js",
   "shared-format.js",
   "shared-inputs.js",
@@ -39,16 +54,26 @@ const SHELL_FILES = [
   "shared-produto-panel.js",
   "shared-notes.js",
   "shared-base.css",
+  "shared-page.css",
   "shared-menu.css",
   "shared-modal.css",
   "shared-toast.css",
   "shared-inputs.css",
   "shared-catalog.css",
+  "shared-produto-panel.css",
   "shared-notes.css",
   "manifest.json",
   "assets/icon-192.png",
   "assets/icon-512.png",
   "assets/badge-96.png",
+  // The one image actually on screen: the header brand-mark on every page,
+  // the login screen (shared-api.js), the drawer (shared-menu.js) and
+  // index.html's hero. The three icons above are what the OS shows; this is
+  // what the person shows. It was the only one missing, so the offline
+  // shell rendered every page and the login screen logo-less.
+  "assets/logo-badge.svg",
+  // hoje.html's assistant avatar, beside the daily greeting.
+  "assets/avatar-maga.webp",
 ];
 
 self.addEventListener("install", (event) => {

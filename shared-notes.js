@@ -39,6 +39,16 @@ function notesNotDeployed(e){
   return !!(e && e.badRequest && e.body && e.body.error === "bad action");
 }
 
+// Fired after any successful note write (create/update/delete/pin), so a
+// host page holding its own view of the same notes can drop it. Only
+// notas.html needs this today — its cross-notebook search caches every
+// note in the account (`notes_all`) and was never told when one changed,
+// so a note written in an open notebook stayed invisible to the search box
+// until a full reload. A page that defines no hook pays nothing.
+function notesChanged(){
+  if(typeof window.onNotesChanged === "function") window.onNotesChanged();
+}
+
 // container: the element notesPanelHtml() was written into (or the panel
 // IS the whole container — either works, since every selector below is
 // scoped to it). kind/ref: e.g. ("cliente", c.id) or ("insumo", gtin).
@@ -130,6 +140,7 @@ async function wireNotesPanel(container, kind, ref){
       // full re-sort for the one insertion this causes.
       notes.sort((a, b) => (b.pinned - a.pinned) || 0);
       redraw();
+      notesChanged();
     }catch(e){
       listToast(notesNotDeployed(e)
         ? "Notas ainda não disponíveis — republique a Edge Function."
@@ -146,6 +157,7 @@ async function wireNotesPanel(container, kind, ref){
     redraw();
     try{
       await api("note_update", { id: note.id, pinned: wantPinned });
+      notesChanged();
     }catch(_){
       note.pinned = !wantPinned;
       notes.sort((a, b) => (b.pinned - a.pinned) || 0);
@@ -164,6 +176,7 @@ async function wireNotesPanel(container, kind, ref){
         await api("note_delete", { id: note.id });
         notes = notes.filter(n => n.id !== note.id);
         redraw();
+        notesChanged();
       }catch(_){
         listToast("Não foi possível excluir a nota.", true);
       }
@@ -177,6 +190,7 @@ async function wireNotesPanel(container, kind, ref){
       if(idx >= 0) notes[idx] = res.note;
       notes.sort((a, b) => (b.pinned - a.pinned) || 0);
       redraw();
+      notesChanged();
     }catch(e){
       listToast(e.badRequest ? "O texto da nota não pode ficar vazio." : "Não foi possível salvar a nota.", true);
     }

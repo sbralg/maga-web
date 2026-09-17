@@ -36,37 +36,19 @@
   future work, not a bug in this page.
 -->
 <link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
 <link rel="stylesheet" href="shared-menu.css">
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-inputs.css">
 <link rel="stylesheet" href="shared-notes.css">
 <style>
-  body{
-    padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
-  }
-  .wrap{max-width:640px;margin:0 auto}
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
-  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-  .subheader{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0;margin:0 0 16px}
-  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
-  h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
-  .searchrow{display:flex;gap:8px;margin:0 0 14px}
-  .searchrow input[type=search]{
-    flex:1;min-width:0;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
-    border:1px solid var(--border-strong);background:var(--card);color:var(--text);
-    -webkit-appearance:none;
-  }
-  .row{display:flex;flex-direction:column;gap:4px;padding:14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background-color .15s ease}
-  .row:hover{background:rgba(127,127,127,.06)}
-  .row:last-child{border-bottom:none}
-  .row .nm{font-size:15px;font-weight:600;margin:0;word-wrap:break-word}
-  .row .meta{font-size:12.5px;color:var(--muted);margin:0}
-  .addrow-btn{margin:8px 0 0}
-  button.primary.full{width:100%}
-  /* ---- detail ---- */
-  .cli-title{font-size:16px;font-weight:650;margin:0;text-align:right;word-wrap:break-word;cursor:pointer}
-  .cli-title:hover{opacity:.75}
+  /* ---- page chrome (body/.wrap/header/.hleft/h1/h3/.subheader/
+     .searchrow/.row shell/.addrow-btn/.detail-title) now lives in
+     shared-page.css — see that file for what moved and why. Only the
+     genuinely page-specific parts of .row (its flex layout) and the
+     detail sheet stay here. */
+  .row{display:flex;flex-direction:column;gap:4px}
   .infofield{
     display:flex;align-items:baseline;justify-content:space-between;gap:10px;
     padding:10px 0;border-top:1px solid var(--border);
@@ -74,15 +56,13 @@
   .infofield .lbl{font-size:12px;color:var(--muted);margin:0;flex:none}
   .infofield .val{font-size:14px;text-align:right;word-break:break-word}
   .infofield .val.empty{color:var(--muted);font-style:italic}
-  .detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px}
   .totals-card{padding:14px;margin-top:16px}
   .totals-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
   .totals-grid .t{grid-column:1 / -1;border-top:1px solid var(--border);margin-top:2px;padding-top:10px}
   .totals-grid .lbl{font-size:12px;color:var(--muted);margin:0}
   .totals-grid .val{font-size:16px;font-weight:650;margin:2px 0 0}
-  .totals-grid .val.pos{color:#16a34a}
+  .totals-grid .val.pos{color:var(--ok)}
   .totals-grid .val.neg{color:var(--danger)}
-  @media (prefers-color-scheme: dark){ .totals-grid .val.pos{color:#4ade80} }
   .pill{
     display:inline-block;font-size:11.5px;font-weight:650;padding:3px 9px;border-radius:999px;
     white-space:nowrap;
@@ -90,9 +70,8 @@
   .pill.st-lead{background:rgba(127,127,127,.14);color:var(--muted)}
   .pill.st-orcamento{background:rgba(180,83,9,.14);color:var(--warn)}
   .pill.st-confirmado{background:rgba(var(--accent-rgb),.14);color:var(--accent)}
-  .pill.st-entregue{background:rgba(22,163,74,.14);color:#16a34a}
+  .pill.st-entregue{background:rgba(22,163,74,.14);color:var(--ok)}
   .pill.st-cancelado{background:rgba(220,38,38,.14);color:var(--danger)}
-  @media (prefers-color-scheme: dark){ .pill.st-entregue{color:#4ade80} }
   .evento-row, .pay-row{
     display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);
     cursor:pointer;transition:background-color .15s ease;
@@ -136,6 +115,7 @@ const PAGE_LOGIN = {
 </script>
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-notes.js"></script>
@@ -156,21 +136,10 @@ function statusPillHtml(status){
   return '<span class="pill st-' + esc(status) + '">' + esc(m.label) + '</span>';
 }
 
-function navHeader(title, backAction){
-  const topRow = '<header><div class="hleft">' +
-    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-    '<h1 style="flex:1">' + (backAction ? 'Clientes' : esc(title)) + '</h1>' +
-    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
-  if(!backAction) return topRow;
-  return topRow + '<div class="subheader">' +
-    '<button class="link" id="back">← Clientes</button>' +
-    (title ? '<h2 class="cli-title" id="cliente-name">' + esc(title) + '</h2>' : '') +
-  '</div>';
-}
-function wireNav(backAction){
-  wireMenuButton();
-  if(backAction) document.getElementById("back").addEventListener("click", backAction);
-}
+// navHeader()/wireNav() now live in shared-nav.js. This page's title uses
+// the shared "detail-title" class/id (formerly this page's own .cli-title
+// / #cliente-name) — see the click handler further down that opens the
+// edit modal off that id.
 
 // ---- wa.me phone normalization ----
 // Digits only. A 10/11-digit number reads as a Brazilian local number (DDD
@@ -227,7 +196,7 @@ function renderList(){
         ? '<p class="msg" id="no-match">Nenhum cliente encontrado.</p>'
         : '<div class="card" id="list-card">' + shown.map(clienteRowHtml).join("") + '</div>');
 
-  root.innerHTML = navHeader("Clientes", null) +
+  root.innerHTML = navHeader("Clientes") +
     '<div class="searchrow">' +
       '<input type="search" id="search" placeholder="Buscar por nome, empresa, telefone ou e-mail" ' +
         'value="' + esc(searchTerm) + '">' +
@@ -338,7 +307,7 @@ async function openCliente(id){
   try{
     const data = await api("cliente_detail", { id });
     if(!data.found){
-      root.innerHTML = navHeader("", loadClientes) + '<p class="msg">Cliente não encontrado.</p>';
+      root.innerHTML = navHeader("", { backLabel: "Clientes", listTitle: "Clientes" }) + '<p class="msg">Cliente não encontrado.</p>';
       wireNav(loadClientes);
       return;
     }
@@ -390,7 +359,7 @@ function renderCliente(data){
   const balanceCls = data.balance_due_all > 0 ? "neg" : (data.balance_due_all < 0 ? "pos" : "");
   const waDigits = waPhoneDigits(c.phone);
 
-  root.innerHTML = navHeader(c.name, loadClientes) +
+  root.innerHTML = navHeader(c.name, { backLabel: "Clientes", backAction: loadClientes, listTitle: "Clientes" }) +
     infoFieldHtml("Empresa / organização", c.organization) +
     infoFieldHtml("Telefone", c.phone) +
     infoFieldHtml("E-mail", c.email) +
@@ -423,7 +392,7 @@ function renderCliente(data){
   wireNotesPanel(root.querySelector(".notes-card"), "cliente", c.id);
 
   document.getElementById("edit-cliente").addEventListener("click", () => openClienteModal(c));
-  document.getElementById("cliente-name").addEventListener("click", () => openClienteModal(c));
+  document.getElementById("detail-title").addEventListener("click", () => openClienteModal(c));
 
   document.getElementById("del-cliente").addEventListener("click", async () => {
     if(!(await confirmModal('Remover "' + c.name + '"?', "Remover"))) return;

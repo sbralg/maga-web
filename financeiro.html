@@ -25,27 +25,22 @@
   future work; this is the ledger they will read from.
 -->
 <link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
 <link rel="stylesheet" href="shared-menu.css">
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-inputs.css">
 <style>
-  body{
-    padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
-  }
-  .wrap{max-width:640px;margin:0 auto}
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
-  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
-  h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
+  /* ---- page chrome (body/.wrap/header/.hleft/h1/h3/.addrow-btn) now
+     lives in shared-page.css. This page has no subheader/detail view, so
+     nothing else there applies here. */
 
   .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0 0 14px}
   .stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 10px;text-align:center}
   .stat .lbl{font-size:11.5px;color:var(--muted);margin:0}
   .stat .val{font-size:16px;font-weight:650;margin:4px 0 0;word-break:break-word}
-  .stat.receitas .val{color:#16a34a}
+  .stat.receitas .val{color:var(--ok)}
   .stat.despesas .val{color:var(--danger)}
-  @media (prefers-color-scheme: dark){ .stat.receitas .val{color:#4ade80} }
 
   .chiprow{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
   .chip{
@@ -65,7 +60,7 @@
     border-bottom:1px solid var(--border);border-left:3px solid transparent;
   }
   .entry:last-child{border-bottom:none}
-  .entry.receita{border-left-color:#16a34a;background:rgba(22,163,74,.05)}
+  .entry.receita{border-left-color:var(--ok);background:rgba(22,163,74,.05)}
   .entry.despesa{border-left-color:var(--danger);background:var(--tint)}
   .entry .body{flex:1;min-width:0}
   .entry .body .txt{font-size:14.5px;margin:0;word-wrap:break-word}
@@ -76,12 +71,9 @@
   }
   .entry .auto{font-size:11px;color:var(--muted);font-style:italic}
   .entry .amt{font-size:14.5px;font-weight:650;white-space:nowrap;flex:none}
-  .entry.receita .amt{color:#16a34a}
+  .entry.receita .amt{color:var(--ok)}
   .entry.despesa .amt{color:var(--danger)}
-  @media (prefers-color-scheme: dark){ .entry.receita .amt{color:#4ade80} }
   .entry .row-actions{display:flex;gap:2px;flex:none}
-  .addrow-btn{margin:8px 0 0}
-  button.primary.full{width:100%}
 </style>
 </head>
 <body>
@@ -102,6 +94,7 @@ const PAGE_LOGIN = {
 </script>
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
@@ -127,12 +120,9 @@ function periodRange(p){
   return { date_from: from, date_to: to };
 }
 
-function navHeader(){
-  return '<header><div class="hleft">' +
-    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-    '<h1>Financeiro</h1>' +
-    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
-}
+// navHeader()/wireNav() now live in shared-nav.js. This page never has a
+// subheader (no detail view), so navHeader("Financeiro") with no opts is
+// the plain top-row-only render.
 
 async function loadLancamentos(){
   root.innerHTML = '<p class="msg">Carregando…</p>';
@@ -202,10 +192,10 @@ function render(){
         ? '<p class="msg" id="no-match">Nenhum lançamento neste filtro.</p>'
         : '<div class="card" id="list-card">' + shown.map(entryRowHtml).join("") + '</div>');
 
-  root.innerHTML = navHeader() + statsHtml + chips + periodHtml + rowsHtml +
+  root.innerHTML = navHeader("Financeiro") + statsHtml + chips + periodHtml + rowsHtml +
     '<button class="primary full addrow-btn" id="new-lanc">+ Novo lançamento</button>';
 
-  wireMenuButton();
+  wireNav();
 
   document.getElementById("periodo").addEventListener("change", (e) => {
     periodo = e.target.value;

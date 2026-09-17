@@ -241,6 +241,19 @@ const REPORTS = {
     (await page.textContent('.datebar .day')).includes('19/08/2026'));
   check('an empty report degrades to "nothing pending" rather than breaking',
     (await page.textContent('#root')).includes('Nenhuma ação para hoje'));
+  // This day's payload carries a total and NO breakdown ({total: 0} with no
+  // ruido/acao/grupos_ativos/diretas). Running every field through the
+  // "unknown -> em dash" helper turned that into the unreadable
+  // "0 e-mails — — ruído, — com ação"; the breakdown is now omitted whole
+  // when it has no numbers to show.
+  {
+    const triagem = await page.textContent('#root');
+    check('a triage total with no breakdown reads as a plain count, got: ' +
+      (triagem.match(/\d+ e-mails[^\n]*/) || ['(no triage line)'])[0],
+      triagem.includes('0 e-mails') && !/e-mails\s*—\s*—/.test(triagem));
+    check('the WhatsApp triage line likewise omits an empty breakdown',
+      triagem.includes('0 mensagens') && !/mensagens\s*—\s*—/.test(triagem));
+  }
   check('› is enabled again, now that a newer day exists',
     await page.locator('#next-day').isEnabled());
   check('‹ is disabled — this is the oldest report',

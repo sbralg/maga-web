@@ -191,9 +191,9 @@ function handleNotesAction(body) {
   await page.fill('#cli-phone', '11994452426');
   await page.fill('#cli-email', 'maria@example.com');
   await page.click('#cli-ok');
-  await page.waitForSelector('#cliente-name', { timeout: 6000 });
+  await page.waitForSelector('#detail-title', { timeout: 6000 });
   check('one cliente exists', state.clientes.length === 1);
-  check('detail shows the name', (await page.textContent('#cliente-name')).includes('Maria Silva'));
+  check('detail shows the name', (await page.textContent('#detail-title')).includes('Maria Silva'));
   check('detail shows the organization', (await page.textContent('#root')).includes('Doces da Maria'));
   check('detail shows the phone', (await page.textContent('#root')).includes('11994452426'));
   check('detail shows the email', (await page.textContent('#root')).includes('maria@example.com'));
@@ -228,7 +228,7 @@ function handleNotesAction(body) {
   check('edit modal prefills the existing name', (await page.inputValue('#cli-name')) === 'Maria Silva');
   await page.fill('#cli-phone', '');
   await page.click('#cli-ok');
-  // #cliente-name survives this transition (it's re-created, not removed),
+  // #detail-title survives this transition (it's re-created, not removed),
   // so waiting on IT is not a reliable signal that the re-render finished —
   // wait on the .wa-hint element itself, which only exists once a phone-less
   // cliente has actually rendered.
@@ -266,9 +266,9 @@ function handleNotesAction(body) {
   );
 
   await page.goto(PAGE + '?id=' + clienteId);
-  await page.waitForSelector('#cliente-name', { timeout: 6000 });
+  await page.waitForSelector('#detail-title', { timeout: 6000 });
   check('deep link opens the right cliente directly',
-    (await page.textContent('#cliente-name')).includes('Maria Silva'));
+    (await page.textContent('#detail-title')).includes('Maria Silva'));
   check('both eventos are listed', (await page.$$('.evento-row')).length === 2);
   check('both pagamentos are listed', (await page.$$('.pay-row')).length === 2);
   check('evento A shows its status pill', (await page.textContent('#eventos-card')).includes('Entregue'));

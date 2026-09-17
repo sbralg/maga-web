@@ -31,21 +31,29 @@
   forever.
 -->
 <link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
 <link rel="stylesheet" href="shared-menu.css">
 <style>
-  .page{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
+  /* ---- page chrome (header/.hleft/h1) now lives in shared-page.css —
+     see that file for what moved and why.
+
+     body/.wrap are the one thing NOT taken from shared-page.css as-is:
+     this page has no `.page` wrapper at all, and its `.wrap` has always
+     carried its OWN full padding (24px bottom, not shared-page.css's
+     32px) rather than splitting it between body and .wrap the way
+     notas.html/preferencias.html do. Loading shared-page.css's `body`
+     padding rule on top of that would double the gutters (body padding
+     PLUS .wrap's own), so it's zeroed back out here — `.wrap` keeps
+     doing 100% of the work, same as before this migration. */
+  body{padding:0}
   .wrap{
-    flex:1 0 auto;max-width:640px;margin:0 auto;width:100%;
+    flex:1 0 auto;
     padding:max(16px,env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
   }
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
   .group-head{margin:22px 0 10px}
   .group-head:first-of-type{margin-top:14px}
   .group-head h2{font-size:15px;font-weight:700;margin:0;color:var(--text)}
   .group-head p{font-size:12.5px;color:var(--muted);line-height:1.4;margin:3px 0 0}
-  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
-  .sub{font-size:13px;color:var(--muted);margin:2px 0 24px}
 
   /* The landing page carries the brand large and centred — the one place
      the full badge (rings + "Cozinha Artesanal") is big enough to read.
@@ -84,6 +92,7 @@ const PAGE_LOGIN = {
 </script>
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-pwa.js"></script>
 <script>
@@ -147,6 +156,13 @@ function render(){
   });
   if(lastGroup !== null) body += '</div>';
 
+  // Deliberately NOT navHeader(): every other page's header ends in a
+  // small .brand-mark logo, but this page already carries the full badge
+  // large and centred in .brand-hero right below — a second, smaller copy
+  // in the header itself would just be a redundant logo. shared-nav.js's
+  // navHeader() always appends .brand-mark, so this page keeps hand-
+  // building its own top row (same markup shared-page.css's header/.hleft/
+  // h1 rules already style) and only reuses wireNav() for the menu button.
   root.innerHTML =
     '<header><div class="hleft">' +
       '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
@@ -154,7 +170,7 @@ function render(){
     '</div></header>' +
     '<div class="brand-hero"><img src="assets/logo-badge.svg" alt="Magá — Cozinha Artesanal"></div>' +
     body;
-  wireMenuButton();
+  wireNav();
 }
 
 // The configured "Página inicial" (Preferências → Aplicativo, phase 3 of

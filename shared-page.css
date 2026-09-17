@@ -1,0 +1,100 @@
+/* shared-page.css — the page chrome that used to be hand-copied, mostly
+   byte-identical, into every page's own <style> block: the body padding,
+   the .wrap column, the header row (hamburger + h1 + brand mark), the
+   subheader row a detail page adds below it, the search box, the generic
+   list-row shell, and a few small "+ add" / detail-actions rows. An audit
+   found ~450 of 1355 total page-local <style> lines were duplicates of
+   this shape.
+
+   Load this AFTER shared-base.css — it relies on shared-base.css's color
+   tokens (--border, --muted, --card, --text, --border-strong, --bg) and
+   its .card/button.primary rules (button.primary already sets
+   width:100%, which is why `button.primary.full{width:100%}` was always
+   a no-op wherever it was copied — see shared-base.css:92).
+
+   What's deliberately NOT here, and why: the FLEX LAYOUT of `.row`
+   (`flex-direction:column` on some pages, `align-items:center` +
+   `justify-content:space-between` on others) genuinely differs per page —
+   only the shell (padding/border/cursor/transition) is shared here. The
+   barcode scanner, page-specific card types (.pill, .totals-grid, .stat,
+   ...) and anything with real per-page behavior stay page-local. */
+
+body{
+  padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
+}
+
+/* width:100% added on top of the old max-width/margin-only rule.
+   tarefas.html's own CLAUDE.md entry has the full diagnosis: `.page` is a
+   column-direction flex container, so width is `.wrap`'s CROSS axis, and
+   `margin:0 auto` (an auto left/right margin) takes a flex item OUT of
+   stretch alignment per the flexbox spec — without an explicit width,
+   `.wrap` then shrinks to its content instead of filling `.page`, and an
+   unshrinkable child (a fixed-width icon button, a wide table) can push
+   that content size past the viewport, causing a horizontal scrollbar.
+   Harmless to add everywhere else since `max-width:640px` already caps it. */
+.wrap{width:100%;max-width:640px;margin:0 auto}
+
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
+.hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
+/* flex:1 used to be a repeated `style="flex:1"` on the <h1> itself (11
+   copies, 4 pages missing it entirely) — folded into the class rule so
+   navHeader() never has to think about it. */
+h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word;flex:1}
+h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
+
+/* A detail page's subheader row: "← Módulo" on the left, the record's own
+   title on the right. Bottom margin was 16px on 6 pages and 8px on 3
+   (eventos/produtos/receitas) — standardised on 16px; those three pages
+   never depended on the tighter gap for anything, it was just drift. */
+.subheader{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0;margin:0 0 16px}
+
+/* The back link's own width can otherwise be squeezed by `.subheader`'s
+   `min-width:0` when the title on the right is long, wrapping "← Módulo"
+   onto two lines. notas.html found this first (see its own CLAUDE.md
+   entry) as a page-local `#back` fix; every subheader page has the same
+   risk, so it belongs here instead of only where it was first noticed. */
+#back{flex:none;white-space:nowrap}
+
+.searchrow{display:flex;gap:8px;margin:0 0 14px}
+.searchrow input[type=search]{
+  flex:1;min-width:0;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
+  border:1px solid var(--border-strong);background:var(--card);color:var(--text);
+  -webkit-appearance:none;
+}
+
+/* A row of buttons under a detail record (edit/delete/etc). insumos.html
+   deliberately keeps its own override with no bottom margin — its actions
+   row sits inside a `.card.pad` and the next block's own border-top
+   divider already separates it, so the page-local rule (declared after
+   this one loads) is expected to win there. */
+.detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px}
+
+/* The generic per-object detail title (record name, right-aligned beside
+   the back link) — was seven identically-worded classes, one per page
+   (.cli-title/.evt-title/.forn-title/.ing-title/.prod-title/.rec-title/
+   .nb-title on notas.html, which also adds its own icon wrapper and stays
+   page-local since it isn't part of this migration). */
+.detail-title{font-size:16px;font-weight:650;margin:0;text-align:right;word-wrap:break-word;cursor:pointer}
+.detail-title:hover{opacity:.75}
+/* notas.html's icon-plus-title wrapper (its own .nb-title/.nb-icon stay
+   page-local for now — not migrated this pass — but the wrap/icon rules
+   are generic enough to share once a page needs an icon next to its
+   .detail-title). */
+.detail-title-wrap{display:flex;align-items:baseline;gap:6px;min-width:0}
+.nb-icon{font-size:18px;flex:none}
+
+/* .row SHELL ONLY — the flex layout (column vs. row, align-items,
+   justify-content) genuinely differs per page and stays page-local. */
+.row{padding:14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background-color .15s ease}
+.row:hover{background:rgba(127,127,127,.06)}
+.row:last-child{border-bottom:none}
+.row .nm{font-size:15px;font-weight:600;margin:0;word-wrap:break-word}
+/* margin varies per page (0 / 2px 0 0 / 3px 0 0) — base is 0, pages that
+   want space above override it in their own <style> block, which loads
+   after this file and wins on equal specificity. */
+.row .meta{font-size:12.5px;color:var(--muted);margin:0}
+.row-actions{display:flex;gap:2px;flex:none}
+
+/* ingredientes.html used 12px instead of 8px here — drift, not a real
+   difference; standardised on 8px. */
+.addrow-btn{margin:8px 0 0}

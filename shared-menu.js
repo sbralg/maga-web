@@ -75,6 +75,13 @@ function openMenu(){
   // The heading is a plain <p class="menu-group">, deliberately NOT a
   // .menu-item: every count and every query over the drawer's destinations
   // keys off that class.
+  // Read through a guard rather than the bare global. A page that ships
+  // without its `const CURRENT_PAGE` declaration used to throw a
+  // ReferenceError right here, before any markup was built — the
+  // hamburger simply did nothing on tap, with no visible cause. That has
+  // shipped twice. The cost of being wrong is now one un-highlighted
+  // active entry instead of dead navigation.
+  const currentPage = typeof CURRENT_PAGE !== "undefined" ? CURRENT_PAGE : null;
   let lastGroup = null;
   const itemsHtml = visibleMenuItems().map(item => {
     let head = "";
@@ -82,7 +89,7 @@ function openMenu(){
       head = '<p class="menu-group">' + MENU_GROUPS[item.group] + '</p>';
     }
     lastGroup = item.group || null;
-    const body = item.page === CURRENT_PAGE
+    const body = item.page === currentPage
       ? '<span class="menu-item active">' + item.emoji + ' ' + item.label + '</span>'
       : '<a class="menu-item" href="' + item.href + '">' + item.emoji + ' ' + item.label + '</a>';
     return head + body;

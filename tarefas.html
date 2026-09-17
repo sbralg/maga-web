@@ -22,9 +22,24 @@
   the user's explicit choice.
 -->
 <link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
 <link rel="stylesheet" href="shared-menu.css">
 <link rel="stylesheet" href="shared-modal.css">
 <style>
+  /* ---- page chrome (header/.hleft/h1/.row shell) now lives in
+     shared-page.css — see that file for what moved and why. `.wrap` keeps
+     its OWN width/min-width/padding overrides below (the flex-column
+     stretch fix its own comment explains, and this page's tighter 16px
+     bottom padding vs. shared-page.css's 32px — .bar, not .wrap, owns the
+     page's actual bottom padding via its own safe-area-aware rule further
+     down); shared-page.css supplies max-width/margin.
+
+     Same body/.wrap split issue as index.html/hoje.html: this page puts
+     ALL of its padding on `.wrap` (inside `.page`, the min-height:100vh
+     flex column below), never on `body` — so shared-page.css's own body
+     padding is zeroed back out here or it would stack on top of .wrap's,
+     doubling the gutters. */
+  body{padding:0}
   /* A flex column at least one viewport tall, so .bar (its last child)
      naturally sits at the bottom via normal layout flow instead of
      position:fixed -- fixed is pinned to the layout viewport, which
@@ -33,24 +48,24 @@
   .page{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
   .wrap{
     /* .page is a column-direction flex container, so width is .wrap's CROSS
-       axis -- and .wrap's own left/right auto margins (the "margin:0 auto"
-       below, there to center it once it hits max-width) disable
+       axis -- and .wrap's own left/right auto margins (shared-page.css's
+       "margin:0 auto", there to center it once it hits max-width) disable
        align-items:stretch on that axis per the flexbox spec. Without an
        explicit width, .wrap fell back to shrink-to-fit/content-based sizing
        instead of stretching to .page's width, so an unshrinkable descendant
        (the add-row's fixed 40px date icon button) pushed it wider than the
        viewport -- a horizontal scrollbar and a slightly zoomed-out page on
-       first load. width:100% (capped by max-width, same as before) restores
-       "stretch to container, then center beyond 640px" explicitly. */
-    flex:1 0 auto;width:100%;min-width:0;max-width:640px;margin:0 auto;
+       first load. shared-page.css's width:100% (capped by max-width, same
+       as before) restores "stretch to container, then center beyond 640px"
+       explicitly; min-width:0 is kept here too even though it was proven
+       NOT the fix (see the CLAUDE.md entry) — harmless, and dropping it
+       isn't worth the risk of re-litigating that. */
+    flex:1 0 auto;min-width:0;
     padding:max(16px,env(safe-area-inset-top)) 16px 16px;
   }
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 16px}
-  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
-  .row{display:flex;align-items:flex-start;gap:12px;padding:16px 14px;border-bottom:1px solid var(--border);transition:background-color .15s ease}
-  .row:hover{background:rgba(127,127,127,.06)}
-  .row:last-child{border-bottom:none}
+  /* .row SHELL (padding/border/cursor/transition) now lives in
+     shared-page.css — only the FLEX LAYOUT stays here. */
+  .row{display:flex;align-items:flex-start;gap:12px}
   /* The checkbox is its own sibling now, not wrapped in a <label> around the
      whole row -- tapping the row body opens the edit modal (see .rowbody),
      so the two tap targets must be structurally separate, not nested. */
@@ -163,6 +178,7 @@ const PAGE_LOGIN = {
 </script>
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-pwa.js"></script>
@@ -279,10 +295,7 @@ function render(rows){
   doneExpanded = false;
   currentRows = rows;
 
-  const header = '<header><div class="hleft">' +
-    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-    '<h1>Tarefas pendentes</h1>' +
-    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
+  const header = navHeader("Tarefas pendentes");
   const addForm = '<div class="card addcard"><div class="addrow">' +
     '<input type="text" id="new-text" placeholder="Nova ação..." />' +
     '<button type="button" class="date-btn" id="new-due-btn" ' +
@@ -337,7 +350,7 @@ function redrawPendingCard(){
 }
 
 function wireHeader(){
-  wireMenuButton();
+  wireNav();
 }
 
 function wireAddForm(){
@@ -608,15 +621,8 @@ async function load(){
   bar.style.display = "none";
   if(!getPass()){ showLogin(); return; }
   if(!isDefaultEnv()){
-    // Same header markup as render()'s - not worth extracting into a
-    // shared headerHtml() for a single other call site.
-    root.innerHTML =
-      '<header><div class="hleft">' +
-        '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-        '<h1>Tarefas pendentes</h1>' +
-      '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>' +
-      personalPageBlockedHtml();
-    wireMenuButton();
+    root.innerHTML = navHeader("Tarefas pendentes") + personalPageBlockedHtml();
+    wireNav();
     return;
   }
   try{

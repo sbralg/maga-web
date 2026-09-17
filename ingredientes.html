@@ -47,6 +47,7 @@
   only to the gated Supabase Edge Function (maga-api).
 -->
 <link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
 <link rel="stylesheet" href="shared-menu.css">
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
@@ -54,21 +55,9 @@
 <link rel="stylesheet" href="shared-catalog.css">
 <link rel="stylesheet" href="shared-notes.css">
 <style>
-  body{
-    padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
-  }
-  .wrap{max-width:640px;margin:0 auto}
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
-  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-  .subheader{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0;margin:0 0 16px}
-  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
-  h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
-  .searchrow{display:flex;gap:8px;margin:0 0 14px}
-  .searchrow input[type=search]{
-    flex:1;min-width:0;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
-    border:1px solid var(--border-strong);background:var(--card);color:var(--text);
-    -webkit-appearance:none;
-  }
+  /* ---- page chrome (body/.wrap/header/.hleft/h1/h3/.subheader/
+     .searchrow/.row shell/.addrow-btn/.detail-title) now lives in
+     shared-page.css — see that file for what moved and why. */
   .chiprow{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
   .chip{
     font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;cursor:pointer;
@@ -76,11 +65,12 @@
     transition:background-color .15s ease,color .15s ease;
   }
   .chip.active{background:var(--accent);color:var(--accent-text)}
-  .row{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background-color .15s ease}
-  .row:hover{background:rgba(127,127,127,.06)}
-  .row:last-child{border-bottom:none}
+  /* .row's shell (border/hover/transition) and .nm are now shared-page.css's;
+     the flex layout, the 12px-14px padding (vs. the shared default of 14px
+     all around) and .meta's top margin (3px here vs. the shared default of
+     0) are page-specific and stay here. */
+  .row{display:flex;align-items:center;gap:10px;padding:12px 14px}
   .row .body{flex:1;min-width:0}
-  .row .nm{font-size:15px;font-weight:600;margin:0;word-wrap:break-word}
   .row .meta{font-size:12.5px;color:var(--muted);margin:3px 0 0}
   /* Same two pills, same flex row and one type scale as insumos.html — the
      baseline-aligned inline-block version drifted ~6px apart because the
@@ -98,8 +88,6 @@
      "sem ingrediente". */
   .kind-badge.orphan{background:rgba(180,83,9,.12);color:var(--warn)}
   .kind-badge.nocost{background:rgba(180,83,9,.14);color:var(--warn)}
-  .addrow-btn{margin:12px 0 0}
-  button.primary.full{width:100%}
   .kind-tabs{display:flex;gap:6px;margin:0 0 14px}
   .kind-tab{
     flex:1;font-size:13px;font-weight:600;padding:9px;border-radius:10px;cursor:pointer;
@@ -124,9 +112,8 @@
   }
   .stock-badge.has{background:rgba(var(--accent-rgb),.14);color:var(--accent)}
   /* ---- detail ---- */
-  .ing-title{font-size:16px;font-weight:650;margin:0;text-align:right;word-wrap:break-word;cursor:pointer}
-  .ing-title:hover{opacity:.75}
-  .detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px}
+  /* .ing-title (now the shared .detail-title) and .detail-actions match
+     shared-page.css exactly and were dropped from here. */
   .infofield{
     display:flex;align-items:baseline;justify-content:space-between;gap:10px;
     padding:10px 0;border-top:1px solid var(--border);
@@ -176,6 +163,7 @@ const PAGE_LOGIN = {
 </script>
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-catalog.js"></script>
@@ -185,21 +173,10 @@ const PAGE_LOGIN = {
 
 const CURRENT_PAGE = "ingredientes";
 
-function navHeader(title, backAction){
-  const topRow = '<header><div class="hleft">' +
-    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-    '<h1 style="flex:1">' + (backAction ? 'Ingredientes' : esc(title)) + '</h1>' +
-    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
-  if(!backAction) return topRow;
-  return topRow + '<div class="subheader">' +
-    '<button class="link" id="back">← Ingredientes</button>' +
-    (title ? '<h2 class="ing-title" id="ing-name" title="Editar ingrediente">' + esc(title) + '</h2>' : '') +
-  '</div>';
-}
-function wireNav(backAction){
-  wireMenuButton();
-  if(backAction) document.getElementById("back").addEventListener("click", backAction);
-}
+// navHeader()/wireNav() now live in shared-nav.js. This page's detail title
+// uses the shared "detail-title" class/id (formerly this page's own
+// .ing-title/#ing-name) — see the click handler further down that opens the
+// edit modal off that id.
 
 // Every insumo pointing at this ingredient. The `ingredients` action only
 // carries a COUNT, so the list itself is resolved from the catalogue the
@@ -451,7 +428,7 @@ function renderList(){
         ? '<p class="msg" id="no-match">Nenhum ingrediente encontrado.</p>'
         : '<div class="card" id="ing-card">' + shown.map(ingredienteRowHtml).join("") + '</div>');
 
-  root.innerHTML = navHeader("Ingredientes", null) +
+  root.innerHTML = navHeader("Ingredientes") +
     '<div class="searchrow">' +
       '<input type="search" id="search" placeholder="Buscar por ingrediente ou marca" ' +
         'value="' + esc(searchTerm) + '">' +
@@ -470,7 +447,7 @@ function renderList(){
       'href="insumos.html">Insumos</a> e <a class="link" href="estoque.html">Estoque</a>). ' +
       'Até lá a receita fica pronta e marcada como custo incompleto.</p></div>';
 
-  wireNav(null);
+  wireNav();
   const search = document.getElementById("search");
   search.addEventListener("input", () => { searchTerm = search.value.trim(); redrawList(); });
   root.querySelectorAll(".chip[data-kind]").forEach(chip => {
@@ -501,7 +478,8 @@ function wireListRows(){
 function openIngrediente(id){
   const i = ingredientes.find(x => x.id === id);
   if(!i){
-    root.innerHTML = navHeader("", loadIngredientes) + '<p class="msg">Ingrediente não encontrado.</p>';
+    root.innerHTML = navHeader(null, { backLabel: "Ingredientes", backAction: loadIngredientes, listTitle: "Ingredientes" }) +
+      '<p class="msg">Ingrediente não encontrado.</p>';
     wireNav(loadIngredientes);
     return;
   }
@@ -564,7 +542,7 @@ function renderIngrediente(i){
       '<strong>custo incompleto</strong> até que uma compra seja registrada.' +
     '</p></div>';
 
-  root.innerHTML = navHeader(i.name, loadIngredientes) +
+  root.innerHTML = navHeader(i.name, { backLabel: "Ingredientes", backAction: loadIngredientes, listTitle: "Ingredientes" }) +
     '<div class="card pad">' +
       '<div class="tagrow" style="margin:0 0 4px">' + kindBadgeHtml(i) + '</div>' +
       '<div class="infofield">' +
@@ -590,7 +568,7 @@ function renderIngrediente(i){
   wireNav(loadIngredientes);
   wireNotesPanel(root.querySelector(".notes-card"), "ingredient", i.id);
 
-  document.getElementById("ing-name").addEventListener("click", () => ingredienteModal(i));
+  document.getElementById("detail-title").addEventListener("click", () => ingredienteModal(i));
   document.getElementById("edit-ing").addEventListener("click", () => ingredienteModal(i));
   document.getElementById("del-ing").addEventListener("click", () => deleteIngrediente(i));
 

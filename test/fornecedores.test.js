@@ -186,9 +186,9 @@ function handleNotesAction(body) {
   await page.fill('#forn-phone', '11994452426');
   await page.fill('#forn-email', 'contato@ceci.example');
   await page.click('#forn-ok');
-  await page.waitForSelector('#forn-name', { timeout: 6000 });
+  await page.waitForSelector('#detail-title', { timeout: 6000 });
   check('one fornecedor exists', state.fornecedores.length === 1);
-  check('detail shows the name', (await page.textContent('#forn-name')).includes('Padaria Ceci'));
+  check('detail shows the name', (await page.textContent('#detail-title')).includes('Padaria Ceci'));
   check('detail shows the phone', (await page.textContent('#root')).includes('11994452426'));
   check('detail shows the email', (await page.textContent('#root')).includes('contato@ceci.example'));
   check('no purchases yet', (await page.textContent('#root')).includes('Nenhuma compra registrada ainda'));
@@ -218,9 +218,9 @@ function handleNotesAction(body) {
   // only — not tied to purchase history) and links into produtos.html ---
   state.produtos.push({ id: uid('P'), name: 'Croissant avulso', kind: 'comprado', cost: 2.5, fornecedor_id: fornId });
   await page.goto(PAGE + '?id=' + fornId);
-  await page.waitForSelector('#forn-name', { timeout: 6000 });
+  await page.waitForSelector('#detail-title', { timeout: 6000 });
   check('deep link opens the right fornecedor',
-    (await page.textContent('#forn-name')).includes('Padaria Ceci'));
+    (await page.textContent('#detail-title')).includes('Padaria Ceci'));
   const produtosText = norm(await page.textContent('#root'));
   check('the produto sourced from this fornecedor is listed, got: ' + produtosText,
     produtosText.includes('Croissant avulso') && produtosText.includes('R$ 2,50'));
@@ -237,7 +237,7 @@ function handleNotesAction(body) {
     occurred_at: '2026-08-20T09:00:00Z', note: null, reason: 'purchase',
   });
   await page.goto(PAGE + '?id=' + fornId);
-  await page.waitForSelector('#forn-name', { timeout: 6000 });
+  await page.waitForSelector('#detail-title', { timeout: 6000 });
   const purchaseText = norm(await page.textContent('#root'));
   check('purchase row shows the quantity and item, got: ' + purchaseText,
     purchaseText.includes('50× Croissant'));
@@ -267,7 +267,7 @@ function handleNotesAction(body) {
   await page.waitForSelector('#forn-name-i', { timeout: 6000 });
   await page.fill('#forn-name-i', 'José Ramírez');
   await page.click('#forn-ok');
-  await page.waitForSelector('#forn-name', { timeout: 6000 });
+  await page.waitForSelector('#detail-title', { timeout: 6000 });
   check('the accented fornecedor was created',
     state.fornecedores.length === 1 && state.fornecedores[0].name === 'José Ramírez');
   await page.click('#back');
