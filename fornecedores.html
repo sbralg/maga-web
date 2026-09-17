@@ -31,37 +31,21 @@
   LAN-only and unreachable from this Edge Function.
 -->
 <link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
 <link rel="stylesheet" href="shared-menu.css">
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-inputs.css">
 <link rel="stylesheet" href="shared-notes.css">
 <style>
-  body{
-    padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
-  }
-  .wrap{max-width:640px;margin:0 auto}
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
-  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-  .subheader{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0;margin:0 0 16px}
-  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
-  h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
-  .searchrow{display:flex;gap:8px;margin:0 0 14px}
-  .searchrow input[type=search]{
-    flex:1;min-width:0;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
-    border:1px solid var(--border-strong);background:var(--card);color:var(--text);
-    -webkit-appearance:none;
-  }
-  .row{display:flex;flex-direction:column;gap:4px;padding:14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background-color .15s ease}
-  .row:hover{background:rgba(127,127,127,.06)}
-  .row:last-child{border-bottom:none}
-  .row .nm{font-size:15px;font-weight:600;margin:0;word-wrap:break-word}
-  .row .meta{font-size:12.5px;color:var(--muted);margin:0}
-  .addrow-btn{margin:8px 0 0}
-  button.primary.full{width:100%}
+  /* ---- page chrome (body/.wrap/header/.hleft/h1/h3/.subheader/.searchrow/
+     .row shell/.detail-actions/.addrow-btn/.detail-title) now lives in
+     shared-page.css — see that file for what moved and why. Only the
+     genuinely page-specific part of .row (its flex layout, not the
+     shell) stays here — .row .nm/.row .meta are pure duplicates of
+     shared-page.css's own rules and are gone. */
+  .row{display:flex;flex-direction:column;gap:4px}
   /* ---- detail ---- */
-  .forn-title{font-size:16px;font-weight:650;margin:0;text-align:right;word-wrap:break-word;cursor:pointer}
-  .forn-title:hover{opacity:.75}
   .infofield{
     display:flex;align-items:baseline;justify-content:space-between;gap:10px;
     padding:10px 0;border-top:1px solid var(--border);
@@ -69,7 +53,6 @@
   .infofield .lbl{font-size:12px;color:var(--muted);margin:0;flex:none}
   .infofield .val{font-size:14px;text-align:right;word-break:break-word}
   .infofield .val.empty{color:var(--muted);font-style:italic}
-  .detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px}
   .buy-row{
     display:flex;align-items:flex-start;justify-content:space-between;gap:10px;
     padding:12px 14px;border-bottom:1px solid var(--border);
@@ -112,6 +95,7 @@ const PAGE_LOGIN = {
 </script>
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-notes.js"></script>
@@ -120,21 +104,9 @@ const PAGE_LOGIN = {
 
 const CURRENT_PAGE = "fornecedores";
 
-function navHeader(title, backAction){
-  const topRow = '<header><div class="hleft">' +
-    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-    '<h1 style="flex:1">' + (backAction ? 'Fornecedores' : esc(title)) + '</h1>' +
-    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
-  if(!backAction) return topRow;
-  return topRow + '<div class="subheader">' +
-    '<button class="link" id="back">← Fornecedores</button>' +
-    (title ? '<h2 class="forn-title" id="forn-name">' + esc(title) + '</h2>' : '') +
-  '</div>';
-}
-function wireNav(backAction){
-  wireMenuButton();
-  if(backAction) document.getElementById("back").addEventListener("click", backAction);
-}
+// navHeader()/wireNav() now live in shared-nav.js. This page's title uses
+// the shared "detail-title" class/id (formerly this page's own .forn-title
+// / #forn-name) — see the click handler further down.
 
 // Same reasoning as clientes.html's waPhoneDigits — a 10/11-digit number
 // reads as Brazilian local (DDD + phone) and gets 55 prepended; 12+ digits
@@ -186,7 +158,7 @@ function renderList(){
         ? '<p class="msg" id="no-match">Nenhum fornecedor encontrado.</p>'
         : '<div class="card" id="list-card">' + shown.map(fornecedorRowHtml).join("") + '</div>');
 
-  root.innerHTML = navHeader("Fornecedores", null) +
+  root.innerHTML = navHeader("Fornecedores") +
     '<div class="searchrow">' +
       '<input type="search" id="search" placeholder="Buscar por nome, telefone ou e-mail" ' +
         'value="' + esc(searchTerm) + '">' +
@@ -291,7 +263,7 @@ async function openFornecedor(id){
   try{
     const data = await api("fornecedor_detail", { id });
     if(!data.found){
-      root.innerHTML = navHeader("", loadFornecedores) + '<p class="msg">Fornecedor não encontrado.</p>';
+      root.innerHTML = navHeader("", { backLabel: "Fornecedores", listTitle: "Fornecedores" }) + '<p class="msg">Fornecedor não encontrado.</p>';
       wireNav(loadFornecedores);
       return;
     }
@@ -347,7 +319,7 @@ function renderFornecedor(data){
 
   const waDigits = waPhoneDigits(f.phone);
 
-  root.innerHTML = navHeader(f.name, loadFornecedores) +
+  root.innerHTML = navHeader(f.name, { backLabel: "Fornecedores", backAction: loadFornecedores, listTitle: "Fornecedores" }) +
     infoFieldHtml("Telefone", f.phone) +
     infoFieldHtml("E-mail", f.email) +
     '<div class="detail-actions">' +
@@ -371,7 +343,7 @@ function renderFornecedor(data){
   wireNotesPanel(root.querySelector(".notes-card"), "fornecedor", f.id);
 
   document.getElementById("edit-forn").addEventListener("click", () => openFornecedorModal(f));
-  document.getElementById("forn-name").addEventListener("click", () => openFornecedorModal(f));
+  document.getElementById("detail-title").addEventListener("click", () => openFornecedorModal(f));
 
   document.getElementById("new-produto").addEventListener("click", () => {
     location.href = "produtos.html?new=1&fornecedor_id=" + encodeURIComponent(f.id);

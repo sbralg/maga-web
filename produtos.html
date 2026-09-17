@@ -32,76 +32,39 @@
   only to the gated Supabase Edge Function (maga-api).
 -->
 <link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
 <link rel="stylesheet" href="shared-menu.css">
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-inputs.css">
+<link rel="stylesheet" href="shared-produto-panel.css">
 <link rel="stylesheet" href="shared-notes.css">
 <style>
-  body{ padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom)); }
-  .wrap{max-width:640px;margin:0 auto}
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
-  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-  .subheader{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0;margin:0 0 8px}
-  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
-  h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
-  .searchrow{display:flex;gap:8px;margin:0 0 14px}
-  .searchrow input[type=search]{
-    flex:1;min-width:0;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
-    border:1px solid var(--border-strong);background:var(--card);color:var(--text);
-    -webkit-appearance:none;
-  }
-  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background-color .15s ease}
-  .row:hover{background:rgba(127,127,127,.06)}
-  .row:last-child{border-bottom:none}
-  .row .nm{font-size:15px;font-weight:600;margin:0;word-wrap:break-word}
-  .row .meta{font-size:12.5px;color:var(--muted);margin:2px 0 0}
+  /* ---- page chrome (body/.wrap/header/.hleft/h1/h3/.subheader/.searchrow/
+     .row shell/.detail-actions/.addrow-btn/.detail-title) now lives in
+     shared-page.css — see that file for what moved and why. Only the
+     genuinely page-specific parts of .row (its flex layout, not the
+     shell) stay here. .row .nm is a pure duplicate of shared-page.css's
+     own rule and is gone; .row .meta's margin (2px, vs. shared's 0) is
+     the one genuinely page-specific override this row keeps. */
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .row .meta{margin:2px 0 0}
   .row .price{font-size:14px;font-weight:650;white-space:nowrap;flex:none}
   .pill{display:inline-block;font-size:11px;font-weight:650;padding:2px 8px;border-radius:999px;white-space:nowrap}
   .pill.kd-manufaturado{background:rgba(var(--accent-rgb),.14);color:var(--accent)}
   .pill.kd-comprado{background:rgba(22,163,74,.14);color:var(--ok)}
-  .addrow-btn{margin:8px 0 0}
-  button.primary.full{width:100%}
   /* ---- detail ---- */
-  .prod-title{font-size:16px;font-weight:650;margin:0;text-align:right;word-wrap:break-word;cursor:pointer}
-  .prod-title:hover{opacity:.75}
-  .detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px}
   .kind-src{
     display:flex;align-items:center;justify-content:space-between;gap:10px;
     padding:10px 0;border-top:1px solid var(--border);
   }
   .kind-src .lbl{font-size:12px;color:var(--muted);margin:0}
-  .item-row{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border)}
-  .item-row:last-child{border-bottom:none}
-  .item-row .badge{font-size:18px;flex:none;width:24px;text-align:center}
-  .item-row .body{flex:1;min-width:0}
-  .item-row .body .txt{font-size:14.5px;margin:0;word-wrap:break-word}
-  .item-row .body .meta{font-size:12.5px;color:var(--muted);margin:3px 0 0}
-  .row-actions{display:flex;gap:2px;flex:none}
-  .totals-card{padding:14px}
-  .totals-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
-  .totals-grid .t{grid-column:1 / -1;border-top:1px solid var(--border);margin-top:2px;padding-top:10px}
-  .totals-grid .lbl{font-size:12px;color:var(--muted);margin:0}
-  .totals-grid .val{font-size:16px;font-weight:650;margin:2px 0 0}
-  .warn-card{padding:12px 14px;background:rgba(180,83,9,.1);border-radius:12px;margin-top:10px}
-  .warn-card p{font-size:13px;color:var(--warn);margin:0}
-  .reverse-card{padding:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .reverse-card label{font-size:13px;color:var(--muted);flex:1;min-width:140px}
-  .reverse-card .field{max-width:120px}
-  .reverse-out{font-size:13px;color:var(--text);margin:10px 0 0;width:100%}
-  .reverse-out p{margin:2px 0}
-  /* ---- item picker (shared shape with receitas.html's, not literally
-     shared code — filters differ: ingredient-only here, no receita tab) ---- */
-  .pick-list{max-height:38vh;overflow-y:auto;margin:0 0 14px;-webkit-overflow-scrolling:touch}
-  .pick-opt{
-    display:flex;align-items:center;gap:10px;width:100%;text-align:left;
-    background:none;border:none;border-bottom:1px solid var(--border);
-    color:var(--text);font:inherit;font-size:15px;padding:11px 4px;cursor:pointer;
-    transition:background-color .15s ease;
-  }
-  .pick-opt:last-child{border-bottom:none}
-  .pick-opt:hover{background:rgba(127,127,127,.08)}
-  .pick-opt .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* .item-row/.row-actions/.totals-card/.totals-grid/.warn-card/
+     .reverse-card/.reverse-out/.pick-list/.pick-opt — every ".item-row"
+     on this page IS the shared produto panel's embalagem list (this page
+     has no OTHER use of the class, unlike receitas.html), and the picker
+     rows are the panel's own embalagemPickerModal() — all now live in
+     shared-produto-panel.css, which this page loads. */
 </style>
 </head>
 <body>
@@ -122,6 +85,7 @@ const PAGE_LOGIN = {
 </script>
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
@@ -136,21 +100,9 @@ const KIND_META = {
   comprado:     { label: "Comprado",     badge: "🚚" },
 };
 
-function navHeader(title, backAction){
-  const topRow = '<header><div class="hleft">' +
-    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-    '<h1 style="flex:1">' + (backAction ? 'Produtos' : esc(title)) + '</h1>' +
-    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
-  if(!backAction) return topRow;
-  return topRow + '<div class="subheader">' +
-    '<button class="link" id="back">← Produtos</button>' +
-    (title ? '<h2 class="prod-title" id="prod-name">' + esc(title) + '</h2>' : '') +
-  '</div>';
-}
-function wireNav(backAction){
-  wireMenuButton();
-  if(backAction) document.getElementById("back").addEventListener("click", backAction);
-}
+// navHeader()/wireNav() now live in shared-nav.js. This page's title uses
+// the shared "detail-title" class/id (formerly this page's own .prod-title
+// / #prod-name) — see the click handler further down.
 
 function pct(v){ return (Number(v) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 }); }
 
@@ -220,7 +172,7 @@ function renderList(){
         ? '<p class="msg" id="no-match">Nenhum produto encontrado.</p>'
         : '<div class="card" id="list-card">' + shown.map(produtoRowHtml).join("") + '</div>');
 
-  root.innerHTML = navHeader("Produtos", null) +
+  root.innerHTML = navHeader("Produtos") +
     '<div class="searchrow"><input type="search" id="search" placeholder="Buscar produto" ' +
       'value="' + esc(searchTerm) + '"></div>' +
     rowsHtml +
@@ -535,7 +487,7 @@ async function openProduto(id){
   try{
     const data = await api("produto_detail", { id });
     if(!data.found){
-      root.innerHTML = navHeader("", loadProdutos) + '<p class="msg">Produto não encontrado.</p>';
+      root.innerHTML = navHeader("", { backLabel: "Produtos", listTitle: "Produtos" }) + '<p class="msg">Produto não encontrado.</p>';
       wireNav(loadProdutos);
       return;
     }
@@ -551,7 +503,7 @@ function renderProduto(data){
   const km = KIND_META[p.kind] || { label: p.kind };
   const src = p.kind === "manufaturado" ? p.receita : p.fornecedor;
 
-  root.innerHTML = navHeader(p.name, loadProdutos) +
+  root.innerHTML = navHeader(p.name, { backLabel: "Produtos", backAction: loadProdutos, listTitle: "Produtos" }) +
     '<div class="kind-src">' +
       '<span class="lbl">Tipo</span>' +
       '<span class="pill kd-' + esc(p.kind) + '">' + esc(km.label) + '</span>' +
@@ -583,7 +535,7 @@ function renderProduto(data){
   wireNav(loadProdutos);
   wireNotesPanel(root.querySelector(".notes-card"), "produto", p.id);
 
-  document.getElementById("prod-name").addEventListener("click", () => openProdutoModal(p));
+  document.getElementById("detail-title").addEventListener("click", () => openProdutoModal(p));
   document.getElementById("edit-produto").addEventListener("click", () => openProdutoModal(p));
 
   document.getElementById("del-produto").addEventListener("click", async () => {

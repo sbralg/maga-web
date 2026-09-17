@@ -463,7 +463,7 @@ function clienteEmbed(id) {
   await page.goto(PAGE + '?id=' + deepId);
   await page.waitForSelector('.evento-head', { timeout: 6000 });
   check('the deep link opens the right evento directly',
-    (await page.textContent('#evento-name')).includes('Evento para deep link'));
+    (await page.textContent('#detail-title')).includes('Evento para deep link'));
 
   // --- cliente delete unlinks without breaking the detail sheet ---
   await page.click('#back');

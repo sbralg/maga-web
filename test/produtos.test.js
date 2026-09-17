@@ -265,7 +265,7 @@ function computeProdutoCost(id) {
   await page.waitForSelector('#pr-source:has-text("Bolo de Cacau")', { timeout: 6000 });
   await page.fill('#pr-m-atacado', '65');
   await page.click('#pr-ok');
-  await page.waitForSelector('#prod-name', { timeout: 6000 });
+  await page.waitForSelector('#detail-title', { timeout: 6000 });
   check('one produto exists', state.produtos.length === 1);
   check('kind badge shows manufaturado', (await page.textContent('#root')).includes('Manufaturado'));
 
@@ -319,7 +319,7 @@ function computeProdutoCost(id) {
   await page.click('.pick-opt:has-text("Padaria Ceci")');
   await page.waitForSelector('#pr-fornecedor:has-text("Padaria Ceci")', { timeout: 6000 });
   await page.click('#pr-ok');
-  await page.waitForSelector('#prod-name', { timeout: 6000 });
+  await page.waitForSelector('#detail-title', { timeout: 6000 });
   check('kind badge shows comprado', (await page.textContent('#root')).includes('Comprado'));
   check('fornecedor is shown on the detail page', (await page.textContent('#root')).includes('Padaria Ceci'));
   totalsText = norm(await page.textContent('.totals-card'));
@@ -367,7 +367,7 @@ function computeProdutoCost(id) {
   await page.selectOption('#pr-kind', 'comprado');
   await page.waitForSelector('#pr-cost', { timeout: 6000 });
   await page.click('#pr-ok');
-  await page.waitForSelector('#prod-name', { timeout: 6000 });
+  await page.waitForSelector('#detail-title', { timeout: 6000 });
   check('the accented produto was created', state.produtos.some(p => p.name === 'Café Especial'));
   await page.click('#back');
   await page.waitForSelector('#search', { timeout: 6000 });

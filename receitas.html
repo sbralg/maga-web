@@ -28,37 +28,26 @@
   only to the gated Supabase Edge Function (maga-api).
 -->
 <link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
 <link rel="stylesheet" href="shared-menu.css">
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-inputs.css">
+<link rel="stylesheet" href="shared-produto-panel.css">
 <link rel="stylesheet" href="shared-notes.css">
 <style>
-  body{ padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom)); }
-  .wrap{max-width:640px;margin:0 auto}
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
-  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-  .subheader{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0;margin:0 0 8px}
-  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
-  h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
-  .searchrow{display:flex;gap:8px;margin:0 0 14px}
-  .searchrow input[type=search]{
-    flex:1;min-width:0;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
-    border:1px solid var(--border-strong);background:var(--card);color:var(--text);
-    -webkit-appearance:none;
-  }
-  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background-color .15s ease}
-  .row:hover{background:rgba(127,127,127,.06)}
-  .row:last-child{border-bottom:none}
-  .row .nm{font-size:15px;font-weight:600;margin:0;word-wrap:break-word}
-  .row .meta{font-size:12.5px;color:var(--muted);margin:2px 0 0}
-  .addrow-btn{margin:8px 0 0}
-  button.primary.full{width:100%}
+  /* ---- page chrome (body/.wrap/header/.hleft/h1/h3/.subheader/.searchrow/
+     .row shell/.detail-actions/.addrow-btn/.detail-title) now lives in
+     shared-page.css — see that file for what moved and why. Only the
+     genuinely page-specific parts of .row (its flex layout, not the
+     shell) stay here. */
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  /* margin here (2px, vs. shared-page.css's 0) is the one genuinely
+     page-specific override this row keeps; .row .nm is a pure duplicate
+     of shared-page.css's own rule and is gone. */
+  .row .meta{margin:2px 0 0}
   /* ---- detail ---- */
-  .rec-title{font-size:16px;font-weight:650;margin:0;text-align:right;word-wrap:break-word;cursor:pointer}
-  .rec-title:hover{opacity:.75}
   .rec-sub{font-size:13px;color:var(--muted);margin:-2px 0 0;text-align:right}
-  .detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px}
   /* Section heading with a count/hint on the right of the same line. */
   .sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:22px 0 8px}
   .sec-head h3{margin:0}
@@ -77,12 +66,18 @@
   .scale-hint{font-size:12.5px;color:var(--muted);line-height:1.45;margin:10px 0 0}
   .scale-hint.on{color:var(--accent)}
   .scale-hint button{font-size:12.5px;padding:0 0 0 6px}
+  /* This page's OWN ingredient/sub-receita item rows — a genuinely
+     different shell/typography from the shared produto panel's embalagem
+     rows that reuse the same ".item-row" class name (bold item name, an
+     extra "scaled" line, a "sem custo" meta variant). shared-produto-
+     panel.css scopes its own version under #pp-emb-list specifically so
+     it wins there without touching this page's own list — see that
+     file's header comment. .badge/.body ARE identical to the shared
+     panel's copy and now live there instead. */
   .item-row{
     display:flex;align-items:center;gap:10px;padding:10px 8px 10px 14px;border-bottom:1px solid var(--border);
   }
   .item-row:last-child{border-bottom:none}
-  .item-row .badge{font-size:18px;flex:none;width:24px;text-align:center}
-  .item-row .body{flex:1;min-width:0}
   .item-row .body .txt{font-size:15px;font-weight:600;margin:0;word-wrap:break-word}
   .item-row .body .qty{font-size:13px;color:var(--text);margin:2px 0 0}
   .item-row .body .meta{font-size:12.5px;color:var(--muted);margin:2px 0 0}
@@ -91,37 +86,16 @@
      the summary warning far above it. */
   .item-row .meta.nocost{color:var(--warn)}
   .item-row .scaled{font-size:12.5px;color:var(--accent);font-weight:600;margin:2px 0 0}
-  .row-actions{display:flex;gap:2px;flex:none}
-  .totals-card{padding:14px}
-  .totals-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
-  .totals-grid .t{grid-column:1 / -1;border-top:1px solid var(--border);margin-top:2px;padding-top:10px}
-  .totals-grid .lbl{font-size:12px;color:var(--muted);margin:0}
-  .totals-grid .val{font-size:16px;font-weight:650;margin:2px 0 0}
-  .warn-card{padding:12px 14px;background:rgba(180,83,9,.1);border-radius:12px;margin-top:10px}
-  .warn-card p{font-size:13px;color:var(--warn);margin:0}
-  /* ---- shared produto panel (packaging/margins/reverse calc) ---- */
-  .reverse-card{padding:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .reverse-card label{font-size:13px;color:var(--muted);flex:1;min-width:140px}
-  .reverse-card .field{max-width:120px}
-  .reverse-out{font-size:13px;color:var(--text);margin:10px 0 0;width:100%}
-  .reverse-out p{margin:2px 0}
-  /* ---- item picker ---- */
+  /* ---- item picker (the produto panel's own pick-list/pick-opt for
+     embalagem moved to shared-produto-panel.css, which this page also
+     loads — .kind-tabs/.kind-tab stay here, page-local: this page's own
+     ingrediente/receita picker tabs, not part of the shared component) ---- */
   .kind-tabs{display:flex;gap:6px;margin:0 0 12px}
   .kind-tab{
     flex:1;font-size:13px;font-weight:600;padding:9px;border-radius:10px;cursor:pointer;
     background:rgba(127,127,127,.1);color:var(--muted);border:none;transition:background-color .15s ease,color .15s ease;
   }
   .kind-tab.active{background:var(--accent);color:var(--accent-text)}
-  .pick-list{max-height:38vh;overflow-y:auto;margin:0 0 14px;-webkit-overflow-scrolling:touch}
-  .pick-opt{
-    display:flex;align-items:center;gap:10px;width:100%;text-align:left;
-    background:none;border:none;border-bottom:1px solid var(--border);
-    color:var(--text);font:inherit;font-size:15px;padding:11px 4px;cursor:pointer;
-    transition:background-color .15s ease;
-  }
-  .pick-opt:last-child{border-bottom:none}
-  .pick-opt:hover{background:rgba(127,127,127,.08)}
-  .pick-opt .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -142,6 +116,7 @@ const PAGE_LOGIN = {
 </script>
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
@@ -153,28 +128,14 @@ const PAGE_LOGIN = {
 const CURRENT_PAGE = "receitas";
 const YIELD_UNITS = ["g", "ml", "un"];
 
-// Same header shape as every other detail page here (eventos/produtos/
-// clientes/fornecedores): the h1 names the module, the back link and the
-// record's own name share the row below it. Deliberately NOT special-cased
-// for receitas — the user tuned this shape on eventos across several
-// passes, and one page departing from it reads as a bug, not a refinement.
-function navHeader(title, backAction){
-  const topRow = '<header><div class="hleft">' +
-    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-    '<h1 style="flex:1">' + (backAction ? 'Receitas' : esc(title)) + '</h1>' +
-    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
-  if(!backAction) return topRow;
-  return topRow + '<div class="subheader">' +
-    '<button class="link" id="back">← Receitas</button>' +
-    (title
-      ? '<h2 class="rec-title" id="rec-name" title="Editar receita">' + esc(title) + '</h2>'
-      : '') +
-  '</div>';
-}
-function wireNav(backAction){
-  wireMenuButton();
-  if(backAction) document.getElementById("back").addEventListener("click", backAction);
-}
+// navHeader()/wireNav() now live in shared-nav.js. Same header shape as
+// every other detail page here (eventos/produtos/clientes/fornecedores):
+// the h1 names the module, the back link and the record's own name share
+// the row below it — deliberately NOT special-cased for receitas, the
+// user tuned this shape on eventos across several passes, and one page
+// departing from it reads as a bug, not a refinement. This page's title
+// uses the shared "detail-title" class/id (formerly this page's own
+// .rec-title / #rec-name) — see the click handler further down.
 
 function pct(v){ return (Number(v) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 }); }
 
@@ -235,7 +196,7 @@ function renderList(){
         ? '<p class="msg" id="no-match">Nenhuma receita encontrada.</p>'
         : '<div class="card" id="list-card">' + shown.map(receitaRowHtml).join("") + '</div>');
 
-  root.innerHTML = navHeader("Receitas", null) +
+  root.innerHTML = navHeader("Receitas") +
     '<div class="searchrow"><input type="search" id="search" placeholder="Buscar receita" ' +
       'value="' + esc(searchTerm) + '"></div>' +
     rowsHtml +
@@ -492,7 +453,7 @@ async function openReceita(id){
   try{
     const data = await api("receita_detail", { id });
     if(!data.found){
-      root.innerHTML = navHeader("", loadReceitas) + '<p class="msg">Receita não encontrada.</p>';
+      root.innerHTML = navHeader("", { backLabel: "Receitas", listTitle: "Receitas" }) + '<p class="msg">Receita não encontrada.</p>';
       wireNav(loadReceitas);
       return;
     }
@@ -579,7 +540,7 @@ function renderReceita(data){
         'a eles (Insumos → Estoque).</p></div>'
     : '';
 
-  root.innerHTML = navHeader(r.name, loadReceitas) +
+  root.innerHTML = navHeader(r.name, { backLabel: "Receitas", backAction: loadReceitas, listTitle: "Receitas" }) +
     '<p class="rec-sub">Rende ' + fmtStockQty(r.yield_qty) + ' ' + esc(r.yield_unit) +
       (r.safety_margin_pct ? ' · margem de segurança ' + pct(r.safety_margin_pct) + '%' : '') +
       (r.prep_minutes ? ' · ' + fmtStockQty(r.prep_minutes) + ' min de preparo' : '') +
@@ -615,7 +576,7 @@ function renderReceita(data){
   wireNav(loadReceitas);
   wireNotesPanel(root.querySelector(".notes-card"), "receita", r.id);
 
-  document.getElementById("rec-name").addEventListener("click", () => openReceitaModal(r));
+  document.getElementById("detail-title").addEventListener("click", () => openReceitaModal(r));
   document.getElementById("edit-receita").addEventListener("click", () => openReceitaModal(r));
 
   document.getElementById("del-receita").addEventListener("click", async () => {

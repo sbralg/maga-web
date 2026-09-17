@@ -332,9 +332,9 @@ function computeProdutoCost(id) {
   await page.selectOption('#rec-unit', 'un');
   await page.fill('#rec-margin', '5');
   await page.click('#rec-ok');
-  await page.waitForSelector('#rec-name', { timeout: 6000 });
+  await page.waitForSelector('#detail-title', { timeout: 6000 });
   check('one receita exists', state.receitas.length === 1);
-  check('detail shows the name', (await page.textContent('#rec-name')).includes('Bolo de Cacau'));
+  check('detail shows the name', (await page.textContent('#detail-title')).includes('Bolo de Cacau'));
 
   const receitaId = state.receitas[0].id;
 
@@ -390,7 +390,7 @@ function computeProdutoCost(id) {
   await page.fill('#rec-yield', '1');
   await page.selectOption('#rec-unit', 'un');
   await page.click('#rec-ok');
-  await page.waitForSelector('#rec-name', { timeout: 6000 });
+  await page.waitForSelector('#detail-title', { timeout: 6000 });
   const outerId = state.receitas.find(r => r.name === 'Bolo Decorado').id;
 
   await page.click('#add-item');
@@ -470,7 +470,7 @@ function computeProdutoCost(id) {
   await page.fill('#rec-yield', '1');
   await page.selectOption('#rec-unit', 'un');
   await page.click('#rec-ok');
-  await page.waitForSelector('#rec-name', { timeout: 6000 });
+  await page.waitForSelector('#detail-title', { timeout: 6000 });
   check('the accented receita was created', state.receitas.some(r => r.name === 'Café da Manhã'));
   await page.click('#back');
   await page.waitForSelector('#search', { timeout: 6000 });

@@ -28,28 +28,19 @@
   manual entry.
 -->
 <link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
 <link rel="stylesheet" href="shared-menu.css">
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-inputs.css">
 <link rel="stylesheet" href="shared-notes.css">
 <style>
-  body{
-    padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
-  }
-  .wrap{max-width:640px;margin:0 auto}
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
-  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-  .subheader{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0;margin:0 0 8px}
-  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
+  /* ---- page chrome (body/.wrap/header/.hleft/h1/h3/.subheader/.searchrow/
+     .row shell/.detail-actions/.addrow-btn/.detail-title) now lives in
+     shared-page.css — see that file for what moved and why. Only the
+     genuinely page-specific parts stay here: h2 (the cliente-block name,
+     not a detail-title), and .row's own flex layout/content classes. */
   h2{font-size:17px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
-  h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
-  .searchrow{display:flex;gap:8px;margin:0 0 10px}
-  .searchrow input[type=search]{
-    flex:1;min-width:0;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
-    border:1px solid var(--border-strong);background:var(--card);color:var(--text);
-    -webkit-appearance:none;
-  }
   .chiprow{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
   .chip{
     font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;cursor:pointer;
@@ -61,14 +52,16 @@
   #done-list{max-height:0;opacity:0;overflow:hidden;transition:max-height .3s ease,opacity .25s ease}
   #done-list.open{opacity:1}
   .done-card{margin-top:8px}
-  .row{display:flex;flex-direction:column;gap:6px;padding:14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background-color .15s ease}
-  .row:hover{background:rgba(127,127,127,.06)}
-  .row:last-child{border-bottom:none}
+  /* .row's own flex layout + content — the shell (padding/border/cursor/
+     transition/hover/last-child) lives in shared-page.css now. */
+  .row{display:flex;flex-direction:column;gap:6px}
   .row .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .row .txt{font-size:15px;font-weight:600;margin:0;word-wrap:break-word;flex:1;min-width:0}
   .row .price{font-size:14px;font-weight:650;white-space:nowrap}
   .row .date-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--muted)}
-  .row .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+  /* font-size/color match shared-page.css's own .row .meta already —
+     only the flex layout below is genuinely page-specific. */
+  .row .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .pill{
     display:inline-block;font-size:11.5px;font-weight:650;padding:3px 9px;border-radius:999px;
     white-space:nowrap;
@@ -86,8 +79,6 @@
   /* ---- detail ---- */
   .evento-head{margin:0 0 14px}
   .pills-row{display:flex;justify-content:flex-end;gap:6px;margin:0 0 10px}
-  .evt-title{font-size:16px;font-weight:650;margin:0;text-align:right;word-wrap:break-word;cursor:pointer}
-  .evt-title:hover{opacity:.75}
   .cli-lbl{font-size:12px;color:var(--muted);margin:0 0 6px}
   .cli-block{
     display:flex;align-items:center;justify-content:space-between;gap:10px;
@@ -102,7 +93,6 @@
     padding:10px 0;border-top:1px solid var(--border);
   }
   .statusline .lbl, .datefield .lbl{font-size:12px;color:var(--muted);margin:0}
-  .detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 18px}
   .totals-card{padding:14px}
   .totals-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
   .totals-grid .t{grid-column:1 / -1;border-top:1px solid var(--border);margin-top:2px;padding-top:10px}
@@ -119,9 +109,6 @@
   .item-row .body .txt, .pay-row .body .txt{font-size:14.5px;margin:0;word-wrap:break-word}
   .item-row .body .meta, .pay-row .body .meta{font-size:12.5px;color:var(--muted);margin:3px 0 0}
   .item-row .amt{font-size:14.5px;font-weight:650;white-space:nowrap}
-  .row-actions{display:flex;gap:2px;flex:none}
-  .addrow-btn{margin:8px 0 0}
-  button.primary.full{width:100%}
   /* ---- cliente picker ---- */
   .cli-list{max-height:44vh;overflow-y:auto;margin:0 0 14px;-webkit-overflow-scrolling:touch}
   .cli-opt{
@@ -167,6 +154,7 @@ const PAGE_LOGIN = {
 </script>
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
@@ -215,21 +203,10 @@ function isEventoDone(v){
   return v.status === "entregue" && paymentStatus(v).cls === "paid";
 }
 
-function navHeader(title, backAction){
-  const topRow = '<header><div class="hleft">' +
-    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-    '<h1 style="flex:1">' + (backAction ? 'Eventos' : esc(title)) + '</h1>' +
-    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
-  if(!backAction) return topRow;
-  return topRow + '<div class="subheader">' +
-    '<button class="link" id="back">← Eventos</button>' +
-    (title ? '<h2 class="evt-title" id="evento-name">' + esc(title) + '</h2>' : '') +
-  '</div>';
-}
-function wireNav(backAction){
-  wireMenuButton();
-  if(backAction) document.getElementById("back").addEventListener("click", backAction);
-}
+// navHeader()/wireNav() now live in shared-nav.js. This page's title uses
+// the shared "detail-title" class/id (formerly this page's own .evt-title
+// / #evento-name) — see the click handler further down that opens the
+// edit prompt off that id.
 
 // ---- list screen ----
 
@@ -320,7 +297,7 @@ function renderList(){
     '<div id="done-list"><div class="card done-card">' + done.map(eventoRowHtml).join("") + '</div></div>' +
   '</div>';
 
-  root.innerHTML = navHeader("Eventos", null) +
+  root.innerHTML = navHeader("Eventos") +
     '<div class="searchrow">' +
       '<input type="search" id="search" placeholder="Buscar por evento ou cliente" ' +
         'value="' + esc(searchTerm) + '">' +
@@ -664,7 +641,7 @@ async function openEvento(id){
   try{
     const data = await api("evento_detail", { id });
     if(!data.found){
-      root.innerHTML = navHeader("", loadEventos) + '<p class="msg">Evento não encontrado.</p>';
+      root.innerHTML = navHeader("", { backLabel: "Eventos", listTitle: "Eventos" }) + '<p class="msg">Evento não encontrado.</p>';
       wireNav(loadEventos);
       return;
     }
@@ -735,7 +712,7 @@ function renderEvento(data){
   const profitCls = data.profit > 0 ? "pos" : (data.profit < 0 ? "neg" : "");
   const balanceCls = data.balance_due > 0 ? "neg" : (data.balance_due < 0 ? "pos" : "");
 
-  root.innerHTML = navHeader(v.name, loadEventos) +
+  root.innerHTML = navHeader(v.name, { backLabel: "Eventos", backAction: loadEventos, listTitle: "Eventos" }) +
     '<div class="evento-head">' +
       '<div class="pills-row">' + statusPillHtml(v.status) + paymentPillHtml(data, v.status) + '</div>' +
     '<p class="cli-lbl">Cliente</p>' +
@@ -774,7 +751,7 @@ function renderEvento(data){
   wireNav(loadEventos);
   wireNotesPanel(root.querySelector(".notes-card"), "evento", v.id);
 
-  document.getElementById("evento-name").addEventListener("click", async () => {
+  document.getElementById("detail-title").addEventListener("click", async () => {
     const name = await promptModal("Editar evento", "Nome", v.name);
     if(name === null) return;
     const trimmed = name.trim();

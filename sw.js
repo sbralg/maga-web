@@ -60,6 +60,7 @@ const SHELL_FILES = [
   "shared-toast.css",
   "shared-inputs.css",
   "shared-catalog.css",
+  "shared-produto-panel.css",
   "shared-notes.css",
   "manifest.json",
   "assets/icon-192.png",
