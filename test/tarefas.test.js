@@ -273,6 +273,27 @@ const state = {
   check('the edited category is reflected in the meta line',
     (await page.textContent('#root')).includes('Trabalho'));
 
+  // --- empty-text validation on the edit modal uses fieldError() (an
+  // inline .field-error under the input), not a native alert() -- a
+  // regression guard for the alert()->fieldError() conversion. A `dialog`
+  // listener acts as a trap: if this ever regresses back to alert(), the
+  // dialog fires and the check below catches it. ---
+  let editDialogFired = false;
+  page.once('dialog', async d => { editDialogFired = true; await d.dismiss(); });
+  await page.click('.row:has-text("Comprar pilhas AA") .rowbody');
+  await page.waitForSelector('#edit-text-input', { timeout: 6000 });
+  await page.fill('#edit-text-input', '');
+  await page.click('#edit-save');
+  await page.waitForSelector('.field-error', { timeout: 6000 });
+  check('empty text shows an inline field error under the input, got: ' +
+    await page.textContent('.field-error'),
+    (await page.textContent('.field-error')) === 'O texto não pode ficar vazio.');
+  check('no native dialog fired for the empty-text validation', !editDialogFired);
+  check('the modal stays open (same as the old alert() behavior) so the person can fix it',
+    (await page.$('.modal-backdrop')) !== null);
+  await page.click('#edit-cancel');
+  await page.waitForFunction(() => !document.querySelector('.modal-backdrop'), null, { timeout: 6000 });
+
   // --- edit modal: setting a past due date renders the overdue (red) badge ---
   await page.click('.row:has-text("Comprar pilhas AA") .rowbody');
   await page.waitForSelector('#edit-due-input', { timeout: 6000 });

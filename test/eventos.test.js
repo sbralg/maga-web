@@ -290,6 +290,11 @@ function clienteEmbed(id) {
 
   const page = await ctx.newPage();
   page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+  // Regression guard for the alert()->fieldError()/listToast() conversion:
+  // a native dialog anywhere in this run means a validation path still
+  // uses alert() instead of the shared mechanism.
+  let dialogFired = false;
+  page.on('dialog', async (d) => { dialogFired = true; await d.dismiss(); });
 
   const check = (label, cond) => { if (!cond) failures.push('FAIL: ' + label); };
   // Intl's pt-BR currency formatter uses a NBSP between "R$" and the
@@ -305,6 +310,15 @@ function clienteEmbed(id) {
   // --- create a cliente inline via the picker, then an evento ---
   await page.click('#new-evento');
   await page.waitForSelector('#nv-cliente-btn', { timeout: 6000 });
+
+  // Regression: submitting with no cliente chosen (a picker button, not a
+  // text field, so this is the listToast() case, not fieldError()) must
+  // not fall back to alert().
+  await page.click('#nv-ok');
+  await page.waitForSelector('#list-toast.show', { timeout: 6000 });
+  check('no cliente chosen shows a toast, not alert()',
+    (await page.textContent('#list-toast')).includes('Selecione um cliente'));
+
   await page.click('#nv-cliente-btn');
   await page.waitForSelector('#cli-q', { timeout: 6000 });
   await page.fill('#cli-q', 'Maria Silva');
@@ -314,6 +328,15 @@ function clienteEmbed(id) {
     null, { timeout: 6000 });
   check('the newly created cliente fills the picker button',
     (await page.textContent('#nv-cliente-btn')).includes('Maria Silva'));
+
+  // Regression: an empty name, with a cliente already chosen, is a real
+  // text field — the fieldError() case.
+  await page.click('#nv-ok');
+  await page.waitForSelector('#field-error-nv-name', { timeout: 6000 });
+  check('empty evento name shows a field error under #nv-name',
+    (await page.textContent('#field-error-nv-name')).includes('nome do evento não pode ficar vazio'));
+  check('#nv-name is marked aria-invalid',
+    (await page.getAttribute('#nv-name', 'aria-invalid')) === 'true');
 
   await page.fill('#nv-name', 'Bolo de aniversário');
   await page.selectOption('#nv-status', 'lead');
@@ -527,6 +550,8 @@ function clienteEmbed(id) {
     state.notes.some(n => n.body === 'Cliente pediu bolo sem glúten'));
   check('the notebook is object-backed to this evento',
     state.notebooks.some(nb => nb.evento_id === lastEvento.id));
+
+  check('no native alert()/confirm()/prompt() dialog fired anywhere in this run', !dialogFired);
 
   await page.screenshot({ path: path.join(SHOTS, 'evento_detalhe.png'), fullPage: true });
   await browser.close();

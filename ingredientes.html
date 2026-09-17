@@ -178,6 +178,19 @@ const CURRENT_PAGE = "ingredientes";
 // .ing-title/#ing-name) — see the click handler further down that opens the
 // edit modal off that id.
 
+// Two shell shapes, one per screen — a loading state renders the header of
+// whichever screen it's ON THE WAY TO, not a bare "Carregando…" that wipes
+// the header/hamburger/back-link and puts them back once the fetch resolves
+// (the flash preferencias.html's own renderShell() was built to avoid).
+function renderListShell(inner){
+  root.innerHTML = navHeader("Ingredientes") + inner;
+  wireNav();
+}
+function renderDetailShell(inner, title){
+  root.innerHTML = navHeader(title || null, { backLabel: "Ingredientes", backAction: loadIngredientes, listTitle: "Ingredientes" }) + inner;
+  wireNav(loadIngredientes);
+}
+
 // Every insumo pointing at this ingredient. The `ingredients` action only
 // carries a COUNT, so the list itself is resolved from the catalogue the
 // page already loaded — one fetch, no per-ingredient round trip.
@@ -257,11 +270,16 @@ async function refreshInto(id){
 }
 
 async function loadIngredientes(){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
+  // getPass() first — showLogin() takes over the whole root itself, so a
+  // shell rendered before it would just be discarded.
   if(!getPass()){ showLogin(); return; }
+  // A deep-linked ingredient's id is already known from the URL, so the
+  // loading shell can show the DETAIL screen's header from the very first
+  // render instead of flashing the list's header first.
+  const wanted = new URLSearchParams(location.search).get("id");
+  (wanted ? renderDetailShell : renderListShell)('<p class="msg">Carregando…</p>');
   try{
     await fetchAll();
-    const wanted = new URLSearchParams(location.search).get("id");
     if(wanted){
       history.replaceState(null, "", location.pathname);
       openIngrediente(wanted);
@@ -373,7 +391,7 @@ function ingredienteModal(existing){
 
   backdrop.querySelector("#ing-ok").addEventListener("click", async () => {
     const name = nameEl.value.trim();
-    if(!name){ alert("O nome não pode ficar vazio."); return; }
+    if(!name){ fieldError(nameEl, "O nome não pode ficar vazio."); return; }
     const baseUnit = unitEl.value || null;
     try{
       if(!isEdit){
@@ -405,12 +423,19 @@ function ingredienteModal(existing){
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadIngredientes);
       if(notDeployed(e)){
-        alert("Esta função ainda não está publicada no servidor. " +
-          "Republique a Edge Function maga-api e tente de novo.");
+        // Multi-sentence explanation, too long for a toast and not field
+        // validation — same confirmModal(message, "Entendi") pattern this
+        // page already uses for deleteIngrediente()'s structured refusal.
+        await confirmModal(
+          "Esta função ainda não está publicada no servidor. " +
+          "Republique a Edge Function maga-api e tente de novo.",
+          "Entendi",
+        );
         return;
       }
       const already = e.body && String(e.body.error || "").indexOf("already exists") >= 0;
-      alert(already ? "Já existe um ingrediente com esse nome." : "Não foi possível salvar.");
+      if(already) fieldError(nameEl, "Já existe um ingrediente com esse nome.");
+      else listToast("Não foi possível salvar.", true);
     }
   });
 
@@ -478,9 +503,7 @@ function wireListRows(){
 function openIngrediente(id){
   const i = ingredientes.find(x => x.id === id);
   if(!i){
-    root.innerHTML = navHeader(null, { backLabel: "Ingredientes", backAction: loadIngredientes, listTitle: "Ingredientes" }) +
-      '<p class="msg">Ingrediente não encontrado.</p>';
-    wireNav(loadIngredientes);
+    renderDetailShell('<p class="msg">Ingrediente não encontrado.</p>');
     return;
   }
   renderIngrediente(i);

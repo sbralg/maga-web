@@ -260,18 +260,34 @@ function kindBadgeHtml(p){
 // always just reads "Insumos" and the subheader shows only the back button.
 // See the openInsumo()/renderInsumo() calls below.
 
+// Two shell shapes, one per screen — a loading state renders the header of
+// whichever screen it's ON THE WAY TO, not a bare "Carregando…" that wipes
+// the header/hamburger/back-link and puts them back once the fetch resolves
+// (the flash preferencias.html's own renderShell() was built to avoid).
+function renderCatalogShell(inner){
+  root.innerHTML = navHeader("Insumos") + inner;
+  wireNav();
+}
+function renderInsumoShell(inner){
+  root.innerHTML = navHeader(null, { backLabel: "Catálogo", backAction: loadCatalog, listTitle: "Insumos" }) + inner;
+  wireNav(loadCatalog);
+}
+
 // ---- catalogue screen ----
 
 async function loadCatalog(){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
+  // getPass() first — showLogin() takes over the whole root itself, so a
+  // shell rendered before it would just be discarded.
   if(!getPass()){ showLogin(); return; }
+  // An insumo deep-linked from Estoque opens straight on its detail sheet —
+  // the gtin is already known from the URL, so the loading shell can show
+  // the DETAIL screen's header from the very first render instead of
+  // flashing the catalogue's header first.
+  const wanted = new URLSearchParams(location.search).get("gtin");
+  (wanted ? renderInsumoShell : renderCatalogShell)('<p class="msg">Carregando…</p>');
   try{
     const data = await api("insumos");
     catalog = data.insumos || [];
-    // An insumo deep-linked from Estoque opens straight on its detail
-    // sheet; the catalogue is still loaded behind it so "← Catálogo"
-    // has something to go back to.
-    const wanted = new URLSearchParams(location.search).get("gtin");
     if(wanted){
       // Consumed once: a later reload of the catalogue is a deliberate
       // "back", not a request to reopen the same insumo forever.
@@ -559,13 +575,11 @@ function movementRowHtml(m){
 }
 
 async function openInsumo(gtin){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
+  renderInsumoShell('<p class="msg">Carregando…</p>');
   try{
     const data = await api("insumo_detail", { gtin });
     if(!data.found){
-      root.innerHTML = navHeader(null, { backLabel: "Catálogo", backAction: loadCatalog, listTitle: "Insumos" }) +
-        '<p class="msg">Insumo não encontrado.</p>';
-      wireNav(loadCatalog);
+      renderInsumoShell('<p class="msg">Insumo não encontrado.</p>');
       return;
     }
     renderInsumo(data);
@@ -890,7 +904,7 @@ function insumoEditModal(p, categories){
     };
     const ok = () => {
       const name = nameEl.value.trim();
-      if(!name){ alert("O nome não pode ficar vazio."); nameEl.focus(); return; }
+      if(!name){ fieldError(nameEl, "O nome não pode ficar vazio."); return; }
       const rawQty = qtyEl.value.trim();
       let size = null;
       if(rawQty){
@@ -899,10 +913,9 @@ function insumoEditModal(p, categories){
         // reading 1,5 as 1,5 g when the box says 1,5 kg would corrupt
         // exactly the number the recipe side exists to add up.
         if(!size){
-          alert(unitEl.value
+          fieldError(unitEl.value ? qtyEl : unitEl, unitEl.value
             ? "Quantidade do pacote inválida."
             : "Escolha a unidade do pacote (kg, g, L, ml ou un).");
-          (unitEl.value ? qtyEl : unitEl).focus();
           return;
         }
       }

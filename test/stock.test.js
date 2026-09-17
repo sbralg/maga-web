@@ -436,11 +436,22 @@ function handleMove(body) {
   // letting the retry fail ---
   await step('7896004700236', '-1');
   await page.waitForSelector('#sf-qty', { timeout: 6000 });
-  page.once('dialog', d => d.dismiss());
-  await page.fill('#sf-qty', '0');
+  // No native dialog any more — this is fieldError() under the quantity
+  // field, not alert(). A positive-but-insufficient amount (deficit here
+  // is 1) is what actually exercises the "pelo menos" branch — a bare '0'
+  // hits the earlier "Quantidade inválida" guard instead, since
+  // parseQtyInput() itself rejects zero.
+  let sawDialog = false;
+  page.once('dialog', d => { sawDialog = true; d.dismiss(); });
+  await page.fill('#sf-qty', '0,5');
   await page.click('#sf-ok');
+  await page.waitForSelector('.field-error', { timeout: 6000 });
   check('a quantity that would not cover the shortfall keeps the dialog open',
     (await page.$('#sf-qty')) !== null);
+  check('no native dialog fired', !sawDialog);
+  check('a field-error message names the shortfall, got: ' +
+    (await page.textContent('.field-error')),
+    (await page.textContent('.field-error')).indexOf('pelo menos') >= 0);
   await page.click('#sf-cancel');
   await page.waitForSelector('.modal-card', { state: 'detached', timeout: 6000 });
 
@@ -674,10 +685,18 @@ function handleMove(body) {
   await page.waitForSelector('#pe-net-qty', { timeout: 6000 });
   await page.selectOption('#pe-net-unit', '');
   const upsertsBefore = state.calls.filter(c => c.action === 'insumo_upsert').length;
-  page.once('dialog', d => d.dismiss());
+  // No native dialog any more — this is fieldError() under the unit field,
+  // not alert().
+  let sawDialog2 = false;
+  page.once('dialog', d => { sawDialog2 = true; d.dismiss(); });
   await page.click('#pe-ok');
+  await page.waitForSelector('.field-error', { timeout: 6000 });
   check('an amount with no unit is refused', (await page.$('#pe-net-qty')) !== null &&
     state.calls.filter(c => c.action === 'insumo_upsert').length === upsertsBefore);
+  check('no native dialog fired', !sawDialog2);
+  check('a field-error message names the unit field, got: ' +
+    (await page.textContent('.field-error')),
+    (await page.textContent('.field-error')).indexOf('unidade do pacote') >= 0);
   await page.click('#pe-cancel');
 
   // --- an insumo with a single price has no shape to draw ---

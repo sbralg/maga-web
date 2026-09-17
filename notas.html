@@ -121,22 +121,45 @@ function notebookInfo(nb){
 // own header always says so, only the subheader's back button names where
 // it goes back TO) and the notebook's own name/icon.
 
+// Back out of an open notebook to the list — shared by the detail-loading
+// shell below (before notebooks[] is even fetched) and openNotebook()'s own
+// back button, so both go through the exact same path.
+function backToList(){ history.replaceState(null, "", "notas.html"); renderList(""); }
+
+// renderListShell/renderDetailShell — used for every screen that isn't the
+// fully-rendered list/notebook-detail itself (the loading placeholder, the
+// "republish the Edge Function" message, the generic-failure retry state),
+// so the header/back-link never disappears mid-load the way a bare
+// `root.innerHTML = 'Carregando…'` would. Which shell to use is decided by
+// whether the URL names a notebook (?id=) BEFORE notebooks[] is fetched —
+// rendering the list shell first and swapping to the detail shell a beat
+// later would just move the flash from the body to the header.
+function renderListShell(inner){
+  root.innerHTML = navHeader("Notas") + inner;
+  wireNav();
+}
+function renderDetailShell(inner){
+  root.innerHTML = navHeader("", { backLabel:"Cadernos", backAction: backToList, listTitle:"Notas" }) + inner;
+  wireNav(backToList);
+}
+
 // ---- list screen ----
 
 async function load(){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
   if(!getPass()){ showLogin(); return; }
   if(!isDefaultEnv()){
     root.innerHTML = navHeader("Notas") + personalPageBlockedHtml();
     wireNav();
     return;
   }
+  const wantedId = new URLSearchParams(location.search).get("id");
+  if(wantedId) renderDetailShell('<p class="msg">Carregando…</p>');
+  else renderListShell('<p class="msg">Carregando…</p>');
   try{
     const res = await api("notebooks");
     notebooks = res.notebooks || [];
-    const wanted = new URLSearchParams(location.search).get("id");
-    if(wanted && notebooks.some(nb => nb.id === wanted)){
-      openNotebook(wanted);
+    if(wantedId && notebooks.some(nb => nb.id === wantedId)){
+      openNotebook(wantedId);
     }else{
       renderList("");
     }
@@ -145,12 +168,10 @@ async function load(){
       localStorage.removeItem(PASS_KEY);
       showLogin("Senha incorreta.");
     }else if(e.badRequest && e.body && e.body.error === "bad action"){
-      root.innerHTML = navHeader("Notas") +
-        '<p class="msg">Notas ainda não disponíveis — republique a Edge Function.</p>';
-      wireNav();
+      renderListShell('<p class="msg">Notas ainda não disponíveis — republique a Edge Function.</p>');
     }else{
-      root.innerHTML = '<p class="msg err">Não foi possível carregar agora.</p>' +
-        '<p class="msg"><button class="link" onclick="load()">Tentar novamente</button></p>';
+      renderListShell('<p class="msg err">Não foi possível carregar agora.</p>' +
+        '<p class="msg"><button class="link" onclick="load()">Tentar novamente</button></p>');
     }
   }
 }
@@ -367,7 +388,7 @@ function openNotebookEditModal(nb){
   document.getElementById("edit-nb-save").addEventListener("click", async () => {
     const name = nameInput.value.trim();
     const emoji = document.getElementById("edit-nb-emoji").value.trim();
-    if(!name){ alert("O nome não pode ficar vazio."); return; }
+    if(!name){ fieldError(nameInput, "O nome não pode ficar vazio."); return; }
     close();
     const tasks = [];
     if(name !== nb.name) tasks.push(api("notebook_rename", { id: nb.id, name }));
@@ -403,8 +424,6 @@ function openNotebook(id){
     actions.push('<button class="primary small alt" id="edit-nb">✎ Editar</button>');
     actions.push('<button class="primary small alt danger" id="del-nb">🗑 Remover</button>');
   }
-
-  const backToList = () => { history.replaceState(null, "", "notas.html"); renderList(""); };
 
   root.innerHTML = navHeader(info.label, { backLabel: "Cadernos", backAction: backToList, listTitle: "Notas", icon }) +
     (actions.length ? '<div class="detail-actions">' + actions.join("") + '</div>' : '') +

@@ -234,9 +234,26 @@ function noteCountFor(notebookId) {
   await page.click('.row[data-id="' + userNbId + '"]');
   await page.waitForSelector('.notes-card', { timeout: 6000 });
 
-  // The edit modal renames AND changes the emoji in one save.
+  // Empty-name validation uses fieldError() (an inline .field-error under
+  // the input), not a native alert() -- regression guard for the
+  // alert()->fieldError() conversion. A `dialog` listener is a trap: if
+  // this ever regresses back to alert(), the dialog fires and the check
+  // below catches it.
   await page.click('#edit-nb');
   await page.waitForSelector('.modal-card', { timeout: 4000 });
+  let nbDialogFired = false;
+  page.once('dialog', async d => { nbDialogFired = true; await d.dismiss(); });
+  await page.fill('#edit-nb-name', '');
+  await page.click('#edit-nb-save');
+  await page.waitForSelector('.field-error', { timeout: 6000 });
+  check('empty name shows an inline field error under the input, got: ' +
+    await page.textContent('.field-error'),
+    (await page.textContent('.field-error')) === 'O nome não pode ficar vazio.');
+  check('no native dialog fired for the empty-name validation', !nbDialogFired);
+  check('the modal stays open (same as the old alert() behavior) so the person can fix it',
+    (await page.$('.modal-card')) !== null);
+
+  // The edit modal renames AND changes the emoji in one save.
   await page.fill('#edit-nb-name', 'Cardápio de verão 2027');
   await page.fill('#edit-nb-emoji', '🍰');
   await page.click('#edit-nb-save');

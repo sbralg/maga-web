@@ -106,11 +106,26 @@ const KIND_META = {
 
 function pct(v){ return (Number(v) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 }); }
 
+// renderShell(): keeps the header (hamburger, back link) on screen through
+// every load instead of wiping it with a bare "Carregando…" — see
+// preferencias.html's own renderShell() for the same reasoning. opts.detail
+// renders the DETAIL shell (back link to Produtos, title empty until the
+// record loads), i.e. the shell for the screen being navigated TO.
+function renderShell(inner, opts){
+  if(opts && opts.detail){
+    root.innerHTML = navHeader("", { backLabel: "Produtos", backAction: loadProdutos, listTitle: "Produtos" }) + inner;
+    wireNav(loadProdutos);
+  }else{
+    root.innerHTML = navHeader("Produtos") + inner;
+    wireNav(null);
+  }
+}
+
 // ---- list screen ----
 
 async function loadProdutos(){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
   if(!getPass()){ showLogin(); return; }
+  renderShell('<p class="msg">Carregando…</p>');
   try{
     const data = await api("produtos");
     produtos = data.produtos || [];
@@ -438,11 +453,17 @@ function openProdutoModal(p, presetFornecedor){
     backdrop.querySelector("#pr-cancel").addEventListener("click", close);
 
     backdrop.querySelector("#pr-ok").addEventListener("click", async () => {
-      const name = backdrop.querySelector("#pr-name-i").value.trim();
-      if(!name){ alert("O nome não pode ficar vazio."); return; }
-      if(kind === "manufaturado" && !receita){ alert("Escolha uma receita."); return; }
+      const nameEl = backdrop.querySelector("#pr-name-i");
+      const name = nameEl.value.trim();
+      if(!name){ fieldError(nameEl, "O nome não pode ficar vazio."); return; }
+      if(kind === "manufaturado" && !receita){
+        // A picker button, not a text field — the button itself carries
+        // the error, same as eventos.html's cliente picker.
+        fieldError(backdrop.querySelector("#pr-source"), "Escolha uma receita.");
+        return;
+      }
       const items = parseQtyInput(itemsEl.value);
-      if(items === null){ alert("Itens por pacote inválido."); return; }
+      if(items === null){ fieldError(itemsEl, "Itens por pacote inválido."); return; }
       const payload = {
         name, kind,
         receita_id: kind === "manufaturado" ? receita.id : null,
@@ -483,12 +504,11 @@ function openProdutoModal(p, presetFornecedor){
 // is shared with receitas.html — see shared-produto-panel.js)
 
 async function openProduto(id){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
+  renderShell('<p class="msg">Carregando…</p>', { detail: true });
   try{
     const data = await api("produto_detail", { id });
     if(!data.found){
-      root.innerHTML = navHeader("", { backLabel: "Produtos", listTitle: "Produtos" }) + '<p class="msg">Produto não encontrado.</p>';
-      wireNav(loadProdutos);
+      renderShell('<p class="msg">Produto não encontrado.</p>', { detail: true });
       return;
     }
     renderProduto(data);

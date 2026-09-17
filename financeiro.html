@@ -124,9 +124,18 @@ function periodRange(p){
 // subheader (no detail view), so navHeader("Financeiro") with no opts is
 // the plain top-row-only render.
 
+// renderShell(): keeps the header (hamburger) on screen through the load
+// instead of wiping it with a bare "Carregando…" — see preferencias.html's
+// own renderShell() for the same reasoning. This page has no detail
+// screen, so there is only ever the one shell shape.
+function renderShell(inner){
+  root.innerHTML = navHeader("Financeiro") + inner;
+  wireNav();
+}
+
 async function loadLancamentos(){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
   if(!getPass()){ showLogin(); return; }
+  renderShell('<p class="msg">Carregando…</p>');
   try{
     const data = await api("financeiro_lancamentos", periodRange(periodo));
     lancamentos = data.lancamentos || [];
@@ -307,13 +316,15 @@ function openLancModal(l){
   backdrop.addEventListener("click", e => { if(e.target === backdrop) close(); });
   backdrop.querySelector("#lanc-cancel").addEventListener("click", close);
 
+  const descEl = backdrop.querySelector("#lanc-desc");
+  const dateEl = backdrop.querySelector("#lanc-date");
   backdrop.querySelector("#lanc-ok").addEventListener("click", async () => {
     const amount = centsToPrice(priceDigits(amountEl.value));
-    if(!amount || amount <= 0){ alert("Informe um valor válido."); return; }
-    const description = backdrop.querySelector("#lanc-desc").value.trim();
-    if(!description){ alert("A descrição não pode ficar vazia."); return; }
-    const date = backdrop.querySelector("#lanc-date").value;
-    if(!date){ alert("Informe a data."); return; }
+    if(!amount || amount <= 0){ fieldError(amountEl, "Informe um valor válido."); return; }
+    const description = descEl.value.trim();
+    if(!description){ fieldError(descEl, "A descrição não pode ficar vazia."); return; }
+    const date = dateEl.value;
+    if(!date){ fieldError(dateEl, "Informe a data."); return; }
     const payload = {
       tipo, amount, description,
       categoria: backdrop.querySelector("#lanc-categoria").value.trim() || "outros",

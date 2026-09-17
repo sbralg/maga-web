@@ -1436,6 +1436,34 @@ async function withPrefsFake(ctx, opts = {}) {
     await ctx.close();
   }
 
+  // --- 17b. a section-save failure with no field named falls back to the
+  // shared toast, not a native alert() -- regression guard for the
+  // alert()->listToast() conversion in saveSection()'s own catch. A
+  // `dialog` listener is a trap: if this ever regresses back to alert(),
+  // the dialog fires and the check below catches it. ---
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const putOverride = (section) => section === 'identity'
+      ? { status: 500, body: { error: 'server_error', message: 'Falha interna, tente de novo.' } }
+      : null;
+    await withPrefsFake(ctx, { putOverride });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    let saveDialogFired = false;
+    page.once('dialog', async d => { saveDialogFired = true; await d.dismiss(); });
+    await page.fill('#f-displayName', 'Ale');
+    await page.click('[data-save="identity"]');
+    await page.waitForSelector('#list-toast.show', { timeout: 6000 });
+    check('a no-field save failure shows the shared toast with the server message, got: ' +
+      await page.textContent('#list-toast'),
+      (await page.textContent('#list-toast')).includes('Não foi possível salvar: Falha interna, tente de novo.'));
+    check('no native dialog fired for the no-field save failure', !saveDialogFired);
+    await ctx.close();
+  }
+
   // --- 18. password: a successful change reports how many sessions ended --
   {
     const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });

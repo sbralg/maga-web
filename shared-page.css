@@ -61,6 +61,16 @@ h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
   border:1px solid var(--border-strong);background:var(--card);color:var(--text);
   -webkit-appearance:none;
 }
+/* The search box is the first thing a keyboard user lands on for nine of
+   these pages, so it needs the same visible ring every other interactive
+   control now carries (see shared-base.css / shared-menu.css). Its own
+   1px border already shifts on focus in some browsers, but that is a
+   UA default, not a guarantee — an explicit ring is what makes focus
+   legible in both palettes. `border-color` moves too so the ring reads as
+   one control rather than an outline floating over a grey box. */
+.searchrow input[type=search]:focus-visible{
+  outline:2px solid var(--accent);outline-offset:2px;border-color:var(--accent);
+}
 
 /* A row of buttons under a detail record (edit/delete/etc). insumos.html
    deliberately keeps its own override with no bottom margin — its actions
