@@ -329,7 +329,7 @@ function handleScan(body) {
   await page.evaluate(() => openList('L1'));
   await page.waitForSelector('#scan-item-btn');
 
-  const check = (label, cond) => { if (!cond) failures.push(label); };
+  const check = (label, cond) => { if (!cond) failures.push('FAIL: ' + label); };
   const rows = async () => (await page.$$('.row[data-id]')).length;
   const overlayOpen = async () => (await page.$$('.scan-overlay')).length === 1;
   const vibrations = () => page.evaluate(() => window.__vibrations);
@@ -347,7 +347,7 @@ function handleScan(body) {
   check('switched to the lens that has autofocus, got: ' + opened.join(','),
     opened.includes('main'));
   check('remembered the focusable lens',
-    await page.evaluate(() => localStorage.getItem('scan_camera_id')) === 'main');
+    await page.evaluate(() => localStorage.getItem('maga_scan_camera_id')) === 'main');
   check('hint offers tap-to-focus once on a focusable lens',
     /focar/.test(await page.textContent('.scan-hint')));
   check('lens switch button visible with several cameras',
@@ -518,7 +518,7 @@ function handleScan(body) {
   await page.waitForTimeout(500);
   check('picker closed', (await page.$$('#cam-list')).length === 0);
   check('chosen lens persisted',
-    await page.evaluate(() => localStorage.getItem('scan_camera_id')) === 'tele');
+    await page.evaluate(() => localStorage.getItem('maga_scan_camera_id')) === 'tele');
   check('camera restarted on the chosen lens',
     (await page.evaluate(() => window.__opened)).slice(-1)[0] === 'tele');
   check('scanner still open after switching', await overlayOpen());
@@ -526,7 +526,7 @@ function handleScan(body) {
   await page.click('#scan-close');
   await page.waitForTimeout(200);
   // Put the good lens back for the remaining scenarios.
-  await page.evaluate(() => localStorage.setItem('scan_camera_id', 'main'));
+  await page.evaluate(() => localStorage.setItem('maga_scan_camera_id', 'main'));
 
   // --- a code already on the list is "one more of that": the unit lands on
   // the existing row with NO dialog at all. An insumo that has already been
