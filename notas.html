@@ -57,7 +57,12 @@
   .row .body{flex:1;min-width:0}
   .row .nm{font-size:15px;font-weight:600;margin:0;word-wrap:break-word}
   .row .meta{font-size:12.5px;color:var(--muted);margin:0}
-  .addrow-btn{margin:8px 0 0}
+  .addrow{display:flex;gap:8px;margin-top:14px}
+  .addrow input[type=text]{
+    flex:1;min-width:0;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
+    border:1px solid var(--border-strong);background:var(--card);color:var(--text);
+  }
+  .addrow input.emoji{width:52px;flex:none;text-align:center;font-size:18px;padding:10px 6px}
   button.primary.full{width:100%}
   .search-hits .row .snippet{font-size:12.5px;color:var(--text);margin:2px 0 0;white-space:pre-wrap;word-wrap:break-word}
   .detail-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin:14px 0 18px}
@@ -85,6 +90,7 @@ const PAGE_LOGIN = {
 <script src="shared-menu.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
+<script src="shared-inputs.js"></script>
 <script src="shared-notes.js"></script>
 <script src="shared-pwa.js"></script>
 <script>
@@ -172,7 +178,7 @@ async function load(){
 
 function notebookRowHtml(nb){
   const info = notebookInfo(nb);
-  const icon = info.kind ? (KIND_ICON[info.kind] || "📓") : (nb.emoji || "📓");
+  const icon = info.kind ? (KIND_ICON[info.kind] || "🗒️") : (nb.emoji || "🗒️");
   const count = nb.note_count || 0;
   return '<div class="row" data-id="' + esc(nb.id) + '">' +
     '<span class="ic">' + icon + '</span>' +
@@ -206,7 +212,7 @@ async function searchHits(term){
 function noteHitRowHtml(n){
   const info = n.notebook ? notebookInfo(n.notebook) : { label: "Caderno" };
   return '<div class="row" data-notebook="' + esc(n.notebook_id) + '">' +
-    '<span class="ic">' + (info.kind ? (KIND_ICON[info.kind] || "📓") : "📓") + '</span>' +
+    '<span class="ic">' + (info.kind ? (KIND_ICON[info.kind] || "🗒️") : (info.icon || "🗒️")) + '</span>' +
     '<span class="body">' +
       '<p class="nm">' + esc(noteTitle(n)) + '</p>' +
       '<p class="meta">' + esc(info.label) + '</p>' +
@@ -245,7 +251,11 @@ async function renderList(term){
       '<input type="search" id="search" placeholder="Buscar em todas as notas…" value="' + esc(q) + '">' +
     '</div>' +
     listHtml +
-    '<button class="primary full addrow-btn" id="new-notebook">+ Novo caderno</button>';
+    '<div class="addrow">' +
+      '<input type="text" id="new-notebook-emoji" class="emoji" placeholder="🗒️">' +
+      '<input type="text" id="new-notebook-name" placeholder="Novo caderno">' +
+      '<button class="primary small" id="add-notebook-btn">+ Caderno</button>' +
+    '</div>';
 
   wireMenuButton();
 
@@ -265,21 +275,29 @@ async function renderList(term){
     row.addEventListener("click", () => openNotebook(row.dataset.notebook));
   });
 
-  document.getElementById("new-notebook").addEventListener("click", async () => {
-    const name = await promptModal("Novo caderno", "Nome", "");
-    if(name === null) return;
-    const trimmed = name.trim();
-    if(!trimmed){ alert("O nome não pode ficar vazio."); return; }
+  const addBtn = document.getElementById("add-notebook-btn");
+  const nameInput = document.getElementById("new-notebook-name");
+  const emojiInput = document.getElementById("new-notebook-emoji");
+  limitToOneEmoji(emojiInput);
+  const addNotebook = async () => {
+    const name = nameInput.value.trim();
+    if(!name){ nameInput.focus(); return; }
+    const emoji = emojiInput.value.trim();
+    addBtn.disabled = true;
     try{
-      const res = await api("notebook_create", { name: trimmed });
+      const res = await api("notebook_create", { name, emoji: emoji || undefined });
       notebooks.unshift(Object.assign({ note_count: 0 }, res.notebook));
       renderList("");
       openNotebook(res.notebook.id);
     }catch(e){
+      addBtn.disabled = false;
       if(e.unauthorized) return handleAuthError(e, load);
       listToast("Não foi possível criar o caderno", true);
     }
-  });
+  };
+  addBtn.addEventListener("click", addNotebook);
+  nameInput.addEventListener("keydown", e => { if(e.key === "Enter") addNotebook(); });
+  emojiInput.addEventListener("keydown", e => { if(e.key === "Enter") addNotebook(); });
 }
 
 // ---- notebook detail ----
@@ -290,6 +308,62 @@ const KIND_OBJ_LABEL = {
   cliente: "cliente", evento: "evento", produto: "produto", receita: "receita",
   fornecedor: "fornecedor", ingredient: "ingrediente", insumo: "insumo",
 };
+
+// Same shape as compras.html's openListEditModal -- a user-created
+// notebook's name/emoji are the two fields it owns, same as a shopping
+// list's. An object-backed notebook never reaches this: its name/emoji
+// follow its object (see notebook_rename/_set_emoji refusing otherwise).
+function openNotebookEditModal(nb){
+  const currentEmoji = nb.emoji || "";
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML =
+    '<div class="modal-card">' +
+      '<h3>Editar caderno</h3>' +
+      '<label for="edit-nb-emoji">Ícone (emoji)</label>' +
+      '<input type="text" id="edit-nb-emoji" value="' + esc(currentEmoji) + '">' +
+      '<label for="edit-nb-name">Nome</label>' +
+      '<input type="text" id="edit-nb-name" value="' + esc(nb.name || "") + '">' +
+      '<div class="modal-actions">' +
+        '<button class="cancel" id="edit-nb-cancel">Cancelar</button>' +
+        '<button class="save" id="edit-nb-save">Salvar</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(backdrop);
+
+  const close = () => {
+    backdrop.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  function onKey(e){ if(e.key === "Escape") close(); }
+  document.addEventListener("keydown", onKey);
+  backdrop.addEventListener("click", e => { if(e.target === backdrop) close(); });
+  document.getElementById("edit-nb-cancel").addEventListener("click", close);
+
+  const nameInput = document.getElementById("edit-nb-name");
+  limitToOneEmoji(document.getElementById("edit-nb-emoji"));
+  nameInput.focus();
+  nameInput.select();
+
+  document.getElementById("edit-nb-save").addEventListener("click", async () => {
+    const name = nameInput.value.trim();
+    const emoji = document.getElementById("edit-nb-emoji").value.trim();
+    if(!name){ alert("O nome não pode ficar vazio."); return; }
+    close();
+    const tasks = [];
+    if(name !== nb.name) tasks.push(api("notebook_rename", { id: nb.id, name }));
+    if(emoji !== currentEmoji) tasks.push(api("notebook_set_emoji", { id: nb.id, emoji: emoji || null }));
+    if(tasks.length === 0) return;
+    try{
+      const results = await Promise.all(tasks);
+      Object.assign(nb, results[results.length - 1].notebook);
+      openNotebook(nb.id);
+    }catch(e){
+      if(e.unauthorized) return handleAuthError(e, load);
+      listToast("Não foi possível salvar", true);
+    }
+  });
+}
 
 function openNotebook(id){
   const nb = notebooks.find(n => n.id === id);
@@ -305,7 +379,7 @@ function openNotebook(id){
       (KIND_OBJ_LABEL[info.kind] || "objeto") + ' →</a>');
   }
   if(info.kind === null && nb){
-    actions.push('<button class="primary small alt" id="rename-nb">✎ Renomear</button>');
+    actions.push('<button class="primary small alt" id="edit-nb">✎ Editar</button>');
     actions.push('<button class="primary small alt danger" id="del-nb">🗑 Remover</button>');
   }
 
@@ -317,20 +391,7 @@ function openNotebook(id){
   wireNotesPanel(root.querySelector(".notes-card"), "notebook", id);
 
   if(info.kind === null && nb){
-    document.getElementById("rename-nb").addEventListener("click", async () => {
-      const name = await promptModal("Renomear caderno", "Nome", nb.name || "");
-      if(name === null) return;
-      const trimmed = name.trim();
-      if(!trimmed){ alert("O nome não pode ficar vazio."); return; }
-      try{
-        const res = await api("notebook_rename", { id: nb.id, name: trimmed });
-        Object.assign(nb, res.notebook);
-        openNotebook(nb.id);
-      }catch(e){
-        if(e.unauthorized) return handleAuthError(e, load);
-        listToast("Não foi possível renomear", true);
-      }
-    });
+    document.getElementById("edit-nb").addEventListener("click", () => openNotebookEditModal(nb));
     document.getElementById("del-nb").addEventListener("click", async () => {
       if(!(await confirmModal('Remover o caderno "' + nb.name + '"?', "Remover"))) return;
       try{

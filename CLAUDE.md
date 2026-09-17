@@ -9,6 +9,49 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-17, newest): notas.html's default icon changed to 🗒️; user-created notebooks can now carry a custom emoji, like a shopping list
+
+Two direct asks. The 📓 icon (closed book) read wrong for a running notes
+app; 🗒️ (spiral notepad) is the more literal fit and is now used
+everywhere a notebook falls back to a default icon. Separately, a
+user-created notebook could only ever show that same default icon — no
+per-notebook identity the way `compras.html`'s shopping lists already
+have (an emoji field, settable on create and editable later).
+
+- **`shared-menu.js`'s Notas menu entry, and both default-icon fallbacks
+  in `notas.html`** (the notebook-list row and the search-hit row)
+  changed from `📓` to `🗒️`. Object-backed notebooks are unaffected —
+  they already render `KIND_ICON` (👤/🥂/🏷️/etc.), never this fallback.
+- **`firstGrapheme()`/`limitToOneEmoji()` moved from `compras.html` into
+  `shared-inputs.js`** — compras.html's shopping-list emoji field was the
+  only consumer until now; notas.html needing the exact same "truncate an
+  emoji `<input>` to one grapheme cluster, compound emoji included"
+  behavior made it a real shared function per this repo's own rule (2+
+  consumers, identical behavior), not a page-local duplicate.
+- **notas.html's "+ Novo caderno" full-width button became an inline
+  add row** (`.emoji` + name `<input>`s + a small "+ Caderno" button),
+  the same shape as `compras.html`'s own list-creation row — replacing
+  the old `promptModal()`-based name-only flow. `notebook_create` already
+  accepted an optional `emoji` field server-side (`maga-api`'s
+  `domains/notas.ts`), so this needed no backend change.
+- **The user-created notebook's "✎ Renomear" button became "✎ Editar"**,
+  opening a new `openNotebookEditModal()` — name AND emoji in one modal,
+  saved as up to two parallel calls (`notebook_rename` +
+  `notebook_set_emoji`, only the ones that actually changed), mirroring
+  `compras.html`'s `openListEditModal()` almost line for line. An
+  object-backed notebook still never gets this control — its name/emoji
+  follow its object, exactly as `notebook_rename`/`notebook_set_emoji`
+  already refuse otherwise server-side.
+- **The notebook row's icon already read `nb.emoji` when set** (this
+  existed before today, just previously unreachable since nothing could
+  ever set a custom emoji) — a custom emoji now actually shows up as the
+  row's icon the moment one is set, no rendering change needed there.
+- `test/notas.test.js` updated throughout (new add-row selectors, the new
+  edit modal, a fake `notebook_set_emoji` handler, and new assertions
+  that a custom emoji set on create is stored and rendered, and that
+  editing changes it). Full 16-file suite green.
+- **Already deployed** — pushed straight to `main`.
+
 ## Status (2026-09-17, latest of all): tarefas.html's ⭐ and notas.html's ⭐ now match — same unselected size, same selected glyph
 
 Direct ask, comparing the two "star" affordances the app now has side by
@@ -1840,8 +1883,11 @@ what that changes and what stays the same).
   `tidyShouted()`.
 - `shared-inputs.js` — the cents-first price field and digits-only
   quantity field (`wirePriceInput()`/`wireQtyInput()` and their helpers),
-  `.fields-row` layout, and the package-size unit helpers
-  (`PACK_UNITS`/`unitOptions()`/`netQtyToFields()`/`fieldsToNetQty()`).
+  `.fields-row` layout, the package-size unit helpers
+  (`PACK_UNITS`/`unitOptions()`/`netQtyToFields()`/`fieldsToNetQty()`), and
+  the one-grapheme emoji `<input>` helper (`firstGrapheme()`/
+  `limitToOneEmoji()`) shared by `compras.html`'s list emoji field and
+  `notas.html`'s notebook emoji field.
 - `shared-catalog.js`/`shared-catalog.css` — insumos/estoque-only:
   `thumbHtml()`, the ingredient-name matching helpers, and
   `ingredientModal()`. **Not loaded by eventos.html** — a cliente is a

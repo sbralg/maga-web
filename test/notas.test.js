@@ -107,6 +107,10 @@ function noteCountFor(notebookId) {
       const nb = state.notebooks.find(n => n.id === body.id);
       if (!nb) { resp = { error: 'unknown notebook' }; }
       else { nb.name = body.name; resp = { ok: true, notebook: nb }; }
+    } else if (body.action === 'notebook_set_emoji') {
+      const nb = state.notebooks.find(n => n.id === body.id);
+      if (!nb) { resp = { error: 'unknown notebook' }; }
+      else { nb.emoji = body.emoji || null; resp = { ok: true, notebook: nb }; }
     } else if (body.action === 'notebook_delete') {
       const nb = state.notebooks.find(n => n.id === body.id);
       const count = noteCountFor(body.id);
@@ -152,7 +156,7 @@ function noteCountFor(notebookId) {
 
   // --- empty state ---
   await page.goto(PAGE);
-  await page.waitForSelector('#new-notebook', { timeout: 6000 });
+  await page.waitForSelector('#add-notebook-btn', { timeout: 6000 });
   check('empty state message shown', (await page.textContent('#root')).includes('Nenhum caderno seu ainda'));
 
   // --- seed an object-backed notebook (a cliente) with one note, plus
@@ -165,7 +169,7 @@ function noteCountFor(notebookId) {
   seedObjectNotebook('produto', 'P1', 'Bolo de Cenoura'); // no notes yet
 
   await page.reload();
-  await page.waitForSelector('#new-notebook', { timeout: 6000 });
+  await page.waitForSelector('#add-notebook-btn', { timeout: 6000 });
   check('no object-backed notebooks in the default list, got: ' + await page.textContent('#root'),
     (await page.textContent('#root')).includes('Nenhum caderno seu ainda') &&
     !(await page.textContent('#root')).includes('Maria Silva') &&
@@ -179,8 +183,8 @@ function noteCountFor(notebookId) {
   await page.waitForSelector('.notes-card', { timeout: 6000 });
   check('the object link points at clientes.html',
     (await page.getAttribute('.detail-actions a', 'href') || '').includes('clientes.html?id=C1'));
-  check('no rename/delete controls for an object-backed notebook',
-    (await page.$('#rename-nb')) === null && (await page.$('#del-nb')) === null);
+  check('no edit/delete controls for an object-backed notebook',
+    (await page.$('#edit-nb')) === null && (await page.$('#del-nb')) === null);
   check('the existing note is shown', (await page.textContent('.notes-card')).includes('Prefere contato à tarde'));
 
   // --- the edit-note modal's textarea must actually be styled, not fall
@@ -199,50 +203,56 @@ function noteCountFor(notebookId) {
   await page.waitForSelector('.notes-card', { timeout: 4000 });
 
   await page.click('#back');
-  await page.waitForSelector('#new-notebook', { timeout: 6000 });
+  await page.waitForSelector('#add-notebook-btn', { timeout: 6000 });
 
-  // --- creating, renaming and deleting a USER-CREATED notebook ---
-  await page.click('#new-notebook');
-  await page.waitForSelector('.modal-card', { timeout: 4000 });
-  await page.fill('#prompt-input', 'Ideias para o cardápio de verão');
-  await page.click('#prompt-ok');
+  // --- creating (with a custom emoji), editing and deleting a
+  // USER-CREATED notebook ---
+  await page.fill('#new-notebook-emoji', '🎂');
+  await page.fill('#new-notebook-name', 'Ideias para o cardápio de verão');
+  await page.click('#add-notebook-btn');
   await page.waitForSelector('.notes-card', { timeout: 6000 });
   check('a user-created notebook has no object link',
     (await page.$('.detail-actions a')) === null);
-  check('a user-created notebook DOES have rename/delete',
-    (await page.$('#rename-nb')) !== null && (await page.$('#del-nb')) !== null);
+  check('a user-created notebook DOES have edit/delete',
+    (await page.$('#edit-nb')) !== null && (await page.$('#del-nb')) !== null);
   const userNbId = state.notebooks.find(nb => nb.name === 'Ideias para o cardápio de verão').id;
+  check('the custom emoji was saved on create',
+    state.notebooks.find(nb => nb.id === userNbId).emoji === '🎂');
 
   // --- unlike the object-backed notebooks above, a user-created one DOES
-  // show up in the default list, right alongside its note count ---
+  // show up in the default list, right alongside its note count and its
+  // custom emoji as the row icon ---
   await page.click('#back');
   await page.waitForSelector('#nb-card', { timeout: 6000 });
   check('the user-created notebook appears in the default list, got: ' + await page.textContent('#nb-card'),
     (await page.textContent('#nb-card')).includes('Ideias para o cardápio de verão'));
   check('its note count shows 0 notas', (await page.textContent('#nb-card')).includes('0 notas'));
+  check('its custom emoji is the row icon',
+    (await page.textContent('.row[data-id="' + userNbId + '"] .ic')).includes('🎂'));
   await page.click('.row[data-id="' + userNbId + '"]');
   await page.waitForSelector('.notes-card', { timeout: 6000 });
 
-  await page.click('#rename-nb');
+  // The edit modal renames AND changes the emoji in one save.
+  await page.click('#edit-nb');
   await page.waitForSelector('.modal-card', { timeout: 4000 });
-  await page.fill('#prompt-input', 'Cardápio de verão 2027');
-  await page.click('#prompt-ok');
+  await page.fill('#edit-nb-name', 'Cardápio de verão 2027');
+  await page.fill('#edit-nb-emoji', '🍰');
+  await page.click('#edit-nb-save');
   await page.waitForFunction(() => document.getElementById('nb-title').textContent.includes('2027'), null, { timeout: 6000 });
   check('the rename persisted', state.notebooks.find(nb => nb.id === userNbId).name === 'Cardápio de verão 2027');
+  check('the emoji change persisted', state.notebooks.find(nb => nb.id === userNbId).emoji === '🍰');
 
   // Delete while empty needs only ONE confirm (no notes to lose).
   await page.click('#del-nb');
   await page.waitForSelector('#confirm-ok', { timeout: 4000 });
   await page.click('#confirm-ok');
-  await page.waitForSelector('#new-notebook', { timeout: 6000 });
+  await page.waitForSelector('#add-notebook-btn', { timeout: 6000 });
   check('the empty user-created notebook was deleted with one confirm',
     !state.notebooks.some(nb => nb.id === userNbId));
 
   // Delete while it HAS notes needs the second, force confirm.
-  await page.click('#new-notebook');
-  await page.waitForSelector('.modal-card', { timeout: 4000 });
-  await page.fill('#prompt-input', 'Lista de fornecedores para testar');
-  await page.click('#prompt-ok');
+  await page.fill('#new-notebook-name', 'Lista de fornecedores para testar');
+  await page.click('#add-notebook-btn');
   await page.waitForSelector('.notes-card', { timeout: 6000 });
   await page.click('.note-add-btn');
   await page.waitForSelector('#note-new-body', { timeout: 4000 });
@@ -257,7 +267,7 @@ function noteCountFor(notebookId) {
   check('a notebook with a note refuses on the first confirm and asks again',
     state.notebooks.some(nb => nb.id === nonEmptyNbId));
   await page.click('#confirm-ok'); // the force confirm
-  await page.waitForSelector('#new-notebook', { timeout: 6000 });
+  await page.waitForSelector('#add-notebook-btn', { timeout: 6000 });
   check('the notebook and its note are both gone after the force confirm',
     !state.notebooks.some(nb => nb.id === nonEmptyNbId) &&
     !state.notes.some(n => n.notebook_id === nonEmptyNbId));

@@ -127,6 +127,29 @@ function unitOptions(selected){
     ).join("");
 }
 
+// Returns just the first grapheme cluster of a string -- unlike a raw
+// character/length check, this correctly treats a compound emoji (skin
+// tone modifiers, ZWJ sequences, flags) as a single "character" instead
+// of cutting it apart mid-sequence.
+function firstGrapheme(str){
+  if(!str) return "";
+  if(typeof Intl !== "undefined" && Intl.Segmenter){
+    const seg = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+    const first = seg.segment(str)[Symbol.iterator]().next();
+    return first.done ? "" : first.value.segment;
+  }
+  return Array.from(str)[0] || "";
+}
+
+// Live-truncates an emoji <input> to a single grapheme as the user types
+// or pastes, instead of just capping length at submit time.
+function limitToOneEmoji(input){
+  input.addEventListener("input", () => {
+    const limited = firstGrapheme(input.value);
+    if(input.value !== limited) input.value = limited;
+  });
+}
+
 // Stored pair -> the two fields, in the unit the packaging would use: 1500 g
 // comes back as 1,5 + kg, not 1500 + g. Formats through fmtStockQty rather
 // than a list-floored formatter — safe either way, since this only ever
