@@ -249,6 +249,12 @@ function updateBar(){
 // instead of a full load() round trip.
 let currentRows = [];
 
+// Search filters the pending card only, at render time -- currentRows
+// always keeps the FULL unfiltered set (redrawPendingCard()'s star-toggle
+// re-sort logic reads from it too, so it must never be mutated down to a
+// filtered subset).
+let searchTerm = "";
+
 // Same important-desc/due-date-asc-nulls-last/first_seen-asc order
 // maga-api's own `list` action already returns rows in -- re-applied
 // client-side after a star toggle so the redraw doesn't need a network
@@ -264,6 +270,12 @@ function sortPendingRows(rows){
     }
     return (a.first_seen || "").localeCompare(b.first_seen || "");
   });
+}
+
+function matchesSearch(it, term){
+  if(!term) return true;
+  const t = foldSearchText(term);
+  return foldSearchText(it.text).indexOf(t) >= 0;
 }
 
 function pendingRowsHtml(rows){
@@ -317,8 +329,15 @@ function render(rows){
     wireDoneToggle();
     return;
   }
-  root.innerHTML = header + addForm +
-    '<div class="card" id="pending-card">' + pendingRowsHtml(rows) + '</div>' + doneWrap;
+  const searchRow = '<div class="searchrow">' +
+    '<input type="search" id="search" placeholder="Buscar ações" ' +
+      'value="' + esc(searchTerm) + '">' +
+    '</div>';
+  const shown = rows.filter(it => matchesSearch(it, searchTerm));
+  const pendingHtml = shown.length === 0
+    ? '<p class="msg" id="no-match">Nenhuma ação encontrada.</p>'
+    : '<div class="card" id="pending-card">' + pendingRowsHtml(shown) + '</div>';
+  root.innerHTML = header + addForm + searchRow + pendingHtml + doneWrap;
   bar.style.display = "flex";
   root.querySelectorAll("input[data-id]").forEach(cb => cb.addEventListener("change", updateBar));
   wireHeader();
@@ -326,6 +345,11 @@ function render(rows){
   wireRowOpen();
   wireStarButtons();
   wireDoneToggle();
+  const search = document.getElementById("search");
+  search.addEventListener("input", () => {
+    searchTerm = search.value.trim();
+    redrawPendingCard();
+  });
   updateBar();
 }
 
@@ -336,15 +360,22 @@ function render(rows){
 // bulk-complete bar, since a full innerHTML replace would otherwise
 // silently uncheck them.
 function redrawPendingCard(){
-  const card = document.getElementById("pending-card");
+  const card = document.getElementById("pending-card") || document.getElementById("no-match");
   if(!card) return;
   const checkedIds = new Set(
     Array.from(card.querySelectorAll("input[data-id]:checked")).map(cb => cb.dataset.id));
-  card.innerHTML = pendingRowsHtml(currentRows);
-  card.querySelectorAll("input[data-id]").forEach(cb => {
-    cb.checked = checkedIds.has(cb.dataset.id);
-    cb.addEventListener("change", updateBar);
-  });
+  const shown = currentRows.filter(it => matchesSearch(it, searchTerm));
+  const html = shown.length === 0
+    ? '<p class="msg" id="no-match">Nenhuma ação encontrada.</p>'
+    : '<div class="card" id="pending-card">' + pendingRowsHtml(shown) + '</div>';
+  card.outerHTML = html;
+  const newCard = document.getElementById("pending-card");
+  if(newCard){
+    newCard.querySelectorAll("input[data-id]").forEach(cb => {
+      cb.checked = checkedIds.has(cb.dataset.id);
+      cb.addEventListener("change", updateBar);
+    });
+  }
   wireRowOpen();
   wireStarButtons();
   updateBar();

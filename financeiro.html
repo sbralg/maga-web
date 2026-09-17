@@ -81,6 +81,7 @@ let lancamentos = [];
 let totals = { total_receitas: 0, total_despesas: 0, saldo: 0 };
 let tipoFilter = "";
 let periodo = "all";
+let searchTerm = "";
 
 const PAGE_LOGIN = {
   title: "Financeiro",
@@ -160,6 +161,13 @@ function consumeDeepLink(){
   else listToast("Lançamento não encontrado neste período.", true);
 }
 
+function matchesSearch(l, term){
+  if(!term) return true;
+  const t = foldSearchText(term);
+  return [l.description, l.categoria].some(
+    v => foldSearchText(v).indexOf(t) >= 0);
+}
+
 function entryRowHtml(l){
   const sign = l.tipo === "receita" ? "+" : "−";
   const linkHtml = l.evento_id
@@ -185,7 +193,7 @@ function entryRowHtml(l){
 }
 
 function render(){
-  const shown = lancamentos.filter(l => !tipoFilter || l.tipo === tipoFilter);
+  const shown = lancamentos.filter(l => (!tipoFilter || l.tipo === tipoFilter) && matchesSearch(l, searchTerm));
 
   const statsHtml = '<div class="stats">' +
     '<div class="stat receitas"><p class="lbl">Receitas</p><p class="val">' + fmtMoney(totals.total_receitas) + '</p></div>' +
@@ -197,6 +205,11 @@ function render(){
     '<button type="button" class="chip' + (tipoFilter === "" ? " active" : "") + '" aria-pressed="' + (tipoFilter === "" ? "true" : "false") + '" data-tipo="">Todos</button>' +
     '<button type="button" class="chip' + (tipoFilter === "receita" ? " active" : "") + '" aria-pressed="' + (tipoFilter === "receita" ? "true" : "false") + '" data-tipo="receita">Receitas</button>' +
     '<button type="button" class="chip' + (tipoFilter === "despesa" ? " active" : "") + '" aria-pressed="' + (tipoFilter === "despesa" ? "true" : "false") + '" data-tipo="despesa">Despesas</button>' +
+  '</div>';
+
+  const searchHtml = '<div class="searchrow">' +
+    '<input type="search" id="search" placeholder="Buscar por descrição ou categoria" ' +
+      'value="' + esc(searchTerm) + '">' +
   '</div>';
 
   const periodHtml = '<div class="periodrow">' +
@@ -213,7 +226,7 @@ function render(){
         ? '<p class="msg" id="no-match">Nenhum lançamento neste filtro.</p>'
         : '<div class="card" id="list-card">' + shown.map(entryRowHtml).join("") + '</div>');
 
-  root.innerHTML = navHeader("Financeiro") + statsHtml + chips + periodHtml + rowsHtml +
+  root.innerHTML = navHeader("Financeiro") + statsHtml + chips + searchHtml + periodHtml + rowsHtml +
     '<button class="primary full addrow-btn" id="new-lanc">+ Novo lançamento</button>';
 
   wireNav();
@@ -228,12 +241,17 @@ function render(){
       redraw();
     });
   });
+  const search = document.getElementById("search");
+  search.addEventListener("input", () => {
+    searchTerm = search.value.trim();
+    redraw();
+  });
   wireRows();
   document.getElementById("new-lanc").addEventListener("click", () => openLancModal(null));
 }
 
 function redraw(){
-  const shown = lancamentos.filter(l => !tipoFilter || l.tipo === tipoFilter);
+  const shown = lancamentos.filter(l => (!tipoFilter || l.tipo === tipoFilter) && matchesSearch(l, searchTerm));
   root.querySelectorAll(".chip").forEach(chip =>
     chip.classList.toggle("active", chip.dataset.tipo === tipoFilter));
   const card = document.getElementById("list-card") || document.getElementById("no-match");

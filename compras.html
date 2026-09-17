@@ -94,6 +94,8 @@
   .addrow.additem button.primary.small{padding:10px 13px}
   .total-bar{padding:12px 4px 0;text-align:right;color:var(--muted);font-size:13px}
   .total-bar strong{color:var(--text);font-size:14px}
+  .clear-row{text-align:right;margin:6px 4px 0}
+  .clear-row .danger{color:var(--danger)}
   /* Layering, bottom to top: ordinary dialogs (100) < the camera overlay
      (110), so a scan can be started from the edit dialog < the camera
      picker (120), which is opened from inside that overlay. */
@@ -1214,6 +1216,21 @@ function insumoMeta(it){
   return bits.join(" · ");
 }
 
+// Name, brand and barcode all match, same three fields insumos.html's own
+// catalogue search checks (the barcode half only against actual typed
+// digits, since stripping non-digits out of a word leaves "" and
+// indexOf("") matches everything).
+function matchesSearch(it, term){
+  if(!term) return true;
+  const t = foldSearchText(term);
+  if(foldSearchText(it.name).indexOf(t) >= 0) return true;
+  const p = (it && it.insumo) || {};
+  const brand = (it && it.brand) || p.brand;
+  if(foldSearchText(brand).indexOf(t) >= 0) return true;
+  const digits = t.replace(/\D/g, "");
+  return digits !== "" && String(it.gtin || "").indexOf(digits) >= 0;
+}
+
 // The pencil/rescan edit dialog: same fields, same order as the scan
 // dialog (see productFieldsModal) plus an editable barcode field, since
 // unlike a fresh scan an existing row's code can be wrong and worth typing
@@ -1279,12 +1296,21 @@ function itemRowHtml(it){
 }
 
 function renderItems(list, items){
+  let searchTerm = "";
   const emoji = list.emoji || "🛒";
   const rowsHtml = items.length === 0
     ? '<p class="msg" id="items-empty">Nenhum item nesta lista ainda.</p>'
-    : '<div class="card" id="items-card">' + items.map(itemRowHtml).join("") + '</div>';
+    : '<div class="card" id="items-card">' + items.map(itemRowHtml).join("") + '</div>' +
+      // Toggled by applySearchFilter() below — never rendered by a redraw,
+      // since this screen never re-renders rows at all (see that function's
+      // own comment for why).
+      '<p class="msg" id="search-no-match" hidden>Nenhum item encontrado.</p>';
+  const searchHtml = '<div class="searchrow">' +
+    '<input type="search" id="search" placeholder="Buscar por nome, marca ou código">' +
+  '</div>';
 
-  root.innerHTML = navHeader(list.name, { backLabel: "Listas", backAction: route.navToList, icon: emoji, listTitle: "Listas de compras" }) + rowsHtml +
+  root.innerHTML = navHeader(list.name, { backLabel: "Listas", backAction: route.navToList, icon: emoji, listTitle: "Listas de compras" }) +
+    searchHtml + rowsHtml +
     '<div class="addrow additem">' +
       '<input type="text" id="new-item-name" placeholder="Novo item rápido">' +
       '<span class="field"><span class="prefix">×</span>' +
@@ -1296,9 +1322,96 @@ function renderItems(list, items){
         '<button class="primary small" id="add-item-btn">+</button>' +
       '</span>' +
     '</div>' +
-    '<div class="total-bar">Total lista: <strong id="total-all">' + fmtMoney(list.total_all) + '</strong> · No carrinho: <strong id="total-cart">' + fmtMoney(list.total_cart) + '</strong></div>';
+    '<div class="total-bar">Total lista: <strong id="total-all">' + fmtMoney(list.total_all) + '</strong> · No carrinho: <strong id="total-cart">' + fmtMoney(list.total_cart) + '</strong></div>' +
+    '<div class="clear-row">' +
+      // Hidden until at least one row is purchased — audit C13's own
+      // lesson (a permanently half-visible bulk-action bar reads as
+      // broken), kept in sync by updateClearButton() below.
+      '<button type="button" class="link danger" id="clear-purchased-btn" hidden>🗑 Limpar comprados</button>' +
+    '</div>';
 
   wireNav(route.navToList);
+
+  // Item rows carry deep per-row wiring (checkbox, qty stepper, scan-merge,
+  // edit modal), attached individually as each row is created — never as a
+  // re-render from an array. Filtering by search MUST NOT re-render the
+  // card (it would silently drop all of that wiring), so this only toggles
+  // `hidden` on the rows already in the DOM. Reads the `items` array for
+  // each row's data, not the DOM — the scanner's merge logic (rowForGtin)
+  // is entirely unaffected by what's currently hidden.
+  function applySearchFilter(){
+    let anyVisible = false;
+    root.querySelectorAll(".row[data-id]").forEach(row => {
+      const it = items.find(i => i.id === row.dataset.id);
+      const show = !it || matchesSearch(it, searchTerm);
+      row.hidden = !show;
+      if(show) anyVisible = true;
+    });
+    const noMatch = document.getElementById("search-no-match");
+    if(noMatch) noMatch.hidden = !searchTerm || anyVisible || items.length === 0;
+  }
+
+  // Independent of the search filter on purpose: "how many are checked
+  // off" is a fact about the LIST, not about what's currently visible, so
+  // searching for one thing must not hide the button for clearing another.
+  function updateClearButton(){
+    const btn = document.getElementById("clear-purchased-btn");
+    if(btn) btn.hidden = !items.some(i => i.purchased);
+  }
+
+  const searchInput = document.getElementById("search");
+  searchInput.addEventListener("input", () => {
+    searchTerm = searchInput.value.trim();
+    applySearchFilter();
+  });
+
+  document.getElementById("clear-purchased-btn").addEventListener("click", async () => {
+    const purchased = items.filter(i => i.purchased);
+    if(purchased.length === 0) return;
+    if(!(await confirmModal(
+      "Remover " + purchased.length + (purchased.length === 1 ? " item comprado" : " itens comprados") +
+        " da lista? Não dá para desfazer.",
+      "Limpar"))) return;
+    let removed = 0, failed = 0;
+    for(const it of purchased){
+      try{
+        await api("shopping_item_delete", { id: it.id });
+        const idx = items.indexOf(it);
+        if(idx !== -1) items.splice(idx, 1);
+        const row = root.querySelector('.row[data-id="' + it.id + '"]');
+        if(row) row.remove();
+        removed++;
+      }catch(err){
+        // Deliberately NOT routed through handleAuthError unless it's
+        // actually an auth failure — phase 0's A5 bug on this exact page
+        // was handleAuthError wiping the whole screen for an ordinary
+        // failed row.
+        if(err.unauthorized){ handleAuthError(err, loadLists); return; }
+        failed++;
+      }
+    }
+    if(items.length === 0){
+      const card = document.getElementById("items-card");
+      if(card){
+        const emptyMsg = document.createElement("p");
+        emptyMsg.className = "msg";
+        emptyMsg.id = "items-empty";
+        emptyMsg.textContent = "Nenhum item nesta lista ainda.";
+        card.replaceWith(emptyMsg);
+      }
+    }
+    recomputeTotals();
+    applySearchFilter();
+    updateClearButton();
+    if(failed === 0){
+      listToast(removed + (removed === 1 ? " item removido" : " itens removidos"));
+    }else{
+      // A toast claiming success while rows survive is worse than the
+      // error — the count is the whole point of this message.
+      listToast(removed + " de " + (removed + failed) + " removidos — " + failed +
+        (failed === 1 ? " falhou" : " falharam"), true);
+    }
+  });
 
   // Recomputed client-side from the already-loaded items, so any item
   // change can update the totals in place instead of refetching the list
@@ -1359,6 +1472,7 @@ function renderItems(list, items){
       it.purchased = checked;
       row.querySelector(".txt").classList.toggle("done", checked);
       recomputeTotals();
+      updateClearButton();
       try{
         await api("shopping_item_update", { id: it.id, purchased: checked });
       }catch(err){
@@ -1367,6 +1481,7 @@ function renderItems(list, items){
         e.target.checked = prevPurchased;
         row.querySelector(".txt").classList.toggle("done", prevPurchased);
         recomputeTotals();
+        updateClearButton();
         listToast("Não foi possível salvar. Tente novamente.", true);
       }
     });
@@ -1542,6 +1657,7 @@ function renderItems(list, items){
       if(idx !== -1) items.splice(idx, 1);
       row.remove();
       recomputeTotals();
+      updateClearButton();
 
       let emptyMsg = null;
       if(items.length === 0 && parent){
@@ -1560,12 +1676,14 @@ function renderItems(list, items){
         if(emptyMsg) emptyMsg.replaceWith(parent);
         parent.insertBefore(row, nextSibling);
         recomputeTotals();
+        updateClearButton();
         listToast("Não foi possível remover. Tente novamente.", true);
       }
     });
   }
 
   items.forEach(wireItemRow);
+  updateClearButton();
 
   const addBtn = document.getElementById("add-item-btn");
   const nameInput = document.getElementById("new-item-name");
