@@ -1,7 +1,7 @@
 /* shared-notes.css — the notes panel (shared-notes.js). One card, used
    identically on every object detail page and on notas.html's own
    notebook view. */
-.note-add-btn{margin:0 0 16px}
+.note-add-btn{margin:16px 0 0}
 .note-list{display:flex;flex-direction:column}
 .note-empty{font-size:13px;color:var(--muted);margin:0;padding:8px 0}
 .note-row{

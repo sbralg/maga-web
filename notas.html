@@ -311,6 +311,7 @@ function openNotebook(id){
 
   root.innerHTML = navHeader(info.label, () => { history.replaceState(null, "", "notas.html"); renderList(""); }) +
     (actions.length ? '<div class="detail-actions">' + actions.join("") + '</div>' : '') +
+    '<h3>📓 Anotações</h3>' +
     '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
   wireNav(() => { history.replaceState(null, "", "notas.html"); renderList(""); });

@@ -9,6 +9,31 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-17, latest): the shared notes panel gets a "📓 Anotações" heading, and "+ Adicionar" moves below the note list
+
+Two more direct polish requests, from a screenshot comparing the notes
+panel against the WhatsApp/Eventos/Pagamentos sections right above it on
+`clientes.html`: every other section on these detail pages has its own
+`<h3>` heading, and the notes panel was the one exception — a bare card
+with no title. Separately, "+ Adicionar" sitting above an (often
+initially empty, then growing) note list read oddly once notes existed —
+the button belongs after what it's adding to.
+
+- **`<h3>📓 Anotações</h3>` added before the `.notes-card` div** in all
+  eight consumers of `shared-notes.js` — `clientes.html`, `eventos.html`,
+  `produtos.html`, `receitas.html`, `fornecedores.html`, `insumos.html`,
+  `ingredientes.html`, and `notas.html`'s own notebook-detail view —
+  matching the exact `<h3>` pattern the WhatsApp/Eventos/Pagamentos
+  sections already use on `clientes.html`. Page-local markup, not part of
+  `shared-notes.js` itself, since the heading sits outside the panel's own
+  container and each page already builds its own surrounding HTML.
+- **`notesPanelHtml()` reordered**: the note list now renders first, the
+  "+ Adicionar" button after it. `shared-notes.css`'s `.note-add-btn`
+  margin flipped from `0 0 16px` (space below, when it was on top) to
+  `16px 0 0` (space above, now that it's on the bottom).
+- Full 16-file suite green.
+- **Already deployed** — pushed straight to `main`.
+
 ## Status (2026-09-17, later): notas.html's default list now shows only user-created notebooks — object-backed ones surface via search, not the front page
 
 Direct feedback, discussed before building: as notes accumulate across

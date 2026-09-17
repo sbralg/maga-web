@@ -26,8 +26,8 @@ function noteTitle(note){
 
 function notesPanelHtml(){
   return (
-    '<button class="primary note-add-btn">+ Adicionar</button>' +
-    '<div class="note-list"><p class="note-empty">Carregando…</p></div>'
+    '<div class="note-list"><p class="note-empty">Carregando…</p></div>' +
+    '<button class="primary note-add-btn">+ Adicionar</button>'
   );
 }
 
