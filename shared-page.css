@@ -84,8 +84,13 @@ h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
    (.cli-title/.evt-title/.forn-title/.ing-title/.prod-title/.rec-title/
    .nb-title on notas.html, which also adds its own icon wrapper and stays
    page-local since it isn't part of this migration). */
-.detail-title{font-size:16px;font-weight:650;margin:0;text-align:right;word-wrap:break-word;cursor:pointer}
-.detail-title:hover{opacity:.75}
+/* NOT a control. This used to be click-to-edit on seven pages, styled
+   with cursor:pointer to hint it — but a heading cannot be reached by
+   keyboard, is not announced as actionable, and the affordance was
+   undiscoverable anyway. Six of the seven already had an explicit
+   "✎ Editar" button in .detail-actions doing the identical thing;
+   eventos.html, which had none, gained one. */
+.detail-title{font-size:16px;font-weight:650;margin:0;text-align:right;word-wrap:break-word}
 /* notas.html's icon-plus-title wrapper (its own .nb-title/.nb-icon stay
    page-local for now — not migrated this pass — but the wrap/icon rules
    are generic enough to share once a page needs an icon next to its
@@ -124,3 +129,40 @@ h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
 /* ingredientes.html used 12px instead of 8px here — drift, not a real
    difference; standardised on 8px. */
 .addrow-btn{margin:8px 0 0}
+
+/* ---- filter chips ----
+   Four byte-identical copies lived in eventos/financeiro/ingredientes/
+   insumos before this. They are real <button>s now, not <span>s: a chip
+   changes what the list shows, which is the definition of a control, and
+   a <span> is unreachable by keyboard and invisible to a screen reader.
+   .active is the visual state and aria-pressed is its announced
+   counterpart — whatever sets one must set the other, or the ARIA state
+   lies, which is worse than having none.
+
+   The reset is what makes a <button> look like the chip it replaced;
+   shared-base.css's :focus-visible ring then lands on something that can
+   actually receive focus. */
+.chiprow{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+.chip{
+  font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;cursor:pointer;
+  background:rgba(127,127,127,.1);color:var(--muted);border:1px solid transparent;
+  transition:background-color .15s ease,color .15s ease;
+  font-family:inherit;line-height:normal;
+}
+.chip.active{background:var(--accent);color:var(--accent-text)}
+
+/* ---- cross-links ----
+   A reference to another record that the payload already carries the id
+   for. These were plain <span>s: the app knew exactly which receita a
+   produto is made from and rendered it as dead text, so the only way to
+   reach it was the menu plus a search.
+
+   A real <a href>, not a button with an onclick, so middle-click,
+   long-press and "open in new tab" all work — the same reasoning
+   shared-base.css's a.primary carries. The invisible ::after expands the
+   tap target to the 40px this codebase documents for itself without
+   moving a pixel of layout, since these sit inline in baseline-aligned
+   rows (the technique phase 1 introduced for .link). */
+.xlink{position:relative;color:var(--accent);text-decoration:none;font-weight:600}
+.xlink:hover{text-decoration:underline}
+.xlink::after{content:"";position:absolute;inset:-10px -8px}

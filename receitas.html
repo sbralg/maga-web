@@ -632,7 +632,6 @@ function renderReceita(data){
   wireNav(route.navToList);
   wireNotesPanel(root.querySelector(".notes-card"), "receita", r.id);
 
-  document.getElementById("detail-title").addEventListener("click", () => openReceitaModal(r));
   document.getElementById("edit-receita").addEventListener("click", () => openReceitaModal(r));
 
   document.getElementById("del-receita").addEventListener("click", async () => {

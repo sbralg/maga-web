@@ -289,6 +289,17 @@ function computeProdutoCost(id) {
   check('one produto exists', state.produtos.length === 1);
   check('kind badge shows manufaturado', (await page.textContent('#root')).includes('Manufaturado'));
 
+  // The receita behind a manufaturado produto used to render as dead text
+  // although its id was already in the payload — reaching it meant going
+  // out to the menu and searching by name (audit finding B6).
+  const recLink = await page.$('.kind-src .xlink');
+  check('the receita behind the produto is a real link', recLink !== null);
+  if (recLink) {
+    const href = await recLink.getAttribute('href');
+    check('and it deep-links to that receita, got: ' + href,
+      href === 'receitas.html?id=' + encodeURIComponent(state.receitas[0].id));
+  }
+
   // custo_total_por_unidade = 20 (1 item per package, no embalagem yet)
   // preco_atacado = 20 / (1-0.65) = 57.142857...
   let totalsText = norm(await page.textContent('.totals-card'));

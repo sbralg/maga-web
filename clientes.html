@@ -449,7 +449,6 @@ function renderCliente(data){
   wireNotesPanel(root.querySelector(".notes-card"), "cliente", c.id);
 
   document.getElementById("edit-cliente").addEventListener("click", () => openClienteModal(c));
-  document.getElementById("detail-title").addEventListener("click", () => openClienteModal(c));
 
   document.getElementById("del-cliente").addEventListener("click", async () => {
     if(!(await confirmModal('Remover "' + c.name + '"?', "Remover"))) return;

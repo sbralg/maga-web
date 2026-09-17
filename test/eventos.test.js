@@ -488,6 +488,26 @@ function clienteEmbed(id) {
   check('the deep link opens the right evento directly',
     (await page.textContent('#detail-title')).includes('Evento para deep link'));
 
+  // --- renaming, via a real button ---
+  // Until phase 2a this was reachable ONLY by clicking the <h2> title: an
+  // undiscoverable affordance on a heading, unreachable by keyboard, and
+  // — as this gap shows — never tested. eventos.html was the one detail
+  // page with no "✎" button at all (audit finding C7).
+  const editBtn = await page.$('#edit-evento');
+  check('the detail screen has an explicit rename button', editBtn !== null);
+  check('the title is no longer a control',
+    (await page.$eval('#detail-title', el => el.tagName)) === 'H2' &&
+    (await page.$eval('#detail-title', el => getComputedStyle(el).cursor)) !== 'pointer');
+  await page.click('#edit-evento');
+  await page.waitForSelector('#prompt-input', { timeout: 6000 });
+  await page.fill('#prompt-input', 'Evento renomeado');
+  await page.click('#prompt-ok');
+  await page.waitForFunction(
+    () => document.querySelector('#detail-title')?.textContent.includes('Evento renomeado'),
+    null, { timeout: 6000 });
+  check('renaming through the button saves the new name',
+    state.eventos.find(v => v.id === deepId).name === 'Evento renomeado');
+
   // --- cliente delete unlinks without breaking the detail sheet ---
   await page.click('#back');
   await page.waitForSelector('#new-evento', { timeout: 6000 });

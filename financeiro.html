@@ -42,13 +42,9 @@
   .stat.receitas .val{color:var(--ok)}
   .stat.despesas .val{color:var(--danger)}
 
-  .chiprow{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
-  .chip{
-    font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;cursor:pointer;
-    background:rgba(127,127,127,.1);color:var(--muted);border:1px solid transparent;
-    transition:background-color .15s ease,color .15s ease;
-  }
-  .chip.active{background:var(--accent);color:var(--accent-text)}
+  /* Tighter than the shared 14px: this page stacks a second
+     filter row (.periodrow) directly underneath. */
+  .chiprow{margin:0 0 10px}
   .periodrow{display:flex;gap:8px;margin:0 0 14px}
   .periodrow select{
     flex:1;font:inherit;font-size:14px;padding:9px 10px;border-radius:10px;
@@ -198,9 +194,9 @@ function render(){
   '</div>';
 
   const chips = '<div class="chiprow">' +
-    '<span class="chip' + (tipoFilter === "" ? " active" : "") + '" data-tipo="">Todos</span>' +
-    '<span class="chip' + (tipoFilter === "receita" ? " active" : "") + '" data-tipo="receita">Receitas</span>' +
-    '<span class="chip' + (tipoFilter === "despesa" ? " active" : "") + '" data-tipo="despesa">Despesas</span>' +
+    '<button type="button" class="chip' + (tipoFilter === "" ? " active" : "") + '" aria-pressed="' + (tipoFilter === "" ? "true" : "false") + '" data-tipo="">Todos</button>' +
+    '<button type="button" class="chip' + (tipoFilter === "receita" ? " active" : "") + '" aria-pressed="' + (tipoFilter === "receita" ? "true" : "false") + '" data-tipo="receita">Receitas</button>' +
+    '<button type="button" class="chip' + (tipoFilter === "despesa" ? " active" : "") + '" aria-pressed="' + (tipoFilter === "despesa" ? "true" : "false") + '" data-tipo="despesa">Despesas</button>' +
   '</div>';
 
   const periodHtml = '<div class="periodrow">' +
@@ -283,8 +279,8 @@ function openLancModal(l){
       '<h3>' + (isEdit ? "Editar lançamento" : "Novo lançamento") + '</h3>' +
       '<label>Tipo</label>' +
       '<div class="chiprow" id="lanc-tipo-chips">' +
-        '<span class="chip' + (!isEdit || l.tipo === "despesa" ? " active" : "") + '" data-tipo="despesa">Despesa</span>' +
-        '<span class="chip' + (isEdit && l.tipo === "receita" ? " active" : "") + '" data-tipo="receita">Receita</span>' +
+        '<button type="button" class="chip' + (!isEdit || l.tipo === "despesa" ? " active" : "") + '" aria-pressed="' + (!isEdit || l.tipo === "despesa" ? "true" : "false") + '" data-tipo="despesa">Despesa</button>' +
+        '<button type="button" class="chip' + (isEdit && l.tipo === "receita" ? " active" : "") + '" aria-pressed="' + (isEdit && l.tipo === "receita" ? "true" : "false") + '" data-tipo="receita">Receita</button>' +
       '</div>' +
       '<label for="lanc-amount">Valor</label>' +
       '<span class="field" style="width:100%;margin-bottom:14px">' +
@@ -319,7 +315,10 @@ function openLancModal(l){
   backdrop.querySelectorAll("#lanc-tipo-chips .chip").forEach(chip => {
     chip.addEventListener("click", () => {
       tipo = chip.dataset.tipo;
-      backdrop.querySelectorAll("#lanc-tipo-chips .chip").forEach(c => c.classList.toggle("active", c === chip));
+      backdrop.querySelectorAll("#lanc-tipo-chips .chip").forEach(c => {
+          c.classList.toggle("active", c === chip);
+          c.setAttribute("aria-pressed", c === chip ? "true" : "false");
+        });
     });
   });
 

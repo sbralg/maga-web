@@ -41,13 +41,6 @@
      genuinely page-specific parts stay here: h2 (the cliente-block name,
      not a detail-title), and .row's own flex layout/content classes. */
   h2{font-size:17px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
-  .chiprow{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
-  .chip{
-    font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;cursor:pointer;
-    background:rgba(127,127,127,.1);color:var(--muted);border:1px solid transparent;
-    transition:background-color .15s ease,color .15s ease;
-  }
-  .chip.active{background:var(--accent);color:var(--accent-text)}
   #done-wrap{margin-top:16px}
   #done-list{max-height:0;opacity:0;overflow:hidden;transition:max-height .3s ease,opacity .25s ease}
   #done-list.open{opacity:1}
@@ -350,10 +343,10 @@ function renderList(){
     matchesSearch(v, searchTerm) && (!statusFilter || v.status === statusFilter));
 
   const chips = '<div class="chiprow">' +
-    '<span class="chip' + (statusFilter === "" ? " active" : "") + '" data-status="">Todas</span>' +
+    '<button type="button" class="chip' + (statusFilter === "" ? " active" : "") + '" aria-pressed="' + (statusFilter === "" ? "true" : "false") + '" data-status="">Todas</button>' +
     STATUS_ORDER.map(s =>
-      '<span class="chip' + (statusFilter === s ? " active" : "") + '" data-status="' + s + '">' +
-        esc(STATUS_META[s].label) + '</span>').join("") +
+      '<button type="button" class="chip' + (statusFilter === s ? " active" : "") + '" aria-pressed="' + (statusFilter === s ? "true" : "false") + '" data-status="' + s + '">' +
+        esc(STATUS_META[s].label) + '</button>').join("") +
   '</div>';
 
   const rowsHtml = eventos.length === 0
@@ -800,6 +793,7 @@ function renderEvento(data){
         'style="border:none;background:none;color:var(--text);font:inherit;font-size:14px;text-align:right">' +
     '</div>' +
     '<div class="detail-actions">' +
+      '<button class="primary small alt" id="edit-evento">✎ Renomear</button>' +
       '<button class="primary small alt danger" id="del-evento">🗑 Remover</button>' +
     '</div>' +
     '</div>' +
@@ -824,7 +818,7 @@ function renderEvento(data){
   wireNav(route.navToList);
   wireNotesPanel(root.querySelector(".notes-card"), "evento", v.id);
 
-  document.getElementById("detail-title").addEventListener("click", async () => {
+  document.getElementById("edit-evento").addEventListener("click", async () => {
     const name = await promptModal("Editar evento", "Nome", v.name);
     if(name === null) return;
     const trimmed = name.trim();
@@ -1115,9 +1109,9 @@ function paymentConfirmModal(suggested){
         '</span>' +
         '<label>Forma</label>' +
         '<div class="chiprow" id="pay-method-chips">' +
-          '<span class="chip active" data-method="Pix">Pix</span>' +
-          '<span class="chip" data-method="Dinheiro">Dinheiro</span>' +
-          '<span class="chip" data-method="Cartão">Cartão</span>' +
+          '<button type="button" class="chip active" data-method="Pix" aria-pressed="true">Pix</button>' +
+          '<button type="button" class="chip" data-method="Dinheiro" aria-pressed="false">Dinheiro</button>' +
+          '<button type="button" class="chip" data-method="Cartão" aria-pressed="false">Cartão</button>' +
         '</div>' +
         '<label for="pay-date">Data</label>' +
         '<input type="date" id="pay-date" value="' + new Date().toISOString().slice(0,10) + '" ' +
@@ -1138,7 +1132,10 @@ function paymentConfirmModal(suggested){
     backdrop.querySelectorAll("#pay-method-chips .chip").forEach(chip => {
       chip.addEventListener("click", () => {
         method = chip.dataset.method;
-        backdrop.querySelectorAll("#pay-method-chips .chip").forEach(c => c.classList.toggle("active", c === chip));
+        backdrop.querySelectorAll("#pay-method-chips .chip").forEach(c => {
+          c.classList.toggle("active", c === chip);
+          c.setAttribute("aria-pressed", c === chip ? "true" : "false");
+        });
       });
     });
 

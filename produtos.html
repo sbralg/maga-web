@@ -571,10 +571,17 @@ function renderProduto(data){
       '<span class="lbl">Tipo</span>' +
       '<span class="pill kd-' + esc(p.kind) + '">' + esc(km.label) + '</span>' +
     '</div>' +
+    // The receita/fornecedor behind this produto was rendered as dead
+    // text although its id is right there in the payload — reaching it
+    // meant going out to the menu and searching for it by name.
     (p.kind === "manufaturado" || src
       ? '<div class="kind-src">' +
           '<span class="lbl">' + (p.kind === "manufaturado" ? "Receita" : "Fornecedor") + '</span>' +
-          '<span>' + esc(src ? src.name : "—") + '</span>' +
+          (src
+            ? '<a class="xlink" href="' +
+                (p.kind === "manufaturado" ? "receitas.html?id=" : "fornecedores.html?id=") +
+                encodeURIComponent(src.id) + '">' + esc(src.name) + ' →</a>'
+            : '<span>—</span>') +
         '</div>'
       : '') +
     (p.kind === "comprado"
@@ -598,7 +605,6 @@ function renderProduto(data){
   wireNav(route.navToList);
   wireNotesPanel(root.querySelector(".notes-card"), "produto", p.id);
 
-  document.getElementById("detail-title").addEventListener("click", () => openProdutoModal(p));
   document.getElementById("edit-produto").addEventListener("click", () => openProdutoModal(p));
 
   document.getElementById("del-produto").addEventListener("click", async () => {

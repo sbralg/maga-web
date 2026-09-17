@@ -87,13 +87,6 @@
   .kind-badge{flex:none;white-space:nowrap}
   .kind-badge.ing{background:rgba(180,83,9,.12);color:var(--warn)}
   .kind-badge.emb{background:rgba(127,127,127,.12);color:var(--muted)}
-  .chiprow{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
-  .chip{
-    font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;cursor:pointer;
-    background:rgba(127,127,127,.1);color:var(--muted);border:1px solid transparent;
-    transition:background-color .15s ease,color .15s ease;
-  }
-  .chip.active{background:var(--accent);color:var(--accent-text)}
   /* ---- insumo detail ---- */
   .ins-head{display:flex;gap:14px;align-items:flex-start;margin:0 0 14px}
   .ins-head .thumb{width:72px;height:72px}
@@ -400,9 +393,9 @@ function renderCatalog(){
         'value="' + esc(searchTerm) + '">' +
     '</div>' +
     '<div class="chiprow">' +
-      '<span class="chip' + (kindFilter === "" ? " active" : "") + '" data-kind="">Todos</span>' +
-      '<span class="chip' + (kindFilter === "ingrediente" ? " active" : "") + '" data-kind="ingrediente">🧂 Ingredientes</span>' +
-      '<span class="chip' + (kindFilter === "embalagem" ? " active" : "") + '" data-kind="embalagem">📦 Embalagens</span>' +
+      '<button type="button" class="chip' + (kindFilter === "" ? " active" : "") + '" aria-pressed="' + (kindFilter === "" ? "true" : "false") + '" data-kind="">Todos</button>' +
+      '<button type="button" class="chip' + (kindFilter === "ingrediente" ? " active" : "") + '" aria-pressed="' + (kindFilter === "ingrediente" ? "true" : "false") + '" data-kind="ingrediente">🧂 Ingredientes</button>' +
+      '<button type="button" class="chip' + (kindFilter === "embalagem" ? " active" : "") + '" aria-pressed="' + (kindFilter === "embalagem" ? "true" : "false") + '" data-kind="embalagem">📦 Embalagens</button>' +
     '</div>' +
     rowsHtml +
     '<p class="msg small">' + catalog.length + ' insumo' +

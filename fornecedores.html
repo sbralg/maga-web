@@ -343,9 +343,16 @@ function buyRowHtml(m){
   const meta = [fmtDateTime(m.occurred_at)];
   if(item.brand) meta.push(item.brand);
   if(m.note) meta.push(m.note);
+  // The insumo's own gtin is already in fornecedor_detail's payload
+  // ("insumo:insumos(gtin,name,...)"), so this row knows exactly which
+  // catalogue entry it is about — it just used to render it as dead text.
+  const nameHtml = item.gtin
+    ? '<a class="xlink" href="insumos.html?gtin=' + encodeURIComponent(item.gtin) + '">' +
+        esc(item.name || "?") + ' →</a>'
+    : esc(item.name || "?");
   return '<div class="buy-row">' +
     '<span class="body">' +
-      '<p class="txt">' + fmtStockQty(m.delta) + '× ' + esc(item.name || "?") + '</p>' +
+      '<p class="txt">' + fmtStockQty(m.delta) + '× ' + nameHtml + '</p>' +
       '<p class="meta">' + esc(meta.join(" · ")) + '</p>' +
     '</span>' +
     '<span class="amt">' + (m.unit_cost == null ? "—" : fmtMoney(m.unit_cost) + "/un") + '</span>' +
@@ -403,7 +410,6 @@ function renderFornecedor(data){
   wireNotesPanel(root.querySelector(".notes-card"), "fornecedor", f.id);
 
   document.getElementById("edit-forn").addEventListener("click", () => openFornecedorModal(f));
-  document.getElementById("detail-title").addEventListener("click", () => openFornecedorModal(f));
 
   document.getElementById("new-produto").addEventListener("click", () => {
     location.href = "produtos.html?new=1&fornecedor_id=" + encodeURIComponent(f.id);

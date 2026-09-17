@@ -58,13 +58,6 @@
   /* ---- page chrome (body/.wrap/header/.hleft/h1/h3/.subheader/
      .searchrow/.row shell/.addrow-btn/.detail-title) now lives in
      shared-page.css — see that file for what moved and why. */
-  .chiprow{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
-  .chip{
-    font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:999px;cursor:pointer;
-    background:rgba(127,127,127,.1);color:var(--muted);border:1px solid transparent;
-    transition:background-color .15s ease,color .15s ease;
-  }
-  .chip.active{background:var(--accent);color:var(--accent-text)}
   /* .row's shell (border/hover/transition) and .nm are now shared-page.css's;
      the flex layout, the 12px-14px padding (vs. the shared default of 14px
      all around) and .meta's top margin (3px here vs. the shared default of
@@ -505,9 +498,9 @@ function renderList(){
         'value="' + esc(searchTerm) + '">' +
     '</div>' +
     '<div class="chiprow">' +
-      '<span class="chip' + (kindFilter === "" ? " active" : "") + '" data-kind="">Todos</span>' +
-      '<span class="chip' + (kindFilter === "ingrediente" ? " active" : "") + '" data-kind="ingrediente">🧂 Ingredientes</span>' +
-      '<span class="chip' + (kindFilter === "embalagem" ? " active" : "") + '" data-kind="embalagem">📦 Embalagens</span>' +
+      '<button type="button" class="chip' + (kindFilter === "" ? " active" : "") + '" aria-pressed="' + (kindFilter === "" ? "true" : "false") + '" data-kind="">Todos</button>' +
+      '<button type="button" class="chip' + (kindFilter === "ingrediente" ? " active" : "") + '" aria-pressed="' + (kindFilter === "ingrediente" ? "true" : "false") + '" data-kind="ingrediente">🧂 Ingredientes</button>' +
+      '<button type="button" class="chip' + (kindFilter === "embalagem" ? " active" : "") + '" aria-pressed="' + (kindFilter === "embalagem" ? "true" : "false") + '" data-kind="embalagem">📦 Embalagens</button>' +
     '</div>' +
     rowsHtml +
     '<button class="primary full addrow-btn" id="new-ing">+ Novo ingrediente</button>' +
@@ -637,7 +630,6 @@ function renderIngrediente(i){
   wireNav(route.navToList);
   wireNotesPanel(root.querySelector(".notes-card"), "ingredient", i.id);
 
-  document.getElementById("detail-title").addEventListener("click", () => ingredienteModal(i));
   document.getElementById("edit-ing").addEventListener("click", () => ingredienteModal(i));
   document.getElementById("del-ing").addEventListener("click", () => deleteIngrediente(i));
 
