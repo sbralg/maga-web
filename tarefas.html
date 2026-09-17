@@ -627,6 +627,21 @@ function renderDoneSection(){
   updateDoneListHeight();
 }
 
+// ?id=<action id> opens that task's edit modal — the deep link the daily
+// summary and the MCP task tools can hand a person straight into. It is
+// consumed ONCE and the param is cleaned off: this page has no detail
+// SCREEN, only a modal over the list, so leaving ?id= in place would
+// reopen the modal on every subsequent re-render (a star toggle, a done
+// tick) rather than describing where you are.
+function consumeDeepLink(){
+  const wanted = new URLSearchParams(location.search).get("id");
+  if(!wanted) return;
+  history.replaceState(null, "", location.pathname);
+  const it = currentRows.find(r => r.id === wanted);
+  if(it) openEditModal(it);
+  else listToast("Tarefa não encontrada — pode já ter sido concluída.", true);
+}
+
 async function load(){
   bar.style.display = "none";
   // getPass()/showLogin() must run before any shell renders — showLogin()
@@ -642,6 +657,7 @@ async function load(){
   try{
     const data = await api("list");
     render(data.actions || []);
+    consumeDeepLink();
   }catch(e){
     if(e.unauthorized){
       localStorage.removeItem(PASS_KEY);

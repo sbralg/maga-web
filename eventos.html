@@ -155,6 +155,7 @@ const PAGE_LOGIN = {
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
 <script src="shared-nav.js"></script>
+<script src="shared-history.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
@@ -228,8 +229,8 @@ function itemSaveErrorMsg(e){
 
 function renderShell(inner, opts){
   if(opts && opts.detail){
-    root.innerHTML = navHeader("", { backLabel: "Eventos", backAction: loadEventos, listTitle: "Eventos" }) + inner;
-    wireNav(loadEventos);
+    root.innerHTML = navHeader("", { backLabel: "Eventos", backAction: route.navToList, listTitle: "Eventos" }) + inner;
+    wireNav(route.navToList);
   }else{
     root.innerHTML = navHeader("Eventos") + inner;
     wireNav(null);
@@ -238,20 +239,56 @@ function renderShell(inner, opts){
 
 // ---- list screen ----
 
+// listLoaded, not eventos.length, is what says whether the in-memory list
+// is trustworthy. showList() is what the router renders for the list screen
+// and it must NOT re-fetch on every Back — but a create/delete invalidates
+// the cache, and an account with genuinely zero eventos must not look like
+// a cache miss and re-fetch forever.
+let listLoaded = false;
+
 async function loadEventos(){
   if(!getPass()){ showLogin(); return; }
   renderShell('<p class="msg">Carregando…</p>');
   try{
     const data = await api("eventos");
     eventos = data.eventos || [];
-    const wanted = new URLSearchParams(location.search).get("id");
-    if(wanted){
-      history.replaceState(null, "", location.pathname);
-      openEvento(wanted);
-      return;
-    }
-    renderList();
+    listLoaded = true;
+    route.routeFromUrl();
   }catch(e){ handleAuthError(e, loadEventos); }
+}
+
+// Paint from memory FIRST, then reconcile in the background. Re-fetching
+// synchronously on every Back would put a "Carregando…" flash on the most
+// common gesture in the app — the exact thing phase 1 removed from every
+// page — and would cost a round trip in a supermarket aisle. Rendering
+// from cache alone would instead go stale the moment another device (or
+// the MCP tools) writes an evento. This does both: instant paint, and a
+// silent re-render only if the data actually moved.
+function showList(){
+  if(!listLoaded) return loadEventos();
+  renderList();
+  refreshList();
+}
+
+let refreshing = false;
+async function refreshList(){
+  if(refreshing) return;
+  refreshing = true;
+  try{
+    const data = await api("eventos");
+    const next = data.eventos || [];
+    if(JSON.stringify(next) !== JSON.stringify(eventos)){
+      eventos = next;
+      // Only repaint if the list is still the screen being shown — a fast
+      // Back-then-tap could have opened a detail while this was in flight.
+      if(!new URLSearchParams(location.search).get("id")) renderList();
+    }
+  }catch(_){
+    // A failed background refresh leaves the cached list on screen. There
+    // is nothing useful to tell the user: what they are looking at is the
+    // last known good state, and any action they take still reports its
+    // own failure.
+  }finally{ refreshing = false; }
 }
 
 function matchesSearch(v, term){
@@ -282,18 +319,23 @@ function fmtEventDate(dateStr){
   return prefix + " — " + weekday + ", " + dmy;
 }
 
+// A real <button>, not a <div> + click handler: this is the app's primary
+// navigation and it has to be reachable by keyboard. <button> takes
+// phrasing content only, so the old <div>/<p> wrappers are <span>s — their
+// CSS rules (.top/.date-row/.meta/.txt) select by class, not tag, so the
+// layout is unaffected.
 function eventoRowHtml(v){
   const cliName = v.cliente ? v.cliente.name : "sem cliente";
   const dateHtml = v.event_date ? '<span>' + esc(fmtEventDate(v.event_date)) + '</span>' : '<span></span>';
-  return '<div class="row" data-id="' + esc(v.id) + '">' +
-    '<div class="top">' +
+  return '<button type="button" class="row" data-id="' + esc(v.id) + '">' +
+    '<span class="top">' +
       statusPillHtml(v.status) +
-      '<p class="txt">' + esc(v.name) + '</p>' +
+      '<span class="txt">' + esc(v.name) + '</span>' +
       '<span class="price">' + fmtMoney(v.total_price) + '</span>' +
-    '</div>' +
-    '<div class="date-row">' + dateHtml + paymentPillHtml(v) + '</div>' +
-    '<div class="meta"><span>' + esc(cliName) + '</span></div>' +
-  '</div>';
+    '</span>' +
+    '<span class="date-row">' + dateHtml + paymentPillHtml(v) + '</span>' +
+    '<span class="meta"><span>' + esc(cliName) + '</span></span>' +
+  '</button>';
 }
 
 // Fully-paid, delivered events are archived: they never match the active
@@ -389,7 +431,7 @@ function redrawList(){
 
 function wireListRows(container){
   (container || root).querySelectorAll(".row[data-id]").forEach(row => {
-    row.addEventListener("click", () => openEvento(row.dataset.id));
+    row.addEventListener("click", () => route.navToDetail(row.dataset.id));
   });
 }
 
@@ -657,8 +699,8 @@ function openCreateModal(){
         cliente_id: chosenCliente.id, name, status, event_date,
       });
       close();
-      eventos = [];
-      openEvento(res.evento.id);
+      listLoaded = false;
+      route.navToDetail(res.evento.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadEventos);
       listToast("Não foi possível criar o evento", true);
@@ -673,7 +715,7 @@ async function openEvento(id){
   try{
     const data = await api("evento_detail", { id });
     if(!data.found){
-      renderShell('<p class="msg">Evento não encontrado.</p>', { detail: true });
+      route.routeNotFound("Evento não encontrado.");
       return;
     }
     renderEvento(data);
@@ -743,7 +785,7 @@ function renderEvento(data){
   const profitCls = data.profit > 0 ? "pos" : (data.profit < 0 ? "neg" : "");
   const balanceCls = data.balance_due > 0 ? "neg" : (data.balance_due < 0 ? "pos" : "");
 
-  root.innerHTML = navHeader(v.name, { backLabel: "Eventos", backAction: loadEventos, listTitle: "Eventos" }) +
+  root.innerHTML = navHeader(v.name, { backLabel: "Eventos", backAction: route.navToList, listTitle: "Eventos" }) +
     '<div class="evento-head">' +
       '<div class="pills-row">' + statusPillHtml(v.status) + paymentPillHtml(data, v.status) + '</div>' +
     '<p class="cli-lbl">Cliente</p>' +
@@ -779,7 +821,7 @@ function renderEvento(data){
     '<h3>Notas</h3>' +
     '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
-  wireNav(loadEventos);
+  wireNav(route.navToList);
   wireNotesPanel(root.querySelector(".notes-card"), "evento", v.id);
 
   document.getElementById("detail-title").addEventListener("click", async () => {
@@ -793,8 +835,8 @@ function renderEvento(data){
     if(trimmed === v.name) return;
     try{
       await api("evento_update", { id: v.id, name: trimmed });
-      eventos = [];
-      openEvento(v.id);
+      listLoaded = false;
+      route.navToDetail(v.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadEventos);
       listToast("Não foi possível salvar", true);
@@ -806,8 +848,8 @@ function renderEvento(data){
     if(!c) return;
     try{
       await api("evento_update", { id: v.id, cliente_id: c.id });
-      eventos = [];
-      openEvento(v.id);
+      listLoaded = false;
+      route.navToDetail(v.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadEventos);
       listToast("Não foi possível salvar", true);
@@ -819,8 +861,8 @@ function renderEvento(data){
     if(!status) return;
     try{
       await api("evento_update", { id: v.id, status });
-      eventos = [];
-      openEvento(v.id);
+      listLoaded = false;
+      route.navToDetail(v.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadEventos);
       listToast("Não foi possível salvar", true);
@@ -830,7 +872,7 @@ function renderEvento(data){
   document.getElementById("event-date").addEventListener("change", async (e) => {
     try{
       await api("evento_update", { id: v.id, event_date: e.target.value || null });
-      eventos = [];
+      listLoaded = false;
       listToast("Data salva");
     }catch(err){
       if(err.unauthorized) return handleAuthError(err, loadEventos);
@@ -854,9 +896,9 @@ function renderEvento(data){
           "Remover mesmo assim"))) return;
         res = await api("evento_delete", { id: v.id, force: true });
       }
-      eventos = [];
+      listLoaded = false;
       listToast("Evento removido");
-      loadEventos();
+      route.navToList();
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadEventos);
       listToast("Não foi possível remover", true);
@@ -868,8 +910,8 @@ function renderEvento(data){
     if(!added) return;
     try{
       await api("evento_item_add", Object.assign({ evento_id: v.id }, added));
-      eventos = [];
-      openEvento(v.id);
+      listLoaded = false;
+      route.navToDetail(v.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadEventos);
       listToast(itemSaveErrorMsg(e), true);
@@ -883,8 +925,8 @@ function renderEvento(data){
       if(!edited) return;
       try{
         await api("evento_item_update", Object.assign({ id }, edited));
-        eventos = [];
-        openEvento(v.id);
+        listLoaded = false;
+        route.navToDetail(v.id);
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadEventos);
         listToast(itemSaveErrorMsg(e), true);
@@ -897,8 +939,8 @@ function renderEvento(data){
       const id = btn.closest(".item-row").dataset.item;
       try{
         await api("evento_item_delete", { id });
-        eventos = [];
-        openEvento(v.id);
+        listLoaded = false;
+        route.navToDetail(v.id);
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadEventos);
         listToast("Não foi possível remover", true);
@@ -911,9 +953,9 @@ function renderEvento(data){
     if(!confirmed) return;
     try{
       await api("evento_payment_confirm", Object.assign({ evento_id: v.id }, confirmed));
-      eventos = [];
+      listLoaded = false;
       listToast("Pagamento confirmado");
-      openEvento(v.id);
+      route.navToDetail(v.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadEventos);
       listToast("Não foi possível confirmar o pagamento", true);
@@ -927,8 +969,8 @@ function renderEvento(data){
       if(!edited) return;
       try{
         await api("evento_payment_update", Object.assign({ id }, edited));
-        eventos = [];
-        openEvento(v.id);
+        listLoaded = false;
+        route.navToDetail(v.id);
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadEventos);
         listToast("Não foi possível salvar o pagamento", true);
@@ -942,8 +984,8 @@ function renderEvento(data){
       const id = btn.closest(".pay-row").dataset.pay;
       try{
         await api("evento_payment_delete", { id });
-        eventos = [];
-        openEvento(v.id);
+        listLoaded = false;
+        route.navToDetail(v.id);
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadEventos);
         listToast("Não foi possível remover", true);
@@ -1189,6 +1231,12 @@ function paymentEditModal(p){
     amountEl.select();
   });
 }
+
+const route = wireHistoryRoute({
+  param: "id",
+  openDetail: openEvento,
+  renderList: showList,
+});
 
 loadEventos();
 </script>

@@ -145,7 +145,23 @@ async function loadLancamentos(){
       saldo: data.saldo || 0,
     };
     render();
+    consumeDeepLink();
   }catch(e){ handleAuthError(e, loadLancamentos); }
+}
+
+// ?id=<lançamento id> opens that entry's edit modal — what the evento and
+// cliente cross-links point at. Consumed once and cleaned off the URL:
+// this page has no detail SCREEN, only a modal over the list, so a param
+// left in place would reopen the modal on every later re-render.
+// The list is period-filtered, so an id outside the current período is a
+// real miss and says so rather than silently doing nothing.
+function consumeDeepLink(){
+  const wanted = new URLSearchParams(location.search).get("id");
+  if(!wanted) return;
+  history.replaceState(null, "", location.pathname);
+  const l = lancamentos.find(x => x.id === wanted);
+  if(l) openLancModal(l);
+  else listToast("Lançamento não encontrado neste período.", true);
 }
 
 function entryRowHtml(l){

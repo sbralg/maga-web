@@ -164,6 +164,7 @@ const PAGE_LOGIN = {
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
 <script src="shared-nav.js"></script>
+<script src="shared-history.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-catalog.js"></script>
@@ -187,8 +188,8 @@ function renderListShell(inner){
   wireNav();
 }
 function renderDetailShell(inner, title){
-  root.innerHTML = navHeader(title || null, { backLabel: "Ingredientes", backAction: loadIngredientes, listTitle: "Ingredientes" }) + inner;
-  wireNav(loadIngredientes);
+  root.innerHTML = navHeader(title || null, { backLabel: "Ingredientes", backAction: route.navToList, listTitle: "Ingredientes" }) + inner;
+  wireNav(route.navToList);
 }
 
 // Every insumo pointing at this ingredient. The `ingredients` action only
@@ -260,14 +261,26 @@ async function fetchAll(){
 }
 
 // Refresh after a write and stay on the SAME screen — an edit made from a
-// detail sheet must not bounce the user back to the list.
+// detail sheet must not bounce the user back to the list. This always
+// re-fetches (unlike showList() below), because its whole job is to sync
+// fresh server state into memory before deciding what to show — a newly
+// created ingredient has to actually be IN `ingredientes` before
+// route.navToDetail() can find it.
 async function refreshInto(id){
   try{
     await fetchAll();
-    if(id && ingredientes.some(i => i.id === id)) openIngrediente(id);
-    else renderList();
+    listLoaded = true;
+    if(id && ingredientes.some(i => i.id === id)) route.navToDetail(id);
+    else route.navToList();
   }catch(e){ handleAuthError(e, loadIngredientes); }
 }
+
+// listLoaded, not ingredientes.length, is what says whether the in-memory
+// list is trustworthy. showList() is what the router renders for the list
+// screen and it must NOT re-fetch on every Back — but a create/delete
+// invalidates the cache, and a catalogue that is genuinely empty must not
+// look like a cache miss and re-fetch forever.
+let listLoaded = false;
 
 async function loadIngredientes(){
   // getPass() first — showLogin() takes over the whole root itself, so a
@@ -280,13 +293,42 @@ async function loadIngredientes(){
   (wanted ? renderDetailShell : renderListShell)('<p class="msg">Carregando…</p>');
   try{
     await fetchAll();
-    if(wanted){
-      history.replaceState(null, "", location.pathname);
-      openIngrediente(wanted);
-      return;
-    }
-    renderList();
+    listLoaded = true;
+    route.routeFromUrl();
   }catch(e){ handleAuthError(e, loadIngredientes); }
+}
+
+// Paint from memory FIRST, then reconcile in the background — see
+// clientes.html's showList()/refreshList() for the full reasoning (no
+// "Carregando…" flash on Back, no stale-forever list either).
+function showList(){
+  if(!listLoaded) return loadIngredientes();
+  renderList();
+  refreshList();
+}
+
+let refreshing = false;
+async function refreshList(){
+  if(refreshing) return;
+  refreshing = true;
+  try{
+    // Both arrays feed the list's rendering (insumos drive the "N insumos"/
+    // stock-badge/cost-state bits per ingredient), so both are compared —
+    // an insumo-only change (a new purchase, a relink) must still trigger
+    // a repaint even if `ingredientes` itself didn't move.
+    const before = JSON.stringify([ingredientes, insumos]);
+    await fetchAll();
+    if(JSON.stringify([ingredientes, insumos]) !== before){
+      // Only repaint if the list is still the screen being shown — a fast
+      // Back-then-tap could have opened a detail while this was in flight.
+      if(!new URLSearchParams(location.search).get("id")) renderList();
+    }
+  }catch(_){
+    // A failed background refresh leaves the cached list on screen. There
+    // is nothing useful to tell the user: what they are looking at is the
+    // last known good state, and any action they take still reports its
+    // own failure.
+  }finally{ refreshing = false; }
 }
 
 // The ingredient's own name, plus the names of the insumos under it — so
@@ -308,10 +350,14 @@ function ingredienteRowHtml(i){
   const cost = costStateFor(i);
   const bits = [count + (count === 1 ? " insumo" : " insumos")];
   if(i.base_unit) bits.push("medido em " + i.base_unit);
-  return '<div class="row" data-id="' + esc(i.id) + '">' +
+  // A real <button>, not a <div> + click handler: this is the app's
+  // primary navigation and it has to be reachable by keyboard. <button>
+  // takes phrasing content only, so the old <p>s are <span>s (blocked out
+  // by shared-page.css's .row .nm/.meta rules).
+  return '<button type="button" class="row" data-id="' + esc(i.id) + '">' +
     '<span class="body">' +
-      '<p class="nm">' + esc(i.name) + '</p>' +
-      '<p class="meta">' + esc(bits.join(" · ")) + '</p>' +
+      '<span class="nm">' + esc(i.name) + '</span>' +
+      '<span class="meta">' + esc(bits.join(" · ")) + '</span>' +
       '<span class="tagrow">' + kindBadgeHtml(i) +
         // The badge names the CONSEQUENCE ("no cost"), not the mechanism,
         // because that is what someone scanning this list is here to
@@ -322,7 +368,7 @@ function ingredienteRowHtml(i){
     '<span class="stock-badge' + (have.packages > 0 ? ' has' : '') + '">' +
       fmtStockQty(have.packages) + ' un' +
     '</span>' +
-  '</div>';
+  '</button>';
 }
 
 // Create by hand, or correct one that was. `kind`/`base_unit` are only
@@ -494,7 +540,7 @@ function redrawList(){
 
 function wireListRows(){
   root.querySelectorAll(".row[data-id]").forEach(row => {
-    row.addEventListener("click", () => openIngrediente(row.dataset.id));
+    row.addEventListener("click", () => route.navToDetail(row.dataset.id));
   });
 }
 
@@ -503,7 +549,7 @@ function wireListRows(){
 function openIngrediente(id){
   const i = ingredientes.find(x => x.id === id);
   if(!i){
-    renderDetailShell('<p class="msg">Ingrediente não encontrado.</p>');
+    route.routeNotFound("Ingrediente não encontrado.");
     return;
   }
   renderIngrediente(i);
@@ -565,7 +611,7 @@ function renderIngrediente(i){
       '<strong>custo incompleto</strong> até que uma compra seja registrada.' +
     '</p></div>';
 
-  root.innerHTML = navHeader(i.name, { backLabel: "Ingredientes", backAction: loadIngredientes, listTitle: "Ingredientes" }) +
+  root.innerHTML = navHeader(i.name, { backLabel: "Ingredientes", backAction: route.navToList, listTitle: "Ingredientes" }) +
     '<div class="card pad">' +
       '<div class="tagrow" style="margin:0 0 4px">' + kindBadgeHtml(i) + '</div>' +
       '<div class="infofield">' +
@@ -588,7 +634,7 @@ function renderIngrediente(i){
     '<h3>Notas</h3>' +
     '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
-  wireNav(loadIngredientes);
+  wireNav(route.navToList);
   wireNotesPanel(root.querySelector(".notes-card"), "ingredient", i.id);
 
   document.getElementById("detail-title").addEventListener("click", () => ingredienteModal(i));
@@ -622,7 +668,8 @@ async function deleteIngrediente(i){
     listToast(n > 0
       ? "Ingrediente removido · " + n + (n === 1 ? " insumo desvinculado" : " insumos desvinculados")
       : "Ingrediente removido");
-    loadIngredientes();
+    listLoaded = false;
+    route.navToList();
   }catch(e){
     if(e.unauthorized) return handleAuthError(e, loadIngredientes);
     if(e.badRequest && e.body && (e.body.receita_itens || e.body.produto_embalagens)){
@@ -646,6 +693,12 @@ async function deleteIngrediente(i){
     listToast("Não foi possível remover", true);
   }
 }
+
+const route = wireHistoryRoute({
+  param: "id",
+  openDetail: openIngrediente,
+  renderList: showList,
+});
 
 loadIngredientes();
 </script>

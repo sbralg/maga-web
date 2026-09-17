@@ -154,6 +154,7 @@ const PAGE_LOGIN = {
 <script src="shared-push.js"></script>
 <script src="shared-menu.js"></script>
 <script src="shared-nav.js"></script>
+<script src="shared-history.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-pwa.js"></script>
@@ -505,8 +506,11 @@ function render(data){
   wirePushOptIn();
   const prev = document.getElementById("prev-day");
   const next = document.getElementById("next-day");
-  if(prev && data.prev_date) prev.addEventListener("click", () => { currentDate = data.prev_date; load(); });
-  if(next && data.next_date) next.addEventListener("click", () => { currentDate = data.next_date; load(); });
+  // Day navigation goes through the shared router, so each day is a real
+  // history entry: hardware Back steps back a day instead of leaving the
+  // PWA, and a given day's summary can be bookmarked or shared (?date=).
+  if(prev && data.prev_date) prev.addEventListener("click", () => route.navToDetail(data.prev_date));
+  if(next && data.next_date) next.addEventListener("click", () => route.navToDetail(data.next_date));
 }
 
 async function load(){
@@ -533,7 +537,15 @@ async function load(){
   }
 }
 
-load();
+// This page routes on ?date= rather than an id: "which screen" here means
+// "which day", and today is the paramless default.
+const route = wireHistoryRoute({
+  param: "date",
+  openDetail: (date) => { currentDate = date; load(); },
+  renderList: () => { currentDate = null; load(); },
+});
+
+route.routeFromUrl();
 </script>
 </body>
 </html>

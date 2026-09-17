@@ -44,8 +44,11 @@
      all around) are page-specific and stay here. */
   .row{display:flex;align-items:center;gap:10px;padding:12px 14px}
   .body{min-width:0;flex:1}
-  .body .txt{font-size:15px;line-height:1.35;margin:0;word-wrap:break-word}
-  .body .meta{font-size:12px;color:var(--muted);margin:3px 0 0}
+  /* display:block: these are <span>s now (the row became a real <button>,
+     whose content model is phrasing-only, so no <p>), and a bare inline
+     span would sit flag+name+meta all on one line with no break. */
+  .body .txt{display:block;font-size:15px;line-height:1.35;margin:0;word-wrap:break-word}
+  .body .meta{display:block;font-size:12px;color:var(--muted);margin:3px 0 0}
   /* How many packages are in the cupboard. Zero is a real, ordinary answer
      — the insumo is in the catalogue and out of stock — so it is muted
      rather than alarming. */
@@ -221,6 +224,7 @@ const PAGE_LOGIN = {
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
 <script src="shared-nav.js"></script>
+<script src="shared-history.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
@@ -269,11 +273,18 @@ function renderCatalogShell(inner){
   wireNav();
 }
 function renderInsumoShell(inner){
-  root.innerHTML = navHeader(null, { backLabel: "Catálogo", backAction: loadCatalog, listTitle: "Insumos" }) + inner;
-  wireNav(loadCatalog);
+  root.innerHTML = navHeader(null, { backLabel: "Catálogo", backAction: route.navToList, listTitle: "Insumos" }) + inner;
+  wireNav(route.navToList);
 }
 
 // ---- catalogue screen ----
+
+// listLoaded, not catalog.length, is what says whether the in-memory list
+// is trustworthy. showList() is what the router renders for the list screen
+// and it must NOT re-fetch on every Back — but an edit invalidates the
+// cache, and a catalogue that is genuinely empty must not look like a cache
+// miss and re-fetch forever.
+let listLoaded = false;
 
 async function loadCatalog(){
   // getPass() first — showLogin() takes over the whole root itself, so a
@@ -288,15 +299,39 @@ async function loadCatalog(){
   try{
     const data = await api("insumos");
     catalog = data.insumos || [];
-    if(wanted){
-      // Consumed once: a later reload of the catalogue is a deliberate
-      // "back", not a request to reopen the same insumo forever.
-      history.replaceState(null, "", location.pathname);
-      openInsumo(wanted);
-      return;
-    }
-    renderCatalog();
+    listLoaded = true;
+    route.routeFromUrl();
   }catch(e){ handleAuthError(e, loadCatalog); }
+}
+
+// Paint from memory FIRST, then reconcile in the background — see
+// clientes.html's showList()/refreshList() for the full reasoning (no
+// "Carregando…" flash on Back, no stale-forever catalogue either).
+function showList(){
+  if(!listLoaded) return loadCatalog();
+  renderCatalog();
+  refreshList();
+}
+
+let refreshing = false;
+async function refreshList(){
+  if(refreshing) return;
+  refreshing = true;
+  try{
+    const data = await api("insumos");
+    const next = data.insumos || [];
+    if(JSON.stringify(next) !== JSON.stringify(catalog)){
+      catalog = next;
+      // Only repaint if the list is still the screen being shown — a fast
+      // Back-then-tap could have opened a detail while this was in flight.
+      if(!new URLSearchParams(location.search).get("gtin")) renderCatalog();
+    }
+  }catch(_){
+    // A failed background refresh leaves the cached list on screen. There
+    // is nothing useful to tell the user: what they are looking at is the
+    // last known good state, and any action they take still reports its
+    // own failure.
+  }finally{ refreshing = false; }
 }
 
 // Name, brand and barcode all match, because all three are things someone
@@ -330,17 +365,24 @@ function insumoRowHtml(p){
   const flag = p.off_lookup_status
     ? '<span class="flag-ic" title="Sem dados do Open Food Facts">⚠️</span>'
     : '';
-  return '<div class="row" data-gtin="' + esc(p.gtin) + '" style="cursor:pointer">' +
+  // A real <button>, not a <div> + click handler: this is the app's
+  // primary navigation and it has to be reachable by keyboard. <button>
+  // takes phrasing content only, so the old <p>s are <span>s (blocked out
+  // by shared-page.css's .row .nm/.meta rules — .txt/.meta here get the
+  // same display:block from the page-local rule below). The redundant
+  // inline cursor:pointer is dropped — shared-page.css's .row rule has set
+  // that since phase 1.
+  return '<button type="button" class="row" data-gtin="' + esc(p.gtin) + '">' +
     thumbHtml(p) +
     '<span class="body">' +
-      '<p class="txt">' + flag + esc(p.name) + '</p>' +
-      (sub ? '<p class="meta">' + esc(sub) + '</p>' : '') +
+      '<span class="txt">' + flag + esc(p.name) + '</span>' +
+      (sub ? '<span class="meta">' + esc(sub) + '</span>' : '') +
       '<span class="tagrow">' + kindBadgeHtml(p) + ingredientTagHtml(p) + '</span>' +
     '</span>' +
     '<span class="stock-badge' + (Number(p.qty) > 0 ? ' has' : '') + '">' +
       fmtStockQty(p.qty) + ' un' +
     '</span>' +
-  '</div>';
+  '</button>';
 }
 
 function renderCatalog(){
@@ -398,7 +440,7 @@ function renderCatalog(){
 
 function wireCatalogRows(){
   root.querySelectorAll(".row[data-gtin]").forEach(row => {
-    row.addEventListener("click", () => openInsumo(row.dataset.gtin));
+    row.addEventListener("click", () => route.navToDetail(row.dataset.gtin));
   });
 }
 
@@ -579,7 +621,7 @@ async function openInsumo(gtin){
   try{
     const data = await api("insumo_detail", { gtin });
     if(!data.found){
-      renderInsumoShell('<p class="msg">Insumo não encontrado.</p>');
+      route.routeNotFound("Insumo não encontrado.");
       return;
     }
     renderInsumo(data);
@@ -618,7 +660,7 @@ function renderInsumo(data){
     ? '<p class="msg small">Nenhuma movimentação de estoque ainda.</p>'
     : '<div class="card" id="mov-card">' + movements.map(movementRowHtml).join("") + '</div>';
 
-  root.innerHTML = navHeader(null, { backLabel: "Catálogo", backAction: loadCatalog, listTitle: "Insumos" }) +
+  root.innerHTML = navHeader(null, { backLabel: "Catálogo", backAction: route.navToList, listTitle: "Insumos" }) +
     '<div class="card pad">' +
       '<div class="ins-head">' +
         thumbHtml(p) +
@@ -663,7 +705,7 @@ function renderInsumo(data){
     '<h3>Notas</h3>' +
     '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
-  wireNav(loadCatalog);
+  wireNav(route.navToList);
   wireChart(prices);
   wireNotesPanel(root.querySelector(".notes-card"), "insumo", p.gtin);
 
@@ -690,8 +732,8 @@ function renderInsumo(data){
       });
       listToast("Insumo atualizado");
       // The catalogue behind this sheet is now stale in the same fields.
-      catalog = [];
-      openInsumo(p.gtin);
+      listLoaded = false;
+      route.navToDetail(p.gtin);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadCatalog);
       listToast("Não foi possível salvar", true);
@@ -709,9 +751,9 @@ function renderInsumo(data){
             ? res.insumo.ingredient.name : ""));
       // The catalogue behind this sheet now shows the wrong tag on this row,
       // and the picker's own list has a new entry and/or a stale count.
-      catalog = [];
+      listLoaded = false;
       ingredientCache = null;
-      openInsumo(p.gtin);
+      route.navToDetail(p.gtin);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadCatalog);
       listToast("Não foi possível salvar o ingrediente", true);
@@ -749,8 +791,8 @@ function renderInsumo(data){
         res = await api("insumo_delete", { gtin: p.gtin, force: true });
       }
       listToast("Insumo removido do catálogo");
-      catalog = [];
-      loadCatalog();
+      listLoaded = false;
+      route.navToList();
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadCatalog);
       listToast("Não foi possível remover", true);
@@ -767,13 +809,13 @@ function renderInsumo(data){
         // Whichever way it went, the flag (or its absence) may have
         // changed, so the catalogue behind this sheet is stale in that
         // field — same reasoning as after an edit.
-        catalog = [];
+        listLoaded = false;
         listToast(res.found
           ? "Dados atualizados do Open Food Facts"
           : (res.off_status === "not_found"
               ? "Ainda não encontrado no Open Food Facts"
               : "Não foi possível consultar agora"));
-        openInsumo(p.gtin);
+        route.navToDetail(p.gtin);
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadCatalog);
         retryBtn.disabled = false;
@@ -794,7 +836,7 @@ function renderInsumo(data){
       row.remove();
       try{
         await api("stock_movement_delete", { id: row.dataset.mov });
-        openInsumo(p.gtin);
+        route.navToDetail(p.gtin);
       }catch(e){
         parent.insertBefore(row, next);
         if(e.unauthorized) return handleAuthError(e, loadCatalog);
@@ -937,6 +979,12 @@ function insumoEditModal(p, categories){
     nameEl.select();
   });
 }
+
+const route = wireHistoryRoute({
+  param: "gtin",
+  openDetail: openInsumo,
+  renderList: showList,
+});
 
 loadCatalog();
 </script>

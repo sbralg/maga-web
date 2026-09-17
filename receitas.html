@@ -117,6 +117,7 @@ const PAGE_LOGIN = {
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
 <script src="shared-nav.js"></script>
+<script src="shared-history.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
@@ -162,8 +163,8 @@ function fmtUnitMoney(v){
 // record loads), i.e. the shell for the screen being navigated TO.
 function renderShell(inner, opts){
   if(opts && opts.detail){
-    root.innerHTML = navHeader("", { backLabel: "Receitas", backAction: loadReceitas, listTitle: "Receitas" }) + inner;
-    wireNav(loadReceitas);
+    root.innerHTML = navHeader("", { backLabel: "Receitas", backAction: route.navToList, listTitle: "Receitas" }) + inner;
+    wireNav(route.navToList);
   }else{
     root.innerHTML = navHeader("Receitas") + inner;
     wireNav(null);
@@ -172,20 +173,55 @@ function renderShell(inner, opts){
 
 // ---- list screen ----
 
+// listLoaded, not receitas.length, is what says whether the in-memory list
+// is trustworthy. showList() is what the router renders for the list screen
+// and it must NOT re-fetch on every Back — but a create/delete invalidates
+// the cache, and an account with genuinely zero receitas must not look like
+// a cache miss and re-fetch forever.
+let listLoaded = false;
+
 async function loadReceitas(){
   if(!getPass()){ showLogin(); return; }
   renderShell('<p class="msg">Carregando…</p>');
   try{
     const data = await api("receitas");
     receitas = data.receitas || [];
-    const wanted = new URLSearchParams(location.search).get("id");
-    if(wanted){
-      history.replaceState(null, "", location.pathname);
-      openReceita(wanted);
-      return;
-    }
-    renderList();
+    listLoaded = true;
+    route.routeFromUrl();
   }catch(e){ handleAuthError(e, loadReceitas); }
+}
+
+// Paint from memory FIRST, then reconcile in the background. Re-fetching
+// synchronously on every Back would put a "Carregando…" flash on the most
+// common gesture in the app — the exact thing phase 1 removed from every
+// page. Rendering from cache alone would instead go stale the moment
+// another device (or the MCP tools) writes a receita. This does both:
+// instant paint, and a silent re-render only if the data actually moved.
+function showList(){
+  if(!listLoaded) return loadReceitas();
+  renderList();
+  refreshList();
+}
+
+let refreshing = false;
+async function refreshList(){
+  if(refreshing) return;
+  refreshing = true;
+  try{
+    const data = await api("receitas");
+    const next = data.receitas || [];
+    if(JSON.stringify(next) !== JSON.stringify(receitas)){
+      receitas = next;
+      // Only repaint if the list is still the screen being shown — a fast
+      // Back-then-tap could have opened a detail while this was in flight.
+      if(!new URLSearchParams(location.search).get("id")) renderList();
+    }
+  }catch(_){
+    // A failed background refresh leaves the cached list on screen. There
+    // is nothing useful to tell the user: what they are looking at is the
+    // last known good state, and any action they take still reports its
+    // own failure.
+  }finally{ refreshing = false; }
 }
 
 function matchesSearch(r, term){
@@ -194,13 +230,17 @@ function matchesSearch(r, term){
 }
 
 function receitaRowHtml(r){
-  return '<div class="row" data-id="' + esc(r.id) + '">' +
-    '<div>' +
-      '<p class="nm">' + esc(r.name) + '</p>' +
-      '<p class="meta">' + fmtStockQty(r.yield_qty) + ' ' + esc(r.yield_unit) +
-        ' · ' + r.item_count + (r.item_count === 1 ? ' item' : ' itens') + '</p>' +
-    '</div>' +
-  '</div>';
+  // A real <button>, not a <div> + click handler: this is the app's
+  // primary navigation and it has to be reachable by keyboard. <button>
+  // takes phrasing content only, so the old <p>s (and their wrapping <div>,
+  // which carried no styling of its own) are <span>s.
+  return '<button type="button" class="row" data-id="' + esc(r.id) + '">' +
+    '<span>' +
+      '<span class="nm">' + esc(r.name) + '</span>' +
+      '<span class="meta">' + fmtStockQty(r.yield_qty) + ' ' + esc(r.yield_unit) +
+        ' · ' + r.item_count + (r.item_count === 1 ? ' item' : ' itens') + '</span>' +
+    '</span>' +
+  '</button>';
 }
 
 function renderList(){
@@ -235,7 +275,7 @@ function redrawList(){
 
 function wireListRows(){
   root.querySelectorAll(".row[data-id]").forEach(row => {
-    row.addEventListener("click", () => openReceita(row.dataset.id));
+    row.addEventListener("click", () => route.navToDetail(row.dataset.id));
   });
 }
 
@@ -322,12 +362,13 @@ function openReceitaModal(r){
         await api("receita_update", Object.assign({ id: r.id }, payload));
         close();
         listToast("Receita atualizada");
-        openReceita(r.id);
+        listLoaded = false;
+        route.navToDetail(r.id);
       }else{
         const res = await api("receita_create", payload);
         close();
-        receitas = [];
-        openReceita(res.receita.id);
+        listLoaded = false;
+        route.navToDetail(res.receita.id);
       }
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadReceitas);
@@ -469,7 +510,7 @@ async function openReceita(id){
   try{
     const data = await api("receita_detail", { id });
     if(!data.found){
-      renderShell('<p class="msg">Receita não encontrada.</p>', { detail: true });
+      route.routeNotFound("Receita não encontrada.");
       return;
     }
     renderReceita(data);
@@ -555,7 +596,7 @@ function renderReceita(data){
         'a eles (Insumos → Estoque).</p></div>'
     : '';
 
-  root.innerHTML = navHeader(r.name, { backLabel: "Receitas", backAction: loadReceitas, listTitle: "Receitas" }) +
+  root.innerHTML = navHeader(r.name, { backLabel: "Receitas", backAction: route.navToList, listTitle: "Receitas" }) +
     '<p class="rec-sub">Rende ' + fmtStockQty(r.yield_qty) + ' ' + esc(r.yield_unit) +
       (r.safety_margin_pct ? ' · margem de segurança ' + pct(r.safety_margin_pct) + '%' : '') +
       (r.prep_minutes ? ' · ' + fmtStockQty(r.prep_minutes) + ' min de preparo' : '') +
@@ -588,7 +629,7 @@ function renderReceita(data){
     '<h3>Notas</h3>' +
     '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
-  wireNav(loadReceitas);
+  wireNav(route.navToList);
   wireNotesPanel(root.querySelector(".notes-card"), "receita", r.id);
 
   document.getElementById("detail-title").addEventListener("click", () => openReceitaModal(r));
@@ -598,10 +639,10 @@ function renderReceita(data){
     if(!(await confirmModal('Remover a receita "' + r.name + '"?', "Remover"))) return;
     try{
       await api("receita_delete", { id: r.id });
-      receitas = [];
+      listLoaded = false;
       receitaListCache = null;
       listToast("Receita removida");
-      loadReceitas();
+      route.navToList();
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadReceitas);
       // The API NAMES what blocks the delete (used_by_receitas /
@@ -641,8 +682,8 @@ function renderReceita(data){
     if(!added) return;
     try{
       await api("receita_item_add", Object.assign({ receita_id: r.id }, added));
-      receitas = [];
-      openReceita(r.id);
+      listLoaded = false;
+      route.navToDetail(r.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadReceitas);
       // The one server-only check the item picker can't pre-empt: a chain
@@ -686,8 +727,8 @@ function renderCategoria(data){
         await api("produto_create", {
           name: r.name, kind: "manufaturado", receita_id: r.id, items_per_package: 1,
         });
-        receitas = [];
-        openReceita(r.id);
+        listLoaded = false;
+        route.navToDetail(r.id);
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadReceitas);
         listToast("Não foi possível criar o produto", true);
@@ -714,8 +755,8 @@ function renderCategoria(data){
     ))) return;
     try{
       await api("produto_delete", { id: lp.id });
-      receitas = [];
-      openReceita(r.id);
+      listLoaded = false;
+      route.navToDetail(r.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadReceitas);
       listToast("Não foi possível remover", true);
@@ -739,7 +780,7 @@ function renderCategoria(data){
     renderProdutoPanel(document.getElementById("rec-produto-panel"), {
       produto: pd.produto, embalagens: pd.embalagens || [], cost: pd.cost,
       incomplete: pd.incomplete || [],
-      onChanged: () => { receitas = []; openReceita(r.id); },
+      onChanged: () => { listLoaded = false; route.navToDetail(r.id); },
       onAuthError: (e) => handleAuthError(e, loadReceitas),
     });
   })();
@@ -826,8 +867,8 @@ function wireItemRowActions(data){
       if(quantity === null){ listToast("Quantidade inválida", true); return; }
       try{
         await api("receita_item_update", { id, quantity });
-        receitas = [];
-        openReceita(r.id);
+        listLoaded = false;
+        route.navToDetail(r.id);
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadReceitas);
         listToast("Não foi possível salvar", true);
@@ -840,8 +881,8 @@ function wireItemRowActions(data){
       const id = btn.closest(".item-row").dataset.item;
       try{
         await api("receita_item_delete", { id });
-        receitas = [];
-        openReceita(r.id);
+        listLoaded = false;
+        route.navToDetail(r.id);
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadReceitas);
         listToast("Não foi possível remover", true);
@@ -849,6 +890,12 @@ function wireItemRowActions(data){
     });
   });
 }
+
+const route = wireHistoryRoute({
+  param: "id",
+  openDetail: openReceita,
+  renderList: showList,
+});
 
 loadReceitas();
 </script>

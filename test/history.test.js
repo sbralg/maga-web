@@ -77,6 +77,15 @@ const CLIENTES = [
         ? { found: true, cliente: c, eventos: [], pagamentos: [],
             total_price_all: 0, total_paid_all: 0, balance_due_all: 0 }
         : { found: false, id: body.id };
+    } else if (body.action === 'shopping_lists') {
+      resp = { lists: [
+        { id: 'L1', name: 'Mercado', emoji: '🛒', item_count: 1, purchased_count: 0, total_cart: 0 },
+        { id: 'L2', name: 'Farmácia', emoji: '💊', item_count: 0, purchased_count: 0, total_cart: 0 },
+      ] };
+    } else if (body.action === 'shopping_items') {
+      resp = { items: body.list_id === 'L1'
+        ? [{ id: 'I1', name: 'Farinha', qty: 1, price: null, purchased: false, gtin: null }]
+        : [] };
     } else if (body.action === 'notebook_detail') {
       resp = { found: true, notebook: { id: 'NB1' }, notes: [] };
     } else {
@@ -156,6 +165,63 @@ const CLIENTES = [
   await page.keyboard.press('Enter');
   await page.waitForSelector('#detail-title', { timeout: 6000 });
   check('Enter on a focused row opens it', idInUrl() === 'C1');
+
+  // --- compras.html?list=, the aisle deep link ---
+  // This is the screen the audit called out as used standing in a
+  // supermarket: before this it opened purely in memory (openList(id)),
+  // so it could not be bookmarked, shared, or returned to at all.
+  await page.goto(BASE + 'compras.html');
+  await page.waitForSelector('.list-open', { timeout: 6000 });
+  check('the lists screen carries no list id', new URL(page.url()).searchParams.get('list') === null);
+
+  const opener = await page.$('.row[data-id="L1"] .list-open');
+  check('the list opener is a real button, reachable by keyboard',
+    opener !== null && (await opener.evaluate(el => el.tagName)) === 'BUTTON');
+  await opener.click();
+  await page.waitForFunction(
+    () => document.querySelector('#detail-title') || document.body.textContent.includes('Farinha'),
+    null, { timeout: 6000 });
+  check('opening a list writes ?list= into the URL',
+    new URL(page.url()).searchParams.get('list') === 'L1');
+
+  await page.goBack();
+  await page.waitForSelector('.list-open', { timeout: 6000 });
+  check('Back from a list returns to the lists screen',
+    new URL(page.url()).searchParams.get('list') === null);
+
+  await page.goto(BASE + 'compras.html?list=L2');
+  await page.waitForFunction(
+    () => document.body.textContent.includes('Farmácia'), null, { timeout: 6000 });
+  check('a cold ?list= link opens that list and keeps the param',
+    new URL(page.url()).searchParams.get('list') === 'L2');
+
+  await page.goto(BASE + 'compras.html?list=GONE');
+  await page.waitForSelector('.list-open', { timeout: 6000 });
+  check('an unknown list falls back to the lists screen with a clean URL',
+    new URL(page.url()).searchParams.get('list') === null);
+
+  // --- geometry: a <button> row must not overflow the viewport ---
+  // A row is now a real <button>, and a button's default width is
+  // shrink-to-fit rather than block. shared-page.css gives it width:100%,
+  // which is only safe because shared-base.css sets box-sizing:border-box
+  // globally — without that, width:100% plus 14px of padding would push
+  // every list 28px past the viewport. This repo has already shipped one
+  // real horizontal-overflow bug (tarefas.html, 2026-09-01) that no
+  // class-based assertion could have caught, so measure it.
+  for (const width of [360, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    for (const target of ['clientes.html', 'compras.html']) {
+      await page.goto(BASE + target);
+      await page.waitForSelector('.row', { timeout: 6000 });
+      const box = await page.evaluate(() => ({
+        scroll: document.documentElement.scrollWidth,
+        inner: window.innerWidth,
+      }));
+      check(target + ' does not scroll horizontally at ' + width +
+        'px (scrollWidth ' + box.scroll + ' vs innerWidth ' + box.inner + ')',
+        box.scroll === box.inner);
+    }
+  }
 
   await browser.close();
   server.close();

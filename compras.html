@@ -44,6 +44,13 @@
   .body .txt{font-size:15px;line-height:1.35;margin:0;word-wrap:break-word}
   .body .txt.done{text-decoration:line-through;color:var(--muted)}
   .body .meta{font-size:12px;color:var(--muted);margin:3px 0 0}
+  /* The LISTS screen's row opener is a real <button> so the shopping
+     list is reachable by keyboard; the items screen keeps <span
+     class="body"> (its row already carries its own buttons). This is the
+     button reset plus the block-out its <span> children need, scoped to
+     the tag so the two cannot collide. */
+  button.body{text-align:left;font:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer}
+  button.body .txt,button.body .meta{display:block}
   /* Quantity + price sit on their own line inside the row (the row wraps),
      indented to line up under the item name rather than under the checkbox.
      They're outside the row's <label> on purpose — inside it, a tap on an
@@ -181,6 +188,7 @@ const PAGE_LOGIN = {
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
 <script src="shared-nav.js"></script>
+<script src="shared-history.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
@@ -1069,8 +1077,8 @@ function renderListsShell(inner){
   wireNav();
 }
 function renderItemsShell(inner){
-  root.innerHTML = navHeader("", { backLabel: "Listas", backAction: loadLists, listTitle: "Listas de compras" }) + inner;
-  wireNav(loadLists);
+  root.innerHTML = navHeader("", { backLabel: "Listas", backAction: route.navToList, listTitle: "Listas de compras" }) + inner;
+  wireNav(route.navToList);
 }
 
 // ---- lists screen ----
@@ -1095,10 +1103,10 @@ function renderLists(lists){
         const emoji = l.emoji || "🛒";
         return '<div class="row" data-id="' + esc(l.id) + '">' +
           '<span class="badge">' + esc(emoji) + '</span>' +
-          '<span class="body list-open" style="cursor:pointer">' +
-            '<p class="txt">' + esc(l.name) + '</p>' +
-            '<p class="meta">' + l.purchased_count + '/' + l.item_count + ' itens · ' + fmtMoney(l.total_cart) + ' no carrinho</p>' +
-          '</span>' +
+          '<button type="button" class="body list-open">' +
+            '<span class="txt">' + esc(l.name) + '</span>' +
+            '<span class="meta">' + l.purchased_count + '/' + l.item_count + ' itens · ' + fmtMoney(l.total_cart) + ' no carrinho</span>' +
+          '</button>' +
           '<button class="icon-btn" data-action="edit" title="Editar">✎</button>' +
           '<button class="icon-btn danger" data-action="delete" title="Excluir">🗑</button>' +
         '</div>';
@@ -1115,7 +1123,7 @@ function renderLists(lists){
 
   root.querySelectorAll(".row").forEach(row => {
     const id = row.dataset.id;
-    row.querySelector(".list-open").addEventListener("click", () => openList(id));
+    row.querySelector(".list-open").addEventListener("click", () => route.navToDetail(id));
     row.querySelector('[data-action="edit"]').addEventListener("click", () => {
       const l = lists.find(x => x.id === id);
       openListEditModal(l, loadLists);
@@ -1166,7 +1174,7 @@ async function openList(id){
       api("shopping_items", { list_id: id })
     ]);
     const list = (listsData.lists || []).find(l => l.id === id);
-    if(!list){ loadLists(); return; }
+    if(!list){ route.routeNotFound("Lista não encontrada."); return; }
     currentList = list;
     renderItems(list, itemsData.items || []);
   }catch(e){ handleAuthError(e, loadLists); }
@@ -1278,7 +1286,7 @@ function renderItems(list, items){
     ? '<p class="msg" id="items-empty">Nenhum item nesta lista ainda.</p>'
     : '<div class="card" id="items-card">' + items.map(itemRowHtml).join("") + '</div>';
 
-  root.innerHTML = navHeader(list.name, { backLabel: "Listas", backAction: loadLists, icon: emoji, listTitle: "Listas de compras" }) + rowsHtml +
+  root.innerHTML = navHeader(list.name, { backLabel: "Listas", backAction: route.navToList, icon: emoji, listTitle: "Listas de compras" }) + rowsHtml +
     '<div class="addrow additem">' +
       '<input type="text" id="new-item-name" placeholder="Novo item rápido">' +
       '<span class="field"><span class="prefix">×</span>' +
@@ -1292,7 +1300,7 @@ function renderItems(list, items){
     '</div>' +
     '<div class="total-bar">Total lista: <strong id="total-all">' + fmtMoney(list.total_all) + '</strong> · No carrinho: <strong id="total-cart">' + fmtMoney(list.total_cart) + '</strong></div>';
 
-  wireNav(loadLists);
+  wireNav(route.navToList);
 
   // Recomputed client-side from the already-loaded items, so any item
   // change can update the totals in place instead of refetching the list
@@ -1817,7 +1825,20 @@ function renderItems(list, items){
   });
 }
 
-loadLists();
+// This page routes on ?list=, not ?id= — the aisle deep link. openList()
+// fetches both the lists and the items itself, so there is no cached list
+// to reconcile the way the record pages have: navToList is just loadLists.
+const route = wireHistoryRoute({
+  param: "list",
+  openDetail: openList,
+  renderList: loadLists,
+});
+
+// getPass() has to be checked here rather than inside openList(): the
+// router can go straight to the items screen on a cold deep link, which
+// would otherwise call the API with no passphrase.
+if(!getPass()) showLogin();
+else route.routeFromUrl();
 </script>
 </body>
 </html>

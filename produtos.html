@@ -86,6 +86,7 @@ const PAGE_LOGIN = {
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
 <script src="shared-nav.js"></script>
+<script src="shared-history.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
@@ -113,8 +114,8 @@ function pct(v){ return (Number(v) * 100).toLocaleString("pt-BR", { maximumFract
 // record loads), i.e. the shell for the screen being navigated TO.
 function renderShell(inner, opts){
   if(opts && opts.detail){
-    root.innerHTML = navHeader("", { backLabel: "Produtos", backAction: loadProdutos, listTitle: "Produtos" }) + inner;
-    wireNav(loadProdutos);
+    root.innerHTML = navHeader("", { backLabel: "Produtos", backAction: route.navToList, listTitle: "Produtos" }) + inner;
+    wireNav(route.navToList);
   }else{
     root.innerHTML = navHeader("Produtos") + inner;
     wireNav(null);
@@ -123,22 +124,26 @@ function renderShell(inner, opts){
 
 // ---- list screen ----
 
+// listLoaded, not produtos.length, is what says whether the in-memory list
+// is trustworthy. showList() is what the router renders for the list screen
+// and it must NOT re-fetch on every Back — but a create/delete invalidates
+// the cache, and an account with genuinely zero produtos must not look like
+// a cache miss and re-fetch forever.
+let listLoaded = false;
+
 async function loadProdutos(){
   if(!getPass()){ showLogin(); return; }
   renderShell('<p class="msg">Carregando…</p>');
   try{
     const data = await api("produtos");
     produtos = data.produtos || [];
+    listLoaded = true;
     const params = new URLSearchParams(location.search);
-    const wanted = params.get("id");
-    if(wanted){
-      history.replaceState(null, "", location.pathname);
-      openProduto(wanted);
-      return;
-    }
     // "+ Novo Produto" from a fornecedor's own page — arrives here as
     // ?new=1&fornecedor_id=<id>, opening the create modal pre-set to
-    // comprado with that fornecedor already chosen.
+    // comprado with that fornecedor already chosen. Not part of the ?id=
+    // route the shared history router owns, so it's handled first and
+    // returns before route.routeFromUrl() ever runs.
     if(params.get("new")){
       const fornecedorId = params.get("fornecedor_id");
       history.replaceState(null, "", location.pathname);
@@ -156,8 +161,41 @@ async function loadProdutos(){
       }
       return;
     }
-    renderList();
+    route.routeFromUrl();
   }catch(e){ handleAuthError(e, loadProdutos); }
+}
+
+// Paint from memory FIRST, then reconcile in the background. Re-fetching
+// synchronously on every Back would put a "Carregando…" flash on the most
+// common gesture in the app — the exact thing phase 1 removed from every
+// page. Rendering from cache alone would instead go stale the moment
+// another device (or the MCP tools) writes a produto. This does both:
+// instant paint, and a silent re-render only if the data actually moved.
+function showList(){
+  if(!listLoaded) return loadProdutos();
+  renderList();
+  refreshList();
+}
+
+let refreshing = false;
+async function refreshList(){
+  if(refreshing) return;
+  refreshing = true;
+  try{
+    const data = await api("produtos");
+    const next = data.produtos || [];
+    if(JSON.stringify(next) !== JSON.stringify(produtos)){
+      produtos = next;
+      // Only repaint if the list is still the screen being shown — a fast
+      // Back-then-tap could have opened a detail while this was in flight.
+      if(!new URLSearchParams(location.search).get("id")) renderList();
+    }
+  }catch(_){
+    // A failed background refresh leaves the cached list on screen. There
+    // is nothing useful to tell the user: what they are looking at is the
+    // last known good state, and any action they take still reports its
+    // own failure.
+  }finally{ refreshing = false; }
 }
 
 function matchesSearch(p, term){
@@ -170,13 +208,17 @@ function produtoRowHtml(p){
   const src = p.kind === "manufaturado"
     ? (p.receita && p.receita.name)
     : (p.fornecedor && p.fornecedor.name);
-  return '<div class="row" data-id="' + esc(p.id) + '">' +
-    '<div>' +
-      '<p class="nm">' + esc(p.name) + '</p>' +
-      '<p class="meta"><span class="pill kd-' + esc(p.kind) + '">' + esc(km.label) + '</span>' +
-        (src ? ' · ' + esc(src) : '') + '</p>' +
-    '</div>' +
-  '</div>';
+  // A real <button>, not a <div> + click handler: this is the app's
+  // primary navigation and it has to be reachable by keyboard. <button>
+  // takes phrasing content only, so the old <p>s (and their wrapping <div>,
+  // which carried no styling of its own) are <span>s.
+  return '<button type="button" class="row" data-id="' + esc(p.id) + '">' +
+    '<span>' +
+      '<span class="nm">' + esc(p.name) + '</span>' +
+      '<span class="meta"><span class="pill kd-' + esc(p.kind) + '">' + esc(km.label) + '</span>' +
+        (src ? ' · ' + esc(src) : '') + '</span>' +
+    '</span>' +
+  '</button>';
 }
 
 function renderList(){
@@ -211,7 +253,7 @@ function redrawList(){
 
 function wireListRows(){
   root.querySelectorAll(".row[data-id]").forEach(row => {
-    row.addEventListener("click", () => openProduto(row.dataset.id));
+    row.addEventListener("click", () => route.navToDetail(row.dataset.id));
   });
 }
 
@@ -481,12 +523,13 @@ function openProdutoModal(p, presetFornecedor){
           await api("produto_update", Object.assign({ id: p.id }, payload));
           close();
           listToast("Produto atualizado");
-          openProduto(p.id);
+          listLoaded = false;
+          route.navToDetail(p.id);
         }else{
           const res = await api("produto_create", payload);
           close();
-          produtos = [];
-          openProduto(res.produto.id);
+          listLoaded = false;
+          route.navToDetail(res.produto.id);
         }
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadProdutos);
@@ -508,7 +551,7 @@ async function openProduto(id){
   try{
     const data = await api("produto_detail", { id });
     if(!data.found){
-      renderShell('<p class="msg">Produto não encontrado.</p>', { detail: true });
+      route.routeNotFound("Produto não encontrado.");
       return;
     }
     renderProduto(data);
@@ -523,7 +566,7 @@ function renderProduto(data){
   const km = KIND_META[p.kind] || { label: p.kind };
   const src = p.kind === "manufaturado" ? p.receita : p.fornecedor;
 
-  root.innerHTML = navHeader(p.name, { backLabel: "Produtos", backAction: loadProdutos, listTitle: "Produtos" }) +
+  root.innerHTML = navHeader(p.name, { backLabel: "Produtos", backAction: route.navToList, listTitle: "Produtos" }) +
     '<div class="kind-src">' +
       '<span class="lbl">Tipo</span>' +
       '<span class="pill kd-' + esc(p.kind) + '">' + esc(km.label) + '</span>' +
@@ -552,7 +595,7 @@ function renderProduto(data){
     '<h3>Notas</h3>' +
     '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
-  wireNav(loadProdutos);
+  wireNav(route.navToList);
   wireNotesPanel(root.querySelector(".notes-card"), "produto", p.id);
 
   document.getElementById("detail-title").addEventListener("click", () => openProdutoModal(p));
@@ -562,9 +605,9 @@ function renderProduto(data){
     if(!(await confirmModal('Remover o produto "' + p.name + '"?', "Remover"))) return;
     try{
       await api("produto_delete", { id: p.id });
-      produtos = [];
+      listLoaded = false;
       listToast("Produto removido");
-      loadProdutos();
+      route.navToList();
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadProdutos);
       listToast("Não foi possível remover", true);
@@ -573,10 +616,16 @@ function renderProduto(data){
 
   renderProdutoPanel(document.getElementById("pp-panel"), {
     produto: p, embalagens, cost, incomplete,
-    onChanged: () => { produtos = []; openProduto(p.id); },
+    onChanged: () => { listLoaded = false; route.navToDetail(p.id); },
     onAuthError: (e) => handleAuthError(e, loadProdutos),
   });
 }
+
+const route = wireHistoryRoute({
+  param: "id",
+  openDetail: openProduto,
+  renderList: showList,
+});
 
 loadProdutos();
 </script>

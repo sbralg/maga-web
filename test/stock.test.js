@@ -857,8 +857,12 @@ function handleMove(body) {
   check('a deep link opens straight on the insumo, got: ' +
       await page.textContent('.ins-title .name'),
     (await page.textContent('.ins-title .name')) === 'Bolacha Maria');
-  check('and the url is cleaned up so a reload is not stuck on it',
-    !(await page.evaluate(() => location.search)));
+  // insumos.html now routes on ?gtin= (shared-history.js) instead of
+  // erasing it after opening — the param staying is the whole point (the
+  // URL is bookmarkable/reloadable and hardware Back has something to
+  // return to), so this no longer expects a blank location.search.
+  check('and the url keeps routing on the gtin, so a reload reopens the same insumo',
+    (await page.evaluate(() => location.search)) === '?gtin=7896004700236');
 
   // --- notes panel (insumo's ref is a gtin, not a uuid) ---
   await page.waitForSelector('.notes-card', { timeout: 6000 });

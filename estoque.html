@@ -56,6 +56,9 @@
      all around) are page-specific and stay here. */
   .row{display:flex;align-items:center;gap:10px;padding:12px 14px}
   .body{min-width:0;flex:1;cursor:pointer}
+  /* Not a real <button> (see stockRowHtml()'s comment), so it gets no
+     native focus ring for free — same accent outline as .icon-btn's. */
+  .body:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:8px}
   .body .txt{font-size:15px;line-height:1.35;margin:0;word-wrap:break-word}
   .body .meta{font-size:12px;color:var(--muted);margin:3px 0 0}
   /* The ingredient chip. Tappable, and it does NOT open the insumo sheet —
@@ -171,12 +174,16 @@ async function loadStock(){
     stock = data.insumos || [];
     renderStock();
     // An insumo arrived here from its detail sheet ("Ajustar no estoque"):
-    // point at the row rather than making the user find it again.
+    // point at the row rather than making the user find it again. This
+    // page has no detail screen of its own to route to — ?gtin= here is
+    // only ever a deep-link-IN, never a second screen — so unlike
+    // insumos.html/ingredientes.html it does NOT wire shared-history.js's
+    // full router. It used to erase the param with history.replaceState()
+    // right after reading it; that's dropped so the URL stays a real,
+    // reloadable/bookmarkable link to this same row instead of silently
+    // reverting to a bare list on refresh.
     const wanted = new URLSearchParams(location.search).get("gtin");
-    if(wanted){
-      history.replaceState(null, "", location.pathname);
-      focusRow(wanted);
-    }
+    if(wanted) focusRow(wanted);
   }catch(e){ handleAuthError(e, loadStock); }
 }
 
@@ -236,9 +243,15 @@ function ingredientChipHtml(p){
 function stockRowHtml(p){
   const n = qtyOf(p);
   const meta = stockMeta(p);
+  // The ROW itself stays a <div> — it also holds the stepper buttons and
+  // the ingredient chip, and a <button> cannot contain another <button>.
+  // The navigable part is [data-open] alone (it's what wireStockRow()
+  // already wires the click on), so THAT gets role="button" + tabindex so
+  // it's keyboard-reachable — see wireStockRow() for the matching Enter/
+  // Space handler.
   return '<div class="row" data-gtin="' + esc(p.gtin) + '">' +
     thumbHtml(p) +
-    '<span class="body" data-open>' +
+    '<span class="body" data-open role="button" tabindex="0">' +
       '<p class="txt">' + esc(p.name) + '</p>' +
       (meta ? '<p class="meta" data-meta>' + esc(meta) + '</p>' : '<p class="meta" data-meta></p>') +
       ingredientChipHtml(p) +
@@ -332,8 +345,14 @@ function wireStockRow(row){
   const p = stock.find(x => x.gtin === gtin);
   if(!p) return;
 
-  row.querySelector("[data-open]").addEventListener("click", () => {
-    location.href = "insumos.html?gtin=" + encodeURIComponent(gtin);
+  const openEl = row.querySelector("[data-open]");
+  const openInsumo = () => { location.href = "insumos.html?gtin=" + encodeURIComponent(gtin); };
+  openEl.addEventListener("click", openInsumo);
+  // [data-open] is a <span role="button">, not a real <button> (see
+  // stockRowHtml()'s comment for why), so it gets no native Enter/Space
+  // activation — wire it by hand.
+  openEl.addEventListener("keydown", (e) => {
+    if(e.key === "Enter" || e.key === " "){ e.preventDefault(); openInsumo(); }
   });
 
   // The chip lives inside the tap target that opens the insumo sheet, so it

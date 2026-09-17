@@ -57,7 +57,7 @@
     border:1px solid var(--border-strong);background:var(--card);color:var(--text);
   }
   .addrow input.emoji{width:52px;flex:none;text-align:center;font-size:18px;padding:10px 6px}
-  .search-hits .row .snippet{font-size:12.5px;color:var(--text);margin:2px 0 0;white-space:pre-wrap;word-wrap:break-word}
+  .search-hits .row .snippet{display:block;font-size:12.5px;color:var(--text);margin:2px 0 0;white-space:pre-wrap;word-wrap:break-word}
   .detail-actions{justify-content:flex-end}
   .card.pad{padding:16px}
 </style>
@@ -81,6 +81,7 @@ const PAGE_LOGIN = {
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
 <script src="shared-nav.js"></script>
+<script src="shared-history.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
@@ -124,7 +125,11 @@ function notebookInfo(nb){
 // Back out of an open notebook to the list — shared by the detail-loading
 // shell below (before notebooks[] is even fetched) and openNotebook()'s own
 // back button, so both go through the exact same path.
-function backToList(){ history.replaceState(null, "", "notas.html"); renderList(""); }
+// Now a thin wrapper over the shared router (shared-history.js): it used
+// to replaceState the ?id= away, which is exactly what made hardware Back
+// leave the PWA from an open notebook. Kept as a named function because
+// both shells and the detail header already reference it by name.
+function backToList(){ route.navToList(); }
 
 // renderListShell/renderDetailShell — used for every screen that isn't the
 // fully-rendered list/notebook-detail itself (the loading placeholder, the
@@ -158,11 +163,7 @@ async function load(){
   try{
     const res = await api("notebooks");
     notebooks = res.notebooks || [];
-    if(wantedId && notebooks.some(nb => nb.id === wantedId)){
-      openNotebook(wantedId);
-    }else{
-      renderList("");
-    }
+    route.routeFromUrl();
   }catch(e){
     if(e.unauthorized){
       localStorage.removeItem(PASS_KEY);
@@ -180,13 +181,16 @@ function notebookRowHtml(nb){
   const info = notebookInfo(nb);
   const icon = info.kind ? (KIND_ICON[info.kind] || "🗒️") : (nb.emoji || "🗒️");
   const count = nb.note_count || 0;
-  return '<div class="row" data-id="' + esc(nb.id) + '">' +
+  // A real <button>: this is the page's primary navigation and it has to
+  // be reachable by keyboard. No nested control inside, so the conversion
+  // is legal; <button> takes phrasing content only, hence the <span>s.
+  return '<button type="button" class="row" data-id="' + esc(nb.id) + '">' +
     '<span class="ic">' + esc(icon) + '</span>' +
     '<span class="body">' +
-      '<p class="nm">' + esc(info.label) + '</p>' +
-      '<p class="meta">' + count + (count === 1 ? " nota" : " notas") + '</p>' +
+      '<span class="nm">' + esc(info.label) + '</span>' +
+      '<span class="meta">' + count + (count === 1 ? " nota" : " notas") + '</span>' +
     '</span>' +
-  '</div>';
+  '</button>';
 }
 
 // A note whose body or title matches, across every notebook — folded
@@ -227,14 +231,14 @@ window.onNotesChanged = invalidateNotesCache;
 
 function noteHitRowHtml(n){
   const info = n.notebook ? notebookInfo(n.notebook) : { label: "Caderno" };
-  return '<div class="row" data-notebook="' + esc(n.notebook_id) + '">' +
+  return '<button type="button" class="row" data-notebook="' + esc(n.notebook_id) + '">' +
     '<span class="ic">' + esc(info.kind ? (KIND_ICON[info.kind] || "🗒️") : (info.icon || "🗒️")) + '</span>' +
     '<span class="body">' +
-      '<p class="nm">' + esc(noteTitle(n)) + '</p>' +
-      '<p class="meta">' + esc(info.label) + '</p>' +
-      '<p class="snippet">' + esc(n.body || "") + '</p>' +
+      '<span class="nm">' + esc(noteTitle(n)) + '</span>' +
+      '<span class="meta">' + esc(info.label) + '</span>' +
+      '<span class="snippet">' + esc(n.body || "") + '</span>' +
     '</span>' +
-  '</div>';
+  '</button>';
 }
 
 // renderList awaits (searchHits can hit the network whenever the cache is
@@ -309,10 +313,10 @@ async function renderList(term){
   });
 
   root.querySelectorAll(".row[data-id]").forEach(row => {
-    row.addEventListener("click", () => openNotebook(row.dataset.id));
+    row.addEventListener("click", () => route.navToDetail(row.dataset.id));
   });
   root.querySelectorAll(".row[data-notebook]").forEach(row => {
-    row.addEventListener("click", () => openNotebook(row.dataset.notebook));
+    row.addEventListener("click", () => route.navToDetail(row.dataset.notebook));
   });
 
   const addBtn = document.getElementById("add-notebook-btn");
@@ -327,8 +331,7 @@ async function renderList(term){
     try{
       const res = await api("notebook_create", { name, emoji: emoji || undefined });
       notebooks.unshift(Object.assign({ note_count: 0 }, res.notebook));
-      renderList("");
-      openNotebook(res.notebook.id);
+      route.navToDetail(res.notebook.id);
     }catch(e){
       addBtn.disabled = false;
       if(e.unauthorized) return handleAuthError(e, load);
@@ -397,7 +400,7 @@ function openNotebookEditModal(nb){
     try{
       const results = await Promise.all(tasks);
       Object.assign(nb, results[results.length - 1].notebook);
-      openNotebook(nb.id);
+      route.navToDetail(nb.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, load);
       listToast("Não foi possível salvar", true);
@@ -407,6 +410,9 @@ function openNotebookEditModal(nb){
 
 function openNotebook(id){
   const nb = notebooks.find(n => n.id === id);
+  // A stale ?id= (a bookmark to a notebook deleted from another device)
+  // used to render a blank "Caderno" screen. One app-wide treatment now.
+  if(!nb){ route.routeNotFound("Caderno não encontrado."); return; }
   const info = nb ? notebookInfo(nb) : { kind: null, label: "Caderno", href: null };
   // Same fallback chain as notebookRowHtml/noteHitRowHtml's own icon.
   const icon = info.kind ? (KIND_ICON[info.kind] || "🗒️") : (info.icon || "🗒️");
@@ -447,8 +453,7 @@ function openNotebook(id){
         }
         notebooks = notebooks.filter(n => n.id !== nb.id);
         listToast("Caderno removido");
-        history.replaceState(null, "", "notas.html");
-        renderList("");
+        route.navToList();
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, load);
         listToast("Não foi possível remover", true);
@@ -456,6 +461,14 @@ function openNotebook(id){
     });
   }
 }
+
+const route = wireHistoryRoute({
+  param: "id",
+  openDetail: openNotebook,
+  // renderList() takes a search term; the router calls it with none, and
+  // an open notebook always returns to an unfiltered list.
+  renderList: () => renderList(""),
+});
 
 load();
 </script>
