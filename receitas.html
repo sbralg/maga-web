@@ -155,11 +155,26 @@ function fmtUnitMoney(v){
   }).format(n);
 }
 
+// renderShell(): keeps the header (hamburger, back link) on screen through
+// every load instead of wiping it with a bare "Carregando…" — see
+// preferencias.html's own renderShell() for the same reasoning. opts.detail
+// renders the DETAIL shell (back link to Receitas, title empty until the
+// record loads), i.e. the shell for the screen being navigated TO.
+function renderShell(inner, opts){
+  if(opts && opts.detail){
+    root.innerHTML = navHeader("", { backLabel: "Receitas", backAction: loadReceitas, listTitle: "Receitas" }) + inner;
+    wireNav(loadReceitas);
+  }else{
+    root.innerHTML = navHeader("Receitas") + inner;
+    wireNav(null);
+  }
+}
+
 // ---- list screen ----
 
 async function loadReceitas(){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
   if(!getPass()){ showLogin(); return; }
+  renderShell('<p class="msg">Carregando…</p>');
   try{
     const data = await api("receitas");
     receitas = data.receitas || [];
@@ -287,11 +302,12 @@ function openReceitaModal(r){
   backdrop.addEventListener("click", e => { if(e.target === backdrop) close(); });
   backdrop.querySelector("#rec-cancel").addEventListener("click", close);
 
+  const nameEl = backdrop.querySelector("#rec-name-i");
   backdrop.querySelector("#rec-ok").addEventListener("click", async () => {
-    const name = backdrop.querySelector("#rec-name-i").value.trim();
-    if(!name){ alert("O nome não pode ficar vazio."); return; }
+    const name = nameEl.value.trim();
+    if(!name){ fieldError(nameEl, "O nome não pode ficar vazio."); return; }
     const yieldQty = parseQtyInput(yieldEl.value);
-    if(yieldQty === null){ alert("Rendimento inválido."); return; }
+    if(yieldQty === null){ fieldError(yieldEl, "Rendimento inválido."); return; }
     const marginRaw = parseQtyInput(marginEl.value);
     const payload = {
       name,
@@ -426,7 +442,7 @@ async function receitaItemPickerModal(currentReceitaId){
       card.querySelector("#qty-back").addEventListener("click", drawPickStep);
       const ok = () => {
         const quantity = parseQtyInput(qtyEl.value);
-        if(quantity === null){ alert("Quantidade inválida."); return; }
+        if(quantity === null){ fieldError(qtyEl, "Quantidade inválida."); return; }
         close({
           kind,
           ingredient_id: kind === "ingrediente" ? picked.id : undefined,
@@ -449,12 +465,11 @@ async function receitaItemPickerModal(currentReceitaId){
 // ---- detail screen ----
 
 async function openReceita(id){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
+  renderShell('<p class="msg">Carregando…</p>', { detail: true });
   try{
     const data = await api("receita_detail", { id });
     if(!data.found){
-      root.innerHTML = navHeader("", { backLabel: "Receitas", listTitle: "Receitas" }) + '<p class="msg">Receita não encontrada.</p>';
-      wireNav(loadReceitas);
+      renderShell('<p class="msg">Receita não encontrada.</p>', { detail: true });
       return;
     }
     renderReceita(data);
@@ -604,8 +619,15 @@ function renderReceita(data){
         );
         return;
       }
-      listToast(e.badRequest
-        ? "Esta receita está em uso — não é possível remover."
+      // This branch only runs when the 400 ISN'T the "em uso" case above
+      // (blockers.length === 0) — the one real possibility left is that the
+      // receita was already removed elsewhere (e.g. another tab) before
+      // this delete reached the server, so "unknown receita" gets its own
+      // honest message instead of the old, always-generic fallback, which
+      // is what the CLAUDE.md task note flagged: this catch KNOWS the
+      // server rejected the request and used to throw that reason away.
+      listToast(e.badRequest && b.error === "unknown receita"
+        ? "Esta receita já foi removida (talvez em outra aba)."
         : "Não foi possível remover", true);
     }
   });
@@ -623,7 +645,14 @@ function renderReceita(data){
       openReceita(r.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadReceitas);
-      listToast(e.badRequest ? "Não foi possível adicionar (verifique o item)" : "Não foi possível adicionar", true);
+      // The one server-only check the item picker can't pre-empt: a chain
+      // of sub-receitas that would loop back on itself (the picker only
+      // filters out the CURRENT receita referencing itself directly).
+      const b2 = e.body || {};
+      const msg = e.badRequest && b2.error === "would create a cyclic recipe reference"
+        ? "Isso faria a receita depender dela mesma (por uma cadeia de sub-receitas) — não é possível adicionar."
+        : (e.badRequest ? "Não foi possível adicionar (verifique o item)" : "Não foi possível adicionar");
+      listToast(msg, true);
     }
   });
   wireItemRowActions(data);

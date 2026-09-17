@@ -85,7 +85,7 @@ async function embalagemPickerModal(){
       card.querySelector("#emb-back").addEventListener("click", drawPick);
       const ok = () => {
         const quantity = parseQtyInput(qtyEl.value);
-        if(quantity === null){ alert("Quantidade inválida."); return; }
+        if(quantity === null){ fieldError(qtyEl, "Quantidade inválida."); return; }
         close({ ingredient_id: picked.id, quantity });
       };
       card.querySelector("#emb-ok").addEventListener("click", ok);
@@ -179,7 +179,13 @@ function renderProdutoPanel(containerEl, { produto, embalagens, cost, incomplete
       onChanged();
     }catch(e){
       if(e.unauthorized && onAuthError) return onAuthError(e);
-      listToast("Não foi possível adicionar", true);
+      // The one server-only check the picker can't pre-empt: the embalagem
+      // ingredient was removed (elsewhere) between opening the picker and
+      // confirming it.
+      const b = e.body || {};
+      listToast(e.badRequest && b.error === "unknown ingredient_id"
+        ? "Esse ingrediente de embalagem não existe mais — escolha outro."
+        : "Não foi possível adicionar", true);
     }
   });
   containerEl.querySelectorAll("[data-edit-emb]").forEach(btn => {

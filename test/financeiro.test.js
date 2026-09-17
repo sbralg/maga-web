@@ -121,6 +121,10 @@ function totalsFor(rows) {
   // number; normalize it so plain-space checks aren't fooled by an
   // invisible character mismatch.
   const norm = (s) => s.replace(/ /g, ' ');
+  // Regression guard for the alert()->fieldError() conversion: a native
+  // dialog anywhere in this run means a validation path still uses alert().
+  let dialogFired = false;
+  page.on('dialog', async (d) => { dialogFired = true; await d.dismiss(); });
 
   await ctx.addInitScript(() => { try { localStorage.setItem('checklist_pass', 'x'); } catch (_) {} });
   await page.goto(PAGE);
@@ -141,9 +145,29 @@ function totalsFor(rows) {
   check('the type defaults to despesa',
     await page.locator('#lanc-tipo-chips .chip[data-tipo="despesa"]').evaluate(
       el => el.classList.contains('active')));
+
+  // Regression: empty amount, empty description, and a cleared date are
+  // all live fields — the fieldError() case, one at a time as each is fixed.
+  await page.click('#lanc-ok');
+  await page.waitForSelector('#field-error-lanc-amount', { timeout: 6000 });
+  check('empty amount shows a field error under #lanc-amount',
+    (await page.textContent('#field-error-lanc-amount')).includes('Informe um valor válido'));
+
   await page.fill('#lanc-amount', '2590');
+  await page.click('#lanc-ok');
+  await page.waitForSelector('#field-error-lanc-desc', { timeout: 6000 });
+  check('empty description shows a field error under #lanc-desc',
+    (await page.textContent('#field-error-lanc-desc')).includes('descrição não pode ficar vazia'));
+
   await page.fill('#lanc-categoria', 'ingredientes');
   await page.fill('#lanc-desc', 'Farinha e açúcar');
+  await page.fill('#lanc-date', '');
+  await page.click('#lanc-ok');
+  await page.waitForSelector('#field-error-lanc-date', { timeout: 6000 });
+  check('an emptied date shows a field error under #lanc-date',
+    (await page.textContent('#field-error-lanc-date')).includes('Informe a data'));
+
+  await page.fill('#lanc-date', new Date().toISOString().slice(0, 10));
   await page.click('#lanc-ok');
   await page.waitForFunction(() => document.querySelectorAll('.entry').length === 2, null, { timeout: 6000 });
   check('a standalone despesa was created', state.lancamentos.length === 2);
@@ -202,6 +226,8 @@ function totalsFor(rows) {
   await page.selectOption('#periodo', 'this');
   await page.waitForSelector('.msg, .entry', { timeout: 6000 });
   check('changing período does not error', errors.length === 0);
+
+  check('no native alert()/confirm()/prompt() dialog fired anywhere in this run', !dialogFired);
 
   await page.screenshot({ path: path.join(SHOTS, 'financeiro.png'), fullPage: true });
   await browser.close();

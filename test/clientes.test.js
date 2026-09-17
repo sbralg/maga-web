@@ -176,6 +176,10 @@ function handleNotesAction(body) {
 
   const check = (label, cond) => { if (!cond) failures.push('FAIL: ' + label); };
   const norm = (s) => s.replace(/ /g, ' ');
+  // Regression guard for the alert()->fieldError() conversion: a native
+  // dialog anywhere in this run means a validation path still uses alert().
+  let dialogFired = false;
+  page.on('dialog', async (d) => { dialogFired = true; await d.dismiss(); });
 
   await ctx.addInitScript(() => { try { localStorage.setItem('checklist_pass', 'x'); } catch (_) {} });
   await page.goto(PAGE);
@@ -186,6 +190,13 @@ function handleNotesAction(body) {
   // --- create a full-field cliente ---
   await page.click('#new-cliente');
   await page.waitForSelector('#cli-name', { timeout: 6000 });
+
+  // Regression: an empty name is the fieldError() case.
+  await page.click('#cli-ok');
+  await page.waitForSelector('#field-error-cli-name', { timeout: 6000 });
+  check('empty cliente name shows a field error under #cli-name',
+    (await page.textContent('#field-error-cli-name')).includes('nome não pode ficar vazio'));
+
   await page.fill('#cli-name', 'Maria Silva');
   await page.fill('#cli-org', 'Doces da Maria');
   await page.fill('#cli-phone', '11994452426');
@@ -368,6 +379,8 @@ function handleNotesAction(body) {
   await page.click('#confirm-ok');
   await page.waitForFunction(() => document.querySelector('.notes-card .note-empty'), null, { timeout: 6000 });
   check('the note was deleted', state.notes.length === 0);
+
+  check('no native alert()/confirm()/prompt() dialog fired anywhere in this run', !dialogFired);
 
   await page.screenshot({ path: path.join(SHOTS, 'cliente_detalhe.png'), fullPage: true });
   await browser.close();

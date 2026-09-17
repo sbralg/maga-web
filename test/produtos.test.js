@@ -242,6 +242,10 @@ function computeProdutoCost(id) {
 
   const check = (label, cond) => { if (!cond) failures.push('FAIL: ' + label); };
   const norm = (s) => s.replace(/ /g, ' ');
+  // Regression guard for the alert()->fieldError() conversion: a native
+  // dialog anywhere in this run means a validation path still uses alert().
+  let dialogFired = false;
+  page.on('dialog', async (d) => { dialogFired = true; await d.dismiss(); });
 
   await ctx.addInitScript(() => { try { localStorage.setItem('checklist_pass', 'x'); } catch (_) {} });
 
@@ -258,7 +262,23 @@ function computeProdutoCost(id) {
   // --- manufaturado produto: costs itself via the recipe ---
   await page.click('#new-produto');
   await page.waitForSelector('#pr-name-i', { timeout: 6000 });
+
+  // Regression: an empty name (a live text field) is the fieldError() case.
+  await page.click('#pr-ok');
+  await page.waitForSelector('#field-error-pr-name-i', { timeout: 6000 });
+  check('empty produto name shows a field error under #pr-name-i',
+    (await page.textContent('#field-error-pr-name-i')).includes('nome não pode ficar vazio'));
+
   await page.fill('#pr-name-i', 'Bolo de Cacau (venda)');
+
+  // Regression: manufaturado with no receita chosen — a picker button, not
+  // a text field, is the fieldError()-on-a-button case (like eventos.html's
+  // cliente picker).
+  await page.click('#pr-ok');
+  await page.waitForSelector('#field-error-pr-source', { timeout: 6000 });
+  check('missing receita shows a field error under #pr-source',
+    (await page.textContent('#field-error-pr-source')).includes('Escolha uma receita'));
+
   await page.click('#pr-source');
   await page.waitForSelector('.pick-opt:has-text("Bolo de Cacau")', { timeout: 6000 });
   await page.click('.pick-opt:has-text("Bolo de Cacau")');
@@ -399,6 +419,8 @@ function computeProdutoCost(id) {
     state.notes.some(n => n.body === 'Cliente pediu embalagem reforçada'));
   check('the notebook is object-backed to this produto',
     state.notebooks.some(nb => nb.produto_id === someProduto.id));
+
+  check('no native alert()/confirm()/prompt() dialog fired anywhere in this run', !dialogFired);
 
   await page.screenshot({ path: path.join(SHOTS, 'produto_detalhe.png'), fullPage: true });
   await browser.close();

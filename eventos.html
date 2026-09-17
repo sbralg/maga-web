@@ -208,11 +208,39 @@ function isEventoDone(v){
 // / #evento-name) — see the click handler further down that opens the
 // edit prompt off that id.
 
+// renderShell(): keeps the header (hamburger, back link) on screen through
+// every load, instead of the old `root.innerHTML = 'Carregando…'` which
+// wiped it out and made list→detail navigation flash header-gone→bare
+// text→header-back. opts.detail renders the DETAIL shell (back link to
+// Eventos, title empty until the record loads) — the shell for the screen
+// being navigated TO, not the one being left. Same reasoning as
+// preferencias.html's own renderShell().
+// The one case in this page where the server can reject an item save for a
+// reason client validation can't catch: the linked produto (from "🔗
+// Vincular Produto") was deleted in the meantime. Named specifically rather
+// than echoed raw — "unknown produto_id" means nothing to a household user.
+function itemSaveErrorMsg(e){
+  const b = e.body || {};
+  return (e.badRequest && b.error === "unknown produto_id")
+    ? "O produto vinculado não foi encontrado — tente salvar de novo sem ele."
+    : "Não foi possível salvar o item";
+}
+
+function renderShell(inner, opts){
+  if(opts && opts.detail){
+    root.innerHTML = navHeader("", { backLabel: "Eventos", backAction: loadEventos, listTitle: "Eventos" }) + inner;
+    wireNav(loadEventos);
+  }else{
+    root.innerHTML = navHeader("Eventos") + inner;
+    wireNav(null);
+  }
+}
+
 // ---- list screen ----
 
 async function loadEventos(){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
   if(!getPass()){ showLogin(); return; }
+  renderShell('<p class="msg">Carregando…</p>');
   try{
     const data = await api("eventos");
     eventos = data.eventos || [];
@@ -614,10 +642,14 @@ function openCreateModal(){
   backdrop.addEventListener("click", e => { if(e.target === backdrop) close(); });
   backdrop.querySelector("#nv-cancel").addEventListener("click", close);
 
+  const nameEl = backdrop.querySelector("#nv-name");
   backdrop.querySelector("#nv-ok").addEventListener("click", async () => {
-    if(!chosenCliente){ alert("Selecione um cliente."); return; }
-    const name = backdrop.querySelector("#nv-name").value.trim();
-    if(!name){ alert("O nome do evento não pode ficar vazio."); return; }
+    // No text input represents "which cliente" — it's a picker button, not
+    // a field a person types into — so there's nothing to hang fieldError()
+    // on here; a toast is the right mechanism for this one validation.
+    if(!chosenCliente){ listToast("Selecione um cliente.", true); return; }
+    const name = nameEl.value.trim();
+    if(!name){ fieldError(nameEl, "O nome do evento não pode ficar vazio."); return; }
     const status = backdrop.querySelector("#nv-status").value;
     const event_date = backdrop.querySelector("#nv-date").value || null;
     try{
@@ -637,12 +669,11 @@ function openCreateModal(){
 // ---- detail screen ----
 
 async function openEvento(id){
-  root.innerHTML = '<p class="msg">Carregando…</p>';
+  renderShell('<p class="msg">Carregando…</p>', { detail: true });
   try{
     const data = await api("evento_detail", { id });
     if(!data.found){
-      root.innerHTML = navHeader("", { backLabel: "Eventos", listTitle: "Eventos" }) + '<p class="msg">Evento não encontrado.</p>';
-      wireNav(loadEventos);
+      renderShell('<p class="msg">Evento não encontrado.</p>', { detail: true });
       return;
     }
     renderEvento(data);
@@ -755,7 +786,10 @@ function renderEvento(data){
     const name = await promptModal("Editar evento", "Nome", v.name);
     if(name === null) return;
     const trimmed = name.trim();
-    if(!trimmed){ alert("O nome não pode ficar vazio."); return; }
+    // promptModal() has already closed by the time this runs — there's no
+    // live input left in the DOM to attach a fieldError() to, so this one
+    // stays a toast.
+    if(!trimmed){ listToast("O nome não pode ficar vazio.", true); return; }
     if(trimmed === v.name) return;
     try{
       await api("evento_update", { id: v.id, name: trimmed });
@@ -838,7 +872,7 @@ function renderEvento(data){
       openEvento(v.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadEventos);
-      listToast("Não foi possível salvar o item", true);
+      listToast(itemSaveErrorMsg(e), true);
     }
   });
   root.querySelectorAll("[data-edit-item]").forEach(btn => {
@@ -853,7 +887,7 @@ function renderEvento(data){
         openEvento(v.id);
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadEventos);
-        listToast("Não foi possível salvar o item", true);
+        listToast(itemSaveErrorMsg(e), true);
       }
     });
   });
@@ -981,11 +1015,12 @@ function itemModal(it){
       document.removeEventListener("keydown", onKey);
       resolve(result);
     };
+    const descEl = backdrop.querySelector("#it-desc");
     const ok = () => {
-      const description = backdrop.querySelector("#it-desc").value.trim();
-      if(!description){ alert("A descrição não pode ficar vazia."); return; }
+      const description = descEl.value.trim();
+      if(!description){ fieldError(descEl, "A descrição não pode ficar vazia."); return; }
       const quantity = parseQtyInput(qtyEl.value);
-      if(quantity === null){ alert("Quantidade inválida."); return; }
+      if(quantity === null){ fieldError(qtyEl, "Quantidade inválida."); return; }
       close({
         tipo: backdrop.querySelector("#it-tipo").value,
         description,
@@ -1072,7 +1107,7 @@ function paymentConfirmModal(suggested){
     };
     const ok = () => {
       const amount = centsToPrice(priceDigits(amountEl.value));
-      if(!amount || amount <= 0){ alert("Informe um valor válido."); return; }
+      if(!amount || amount <= 0){ fieldError(amountEl, "Informe um valor válido."); return; }
       const date = backdrop.querySelector("#pay-date").value;
       close({
         amount, method,
@@ -1129,11 +1164,12 @@ function paymentEditModal(p){
       document.removeEventListener("keydown", onKey);
       resolve(result);
     };
+    const dateEl = backdrop.querySelector("#pe-date");
     const ok = () => {
       const amount = centsToPrice(priceDigits(amountEl.value));
-      if(!amount || amount <= 0){ alert("Informe um valor válido."); return; }
-      const date = backdrop.querySelector("#pe-date").value;
-      if(!date){ alert("Informe a data."); return; }
+      if(!amount || amount <= 0){ fieldError(amountEl, "Informe um valor válido."); return; }
+      const date = dateEl.value;
+      if(!date){ fieldError(dateEl, "Informe a data."); return; }
       close({
         amount,
         method: backdrop.querySelector("#pe-method").value.trim() || null,

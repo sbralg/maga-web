@@ -311,6 +311,10 @@ function computeProdutoCost(id) {
 
   const check = (label, cond) => { if (!cond) failures.push('FAIL: ' + label); };
   const norm = (s) => s.replace(/\u00A0/g, ' ');
+  // Regression guard for the alert()->fieldError() conversion: a native
+  // dialog anywhere in this run means a validation path still uses alert().
+  let dialogFired = false;
+  page.on('dialog', async (d) => { dialogFired = true; await d.dismiss(); });
 
   await ctx.addInitScript(() => { try { localStorage.setItem('checklist_pass', 'x'); } catch (_) {} });
 
@@ -327,6 +331,16 @@ function computeProdutoCost(id) {
   // --- create a recipe: 1000 g batch yielding 1 unidade, 5% safety margin ---
   await page.click('#new-receita');
   await page.waitForSelector('#rec-name-i', { timeout: 6000 });
+
+  // Regression: an empty name (with a live #rec-name-i field still in the
+  // DOM) must land as a fieldError(), not alert().
+  await page.click('#rec-ok');
+  await page.waitForSelector('#field-error-rec-name-i', { timeout: 6000 });
+  check('empty receita name shows a field error under #rec-name-i',
+    (await page.textContent('#field-error-rec-name-i')).includes('nome não pode ficar vazio'));
+  check('#rec-name-i is marked aria-invalid',
+    (await page.getAttribute('#rec-name-i', 'aria-invalid')) === 'true');
+
   await page.fill('#rec-name-i', 'Bolo de Cacau');
   await page.fill('#rec-yield', '1');
   await page.selectOption('#rec-unit', 'un');
@@ -502,6 +516,8 @@ function computeProdutoCost(id) {
     state.notes.some(n => n.body === 'Assar 5 minutos a mais no verão'));
   check('the notebook is object-backed to this receita',
     state.notebooks.some(nb => nb.receita_id === someReceita.id));
+
+  check('no native alert()/confirm()/prompt() dialog fired anywhere in this run', !dialogFired);
 
   await page.screenshot({ path: path.join(SHOTS, 'receita_detalhe.png'), fullPage: true });
   await browser.close();

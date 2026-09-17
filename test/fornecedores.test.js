@@ -172,6 +172,10 @@ function handleNotesAction(body) {
 
   const check = (label, cond) => { if (!cond) failures.push('FAIL: ' + label); };
   const norm = (s) => s.replace(/\u00A0/g, ' ');
+  // Regression guard for the alert()->fieldError() conversion: a native
+  // dialog anywhere in this run means a validation path still uses alert().
+  let dialogFired = false;
+  page.on('dialog', async (d) => { dialogFired = true; await d.dismiss(); });
 
   await ctx.addInitScript(() => { try { localStorage.setItem('checklist_pass', 'x'); } catch (_) {} });
   await page.goto(PAGE);
@@ -182,6 +186,13 @@ function handleNotesAction(body) {
   // --- create ---
   await page.click('#new-fornecedor');
   await page.waitForSelector('#forn-name-i', { timeout: 6000 });
+
+  // Regression: an empty name is the fieldError() case.
+  await page.click('#forn-ok');
+  await page.waitForSelector('#field-error-forn-name-i', { timeout: 6000 });
+  check('empty fornecedor name shows a field error under #forn-name-i',
+    (await page.textContent('#field-error-forn-name-i')).includes('nome n\u00E3o pode ficar vazio'));
+
   await page.fill('#forn-name-i', 'Padaria Ceci');
   await page.fill('#forn-phone', '11994452426');
   await page.fill('#forn-email', 'contato@ceci.example');
@@ -211,8 +222,16 @@ function handleNotesAction(body) {
     page.waitForURL(/produtos\.html\?new=1&fornecedor_id=/, { timeout: 6000 }),
     page.click('#new-produto'),
   ]);
-  check('navigated to produtos.html with the fornecedor preset',
-    page.url().includes('fornecedor_id=' + fornId));
+  // produtos.html strips the query string with history.replaceState() as
+  // soon as it loads (so a reload doesn't re-open the create modal) — a
+  // second page.url() read right here would race that client-side update.
+  // The real behavior under test is the PRESET taking effect, so wait for
+  // the create modal's fornecedor picker to actually show this fornecedor's
+  // name instead, which is both deterministic and the thing this hand-off
+  // is actually for.
+  await page.waitForSelector('#pr-fornecedor', { timeout: 6000 });
+  check('the create modal opens preset to this fornecedor',
+    (await page.textContent('#pr-fornecedor')).includes('Padaria Ceci'));
 
   // --- the Produtos list shows comprado items sourced here (metadata
   // only — not tied to purchase history) and links into produtos.html ---
@@ -300,6 +319,8 @@ function handleNotesAction(body) {
     state.notes.some(n => n.body === 'Entrega às terças'));
   check('the notebook is object-backed to this fornecedor',
     state.notebooks.some(nb => nb.fornecedor_id === someFornecedor.id));
+
+  check('no native alert()/confirm()/prompt() dialog fired anywhere in this run', !dialogFired);
 
   await page.screenshot({ path: path.join(SHOTS, 'fornecedor_detalhe.png'), fullPage: true });
   await browser.close();
