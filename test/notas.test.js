@@ -218,6 +218,8 @@ function noteCountFor(notebookId) {
   const userNbId = state.notebooks.find(nb => nb.name === 'Ideias para o cardápio de verão').id;
   check('the custom emoji was saved on create',
     state.notebooks.find(nb => nb.id === userNbId).emoji === '🎂');
+  check('the custom emoji shows next to the notebook name in the header',
+    (await page.textContent('.nb-title-wrap')).includes('🎂'));
 
   // --- unlike the object-backed notebooks above, a user-created one DOES
   // show up in the default list, right alongside its note count and its

@@ -44,6 +44,8 @@
   .subheader{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0;margin:0 0 16px}
   h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
   .nb-title{font-size:16px;font-weight:650;margin:0;text-align:right;word-wrap:break-word}
+  .nb-title-wrap{display:flex;align-items:baseline;gap:6px;min-width:0}
+  .nb-icon{font-size:18px;flex:none}
   .searchrow{display:flex;gap:8px;margin:0 0 14px}
   .searchrow input[type=search]{
     flex:1;min-width:0;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
@@ -121,7 +123,7 @@ function notebookInfo(nb){
   return { kind: null, label: nb.name || "Caderno sem nome", href: null, icon: nb.emoji };
 }
 
-function navHeader(title, backAction){
+function navHeader(title, backAction, icon){
   const topRow = '<header><div class="hleft">' +
     '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
     '<h1 style="flex:1">' + (backAction ? "Notas" : esc(title)) + '</h1>' +
@@ -129,7 +131,9 @@ function navHeader(title, backAction){
   if(!backAction) return topRow;
   return topRow + '<div class="subheader">' +
     '<button class="link" id="back">← Cadernos</button>' +
-    (title ? '<h2 class="nb-title" id="nb-title">' + esc(title) + '</h2>' : '') +
+    (title ? '<span class="nb-title-wrap">' +
+      (icon ? '<span class="nb-icon">' + icon + '</span>' : '') +
+      '<h2 class="nb-title" id="nb-title">' + esc(title) + '</h2></span>' : '') +
   '</div>';
 }
 function wireNav(backAction){
@@ -368,6 +372,8 @@ function openNotebookEditModal(nb){
 function openNotebook(id){
   const nb = notebooks.find(n => n.id === id);
   const info = nb ? notebookInfo(nb) : { kind: null, label: "Caderno", href: null };
+  // Same fallback chain as notebookRowHtml/noteHitRowHtml's own icon.
+  const icon = info.kind ? (KIND_ICON[info.kind] || "🗒️") : (info.icon || "🗒️");
 
   // "Ver X" (object-backed) and Renomear/Remover (user-created) never
   // apply to the same notebook - but building one row from whichever
@@ -383,7 +389,7 @@ function openNotebook(id){
     actions.push('<button class="primary small alt danger" id="del-nb">🗑 Remover</button>');
   }
 
-  root.innerHTML = navHeader(info.label, () => { history.replaceState(null, "", "notas.html"); renderList(""); }) +
+  root.innerHTML = navHeader(info.label, () => { history.replaceState(null, "", "notas.html"); renderList(""); }, icon) +
     (actions.length ? '<div class="detail-actions">' + actions.join("") + '</div>' : '') +
     '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 

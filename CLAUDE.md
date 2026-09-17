@@ -9,6 +9,28 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-17, absolute latest): the notebook's icon now shows to the left of its name in the notebook-detail header
+
+Direct follow-up on the entry right below: now that a user-created
+notebook can actually carry a custom emoji, nothing on the page a person
+lands on after opening one showed it — only the list row did.
+
+- **`navHeader()` gained an optional third `icon` parameter**, rendered
+  as a `<span class="nb-icon">` inside a new `<span class="nb-title-wrap">`
+  wrapping it and the existing `<h2 class="nb-title">` — mirroring
+  `compras.html`'s own `.list-title`/`emojiBtn` pattern for the same
+  "icon beside the name" shape. `.subheader`'s right side is still one
+  flex item (the wrap), so the existing right-alignment is unchanged.
+- **`openNotebook()` computes the icon with the exact same fallback chain
+  as the list row/search-hit icons** (`KIND_ICON[info.kind]` for an
+  object-backed notebook, `info.icon || "🗒️"` for a user-created one)
+  and passes it through — no new logic, just reusing the rule that
+  already existed for the list.
+- New assertion in `test/notas.test.js` confirms a custom emoji set on
+  create shows up in the header (`.nb-title-wrap`) once the notebook is
+  open. Full 16-file suite green.
+- **Already deployed** — pushed straight to `main`.
+
 ## Status (2026-09-17, newest): notas.html's default icon changed to 🗒️; user-created notebooks can now carry a custom emoji, like a shopping list
 
 Two direct asks. The 📓 icon (closed book) read wrong for a running notes
