@@ -192,6 +192,19 @@
     display:inline-block;font-size:11px;padding:2px 6px;border-radius:6px;margin-left:6px;
     background:rgba(127,127,127,.14);color:var(--muted);
   }
+  /* ---- category management modal ---- */
+  .cat-manage-row{display:flex;justify-content:flex-end;margin:-2px 0 10px}
+  .cat-list{font-size:14px;margin:0 0 16px;max-height:45vh;overflow:auto}
+  .cat-row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border)}
+  .cat-row:last-child{border-bottom:none}
+  .cat-row .cat-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* 20px, not the tighter gaps used elsewhere: .link's own hit-area
+     expansion (shared-base.css) grows each button's tappable area by 8px
+     on every side, so two adjacent .link buttons need enough raw gap
+     between them or their expanded hit areas overlap and a tap can hit
+     the wrong one. */
+  .cat-row .cat-actions{display:flex;gap:20px;flex:none;white-space:nowrap}
+  .cat-row .cat-actions .danger{color:var(--danger)}
 </style>
 </head>
 <body>
@@ -397,6 +410,9 @@ function renderCatalog(){
       '<button type="button" class="chip' + (kindFilter === "ingrediente" ? " active" : "") + '" aria-pressed="' + (kindFilter === "ingrediente" ? "true" : "false") + '" data-kind="ingrediente">🧂 Ingredientes</button>' +
       '<button type="button" class="chip' + (kindFilter === "embalagem" ? " active" : "") + '" aria-pressed="' + (kindFilter === "embalagem" ? "true" : "false") + '" data-kind="embalagem">📦 Embalagens</button>' +
     '</div>' +
+    '<div class="cat-manage-row">' +
+      '<button type="button" class="link" id="manage-categories">🏷️ Categorias</button>' +
+    '</div>' +
     rowsHtml +
     '<button class="primary full addrow-btn" id="new-insumo">+ Novo insumo</button>' +
     '<p class="msg small">' + catalog.length + ' insumo' +
@@ -484,6 +500,8 @@ function renderCatalog(){
       listToast("Não foi possível criar o insumo", true);
     }
   });
+
+  document.getElementById("manage-categories").addEventListener("click", () => openCategoriesModal());
 }
 
 function wireCatalogRows(){
@@ -1032,6 +1050,164 @@ function insumoEditModal(p, categories, opts){
     backdrop.querySelector("#pe-ok").addEventListener("click", ok);
     nameEl.focus();
     nameEl.select();
+  });
+}
+
+// ---- category management ----
+//
+// insumo_categories/_create/_rename/_delete were all live and deployed with
+// no caller anywhere: a category could be created inline (from the edit
+// modal above) and then never fixed or removed. This is the "🏷️
+// Categorias" control on the catalogue screen — one manage-modal, not a
+// new page or route.
+
+function catRowHtml(c){
+  return '<div class="cat-row" data-id="' + esc(c.id) + '">' +
+    '<span class="cat-name">' + esc(c.name) + '</span>' +
+    kindBadgeHtml(c) +
+    '<span class="cat-actions">' +
+      '<button type="button" class="link" data-act="rename">Renomear</button>' +
+      '<button type="button" class="link danger" data-act="remove">Remover</button>' +
+    '</span>' +
+  '</div>';
+}
+
+async function openCategoriesModal(){
+  let categories;
+  try{
+    if(!categoryCache) categoryCache = (await api("insumo_categories")).categories || [];
+    // A COPY: this list is edited in place as rename/delete succeed, and
+    // categoryCache itself is nulled on every change below (so the next
+    // thing that reads it — the insumo edit modal — re-fetches rather than
+    // offering a category that no longer exists or a stale name).
+    categories = categoryCache.slice();
+  }catch(e){
+    if(e.unauthorized) return handleAuthError(e, loadCatalog);
+    listToast("Não foi possível carregar as categorias", true);
+    return;
+  }
+
+  const html =
+    '<div class="modal-card">' +
+      '<h3>Categorias</h3>' +
+      '<div class="cat-list" id="cat-list">' +
+        (categories.length
+          ? categories.map(catRowHtml).join("")
+          : '<p class="msg" id="cat-empty">Nenhuma categoria ainda.</p>') +
+      '</div>' +
+      '<div class="modal-actions">' +
+        '<button class="cancel" id="cat-close">Fechar</button>' +
+        '<button class="save" id="cat-new">+ Nova categoria</button>' +
+      '</div>' +
+    '</div>';
+  const { backdrop, close } = openModal(html, { escResult: null, backdropResult: null });
+  document.getElementById("cat-close").addEventListener("click", () => close(null));
+
+  function redrawList(){
+    const list = backdrop.querySelector("#cat-list");
+    list.innerHTML = categories.length
+      ? categories.map(catRowHtml).join("")
+      : '<p class="msg" id="cat-empty">Nenhuma categoria ainda.</p>';
+    wireRows();
+  }
+
+  function wireRows(){
+    backdrop.querySelectorAll(".cat-row").forEach(row => {
+      const id = row.dataset.id;
+      const cat = categories.find(c => c.id === id);
+      if(!cat) return;
+      row.querySelector('[data-act="rename"]').addEventListener("click", async () => {
+        const name = await promptModal("Renomear categoria", "Nome", cat.name);
+        if(!name || !name.trim() || name.trim() === cat.name) return;
+        try{
+          const res = await api("insumo_category_rename", { id, name: name.trim() });
+          cat.name = res.category ? res.category.name : name.trim();
+          categoryCache = null;
+          redrawList();
+          listToast("Categoria renomeada");
+        }catch(e){
+          if(e.unauthorized) return handleAuthError(e, loadCatalog);
+          listToast("Não foi possível renomear", true);
+        }
+      });
+      row.querySelector('[data-act="remove"]').addEventListener("click", async () => {
+        // Purely organizational — the load-bearing flag is `kind`, which
+        // the recipe pickers filter on — so removing a category UNLINKS
+        // rather than blocks, the same way insumo_category_delete itself
+        // behaves. The count comes from the catalogue already in memory
+        // rather than a second round trip.
+        const count = catalog.filter(p => p.category_id === id).length;
+        const msg = count > 0
+          ? 'Remover a categoria "' + cat.name + '"? ' + count +
+            (count === 1 ? " insumo fica" : " insumos ficam") + " sem categoria."
+          : 'Remover a categoria "' + cat.name + '"? Nenhum insumo a usa.';
+        if(!(await confirmModal(msg, "Remover"))) return;
+        try{
+          await api("insumo_category_delete", { id });
+          categories = categories.filter(c => c.id !== id);
+          categoryCache = null;
+          // The catalogue's own category_id values for any unlinked rows
+          // are now stale.
+          if(count > 0) listLoaded = false;
+          redrawList();
+          listToast("Categoria removida");
+        }catch(e){
+          if(e.unauthorized) return handleAuthError(e, loadCatalog);
+          listToast("Não foi possível remover", true);
+        }
+      });
+    });
+  }
+  wireRows();
+
+  document.getElementById("cat-new").addEventListener("click", async () => {
+    const created = await newCategoryModal();
+    if(!created) return;
+    try{
+      const res = await api("insumo_category_create", created);
+      categoryCache = null;
+      categories.push(res.category);
+      redrawList();
+      listToast("Categoria criada");
+    }catch(e){
+      if(e.unauthorized) return handleAuthError(e, loadCatalog);
+      listToast("Não foi possível criar a categoria", true);
+    }
+  });
+}
+
+// Resolves with {name, kind} or null. A separate small dialog rather than
+// promptModal() because a category needs a kind too, and promptModal()'s
+// signature (every page already calls it) is one text field only.
+function newCategoryModal(){
+  return new Promise(resolve => {
+    const html =
+      '<div class="modal-card">' +
+        '<h3>Nova categoria</h3>' +
+        '<label for="nc-name">Nome</label>' +
+        '<input type="text" id="nc-name">' +
+        '<label for="nc-kind">Tipo</label>' +
+        '<select id="nc-kind" style="width:100%;margin-bottom:14px">' +
+          '<option value="ingrediente">🧂 Ingrediente</option>' +
+          '<option value="embalagem">📦 Embalagem</option>' +
+        '</select>' +
+        '<div class="modal-actions">' +
+          '<button class="cancel" id="nc-cancel">Cancelar</button>' +
+          '<button class="save" id="nc-ok">Criar</button>' +
+        '</div>' +
+      '</div>';
+    const { close } = openModal(html, { escResult: null, backdropResult: null, onClose: resolve });
+    const nameEl = document.getElementById("nc-name");
+    const kindEl = document.getElementById("nc-kind");
+    const ok = () => {
+      const name = nameEl.value.trim();
+      if(!name){ fieldError(nameEl, "O nome não pode ficar vazio."); return; }
+      close({ name, kind: kindEl.value });
+    };
+    document.getElementById("nc-cancel").addEventListener("click", () => close(null));
+    document.getElementById("nc-ok").addEventListener("click", ok);
+    nameEl.addEventListener("keydown", e => { if(e.key === "Enter"){ e.preventDefault(); ok(); } });
+    nameEl.focus();
   });
 }
 
