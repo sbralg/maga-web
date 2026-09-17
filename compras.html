@@ -17,28 +17,26 @@
   gated Supabase Edge Function (maga-api) via its shopping_* actions.
 -->
 <link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
 <link rel="stylesheet" href="shared-menu.css">
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-inputs.css">
 <style>
-  body{
-    padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
-  }
-  .wrap{max-width:640px;margin:0 auto}
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
-  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-  .subheader{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0;margin:0 0 16px}
-  .list-title{display:flex;align-items:baseline;gap:8px;min-width:0}
-  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
-  h2{font-size:17px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
+  /* ---- page chrome (body/.wrap/header/.hleft/h1/.subheader/.row shell)
+     now lives in shared-page.css — see that file for what moved and why.
+     .list-title (the emoji+name group navHeader() used to render for the
+     items screen) is gone too — navHeader()'s shared `icon` option
+     (shared-nav.js/shared-page.css's .detail-title-wrap/.nb-icon) covers
+     the same "icon beside the title" shape now. */
   /* An item with no barcode: muted rather than alarming, since a hand-typed
      row is perfectly normal today — it just can't feed stock control. */
   .icon-btn.nobc{font-size:13px;opacity:.5}
   .icon-btn.nobc:hover{opacity:1;background:rgba(127,127,127,.15)}
-  .row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:14px;border-bottom:1px solid var(--border);transition:background-color .15s ease}
-  .row:hover{background:rgba(127,127,127,.06)}
-  .row:last-child{border-bottom:none}
+  /* .row's shell (border/hover/transition) is now shared-page.css's; the
+     flex layout (incl. wrapping, for the quantity/price line) is
+     page-specific and stays here. */
+  .row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:14px}
   .row label{flex:1;min-width:0;display:flex;align-items:center;gap:12px;cursor:pointer}
   input[type=checkbox]{width:24px;height:24px;margin:0;flex:none;accent-color:var(--accent)}
   .badge{font-size:20px;line-height:1.2;flex:none;width:26px;text-align:center}
@@ -182,6 +180,7 @@ const PAGE_LOGIN = {
 </script>
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
@@ -1054,29 +1053,12 @@ function openListEditModal(list, onSaved){
   });
 }
 
-function navHeader(title, backAction, emoji){
-  // Top row is always the same: menu button, then the page title right
-  // after it -- regardless of screen.
-  const topRow = '<header><div class="hleft">' +
-    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-    '<h1 style="flex:1">' + (backAction ? 'Listas de compras' : esc(title)) + '</h1>' +
-    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
-  if(!backAction) return topRow;
-
-  // Items view: the list itself becomes a subtitle row below -- "← Listas"
-  // on the left, the list's icon + name grouped on the right.
-  const emojiBtn = emoji ? '<span class="badge">' + esc(emoji) + '</span>' : '';
-  const subRow = '<div class="subheader">' +
-    '<button class="link" id="back">← Listas</button>' +
-    '<span class="list-title">' + emojiBtn + '<h2>' + esc(title) + '</h2></span>' +
-  '</div>';
-  return topRow + subRow;
-}
-
-function wireNav(backAction){
-  wireMenuButton();
-  if(backAction) document.getElementById("back").addEventListener("click", backAction);
-}
+// navHeader()/wireNav() now live in shared-nav.js. The items screen's list
+// icon (emoji) goes through the shared `icon` option now, rendered as
+// `.nb-icon` inside `.detail-title-wrap` instead of this page's old
+// `.badge`-in-`.list-title` markup (shared-nav.js's `.nb-icon` is 18px/
+// flex:none vs. this page's old 20px `.badge` — confirmed visually close
+// enough that no page-local override was needed).
 
 // ---- lists screen ----
 
@@ -1106,14 +1088,14 @@ function renderLists(lists){
         '</div>';
       }).join("") + '</div>';
 
-  root.innerHTML = navHeader("Listas de compras", null) + rowsHtml +
+  root.innerHTML = navHeader("Listas de compras") + rowsHtml +
     '<div class="addrow">' +
       '<input type="text" id="new-list-emoji" class="emoji" placeholder="🛒">' +
       '<input type="text" id="new-list-name" placeholder="Nova lista (ex: Farmácia)">' +
       '<button class="primary small" id="add-list-btn">+ Lista</button>' +
     '</div>';
 
-  wireNav(null);
+  wireNav();
 
   root.querySelectorAll(".row").forEach(row => {
     const id = row.dataset.id;
@@ -1280,7 +1262,7 @@ function renderItems(list, items){
     ? '<p class="msg" id="items-empty">Nenhum item nesta lista ainda.</p>'
     : '<div class="card" id="items-card">' + items.map(itemRowHtml).join("") + '</div>';
 
-  root.innerHTML = navHeader(list.name, loadLists, emoji) + rowsHtml +
+  root.innerHTML = navHeader(list.name, { backLabel: "Listas", backAction: loadLists, icon: emoji, listTitle: "Listas de compras" }) + rowsHtml +
     '<div class="addrow additem">' +
       '<input type="text" id="new-item-name" placeholder="Novo item rápido">' +
       '<span class="field"><span class="prefix">×</span>' +

@@ -31,16 +31,25 @@
   silently vanishing or pretending to still be open.
 -->
 <link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
 <link rel="stylesheet" href="shared-menu.css">
 <style>
+  /* ---- page chrome (header/.hleft/h1) now lives in shared-page.css —
+     see that file for what moved and why. `.wrap` keeps its own padding
+     below (24px bottom, not shared-page.css's 32px); shared-page.css
+     supplies width/max-width/margin.
+
+     Same body/.wrap split issue as index.html/tarefas.html: this page puts
+     ALL of its padding on `.wrap` (inside `.page`, the min-height:100vh
+     flex column below), never on `body` — so shared-page.css's own body
+     padding is zeroed back out here or it would stack on top of .wrap's,
+     doubling the gutters. */
+  body{padding:0}
   .page{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
   .wrap{
-    flex:1 0 auto;max-width:640px;margin:0 auto;width:100%;
+    flex:1 0 auto;
     padding:max(16px,env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
   }
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 16px}
-  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
 
   /* ---- greeting ---- the assistant "lives" on this page: her avatar plus
      a short, day-aware line. The text is payload.saudacao, written by the
@@ -143,6 +152,7 @@ const PAGE_LOGIN = {
 <script src="shared-api.js"></script>
 <script src="shared-push.js"></script>
 <script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-pwa.js"></script>
@@ -171,11 +181,12 @@ function fmtDay(ymd){
   return p[2] + "/" + p[1] + "/" + p[0];
 }
 
+// navHeader()/wireNav() now live in shared-nav.js. This page never has a
+// subheader (no detail view), so navHeader("Resumo do dia") with no opts
+// is the plain top-row-only render — headerHtml() used to build that same
+// markup by hand at all three call sites below.
 function headerHtml(){
-  return '<header><div class="hleft">' +
-    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-    '<h1>Resumo do dia</h1>' +
-    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
+  return navHeader("Resumo do dia");
 }
 
 // The assistant's daily hello. `saudacao` is free text written by the
@@ -462,7 +473,7 @@ function render(data){
       '<p class="msg">Nenhum resumo disponível ainda.</p>' +
       '<p class="msg">O resumo é gerado todo dia às 07:00.</p>' +
       pushOptInHtml();
-    wireMenuButton();
+    wireNav();
     wirePushOptIn();
     return;
   }
@@ -480,7 +491,7 @@ function render(data){
     triagemHtml(p) +
     pushOptInHtml();
 
-  wireMenuButton();
+  wireNav();
   wirePushOptIn();
   const prev = document.getElementById("prev-day");
   const next = document.getElementById("next-day");
@@ -493,7 +504,7 @@ async function load(){
   if(!getPass()){ showLogin(); return; }
   if(!isDefaultEnv()){
     root.innerHTML = headerHtml() + personalPageBlockedHtml();
-    wireMenuButton();
+    wireNav();
     return;
   }
   try{

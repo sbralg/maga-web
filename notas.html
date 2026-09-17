@@ -32,43 +32,33 @@
   shared-api.js).
 -->
 <link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
 <link rel="stylesheet" href="shared-menu.css">
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
 <link rel="stylesheet" href="shared-notes.css">
 <style>
-  body{ padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom)); }
-  .wrap{max-width:640px;margin:0 auto}
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
-  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-  .subheader{display:flex;align-items:baseline;justify-content:space-between;gap:10px;min-width:0;margin:0 0 16px}
-  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
-  .nb-title{font-size:16px;font-weight:650;margin:0;text-align:right;word-wrap:break-word}
-  .nb-title-wrap{display:flex;align-items:baseline;gap:6px;min-width:0}
-  .nb-icon{font-size:18px;flex:none}
-  .searchrow{display:flex;gap:8px;margin:0 0 14px}
-  .searchrow input[type=search]{
-    flex:1;min-width:0;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
-    border:1px solid var(--border-strong);background:var(--card);color:var(--text);
-    -webkit-appearance:none;
-  }
-  .row{display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background-color .15s ease}
-  .row:hover{background:rgba(127,127,127,.06)}
-  .row:last-child{border-bottom:none}
+  /* ---- page chrome (body/.wrap/header/.hleft/h1/.subheader/#back/
+     .searchrow/.row shell/.detail-actions/.detail-title/.detail-title-wrap/
+     .nb-icon) now lives in shared-page.css — see that file for what moved
+     and why. This page's own .nb-title/.nb-title-wrap became
+     .detail-title/.detail-title-wrap (navHeader()'s call sites and every
+     JS reference were updated to match). Only the genuinely page-specific
+     parts of .row (its flex layout) and the .detail-actions right-
+     alignment (object-backed notebooks never carry these buttons, so this
+     only ever affects Renomear/Remover, which want to sit flush right
+     rather than shared-page.css's default left-aligned flow) stay here. */
+  .row{display:flex;align-items:center;gap:12px}
   .row .ic{font-size:20px;flex:none}
   .row .body{flex:1;min-width:0}
-  .row .nm{font-size:15px;font-weight:600;margin:0;word-wrap:break-word}
-  .row .meta{font-size:12.5px;color:var(--muted);margin:0}
   .addrow{display:flex;gap:8px;margin-top:14px}
   .addrow input[type=text]{
     flex:1;min-width:0;font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
     border:1px solid var(--border-strong);background:var(--card);color:var(--text);
   }
   .addrow input.emoji{width:52px;flex:none;text-align:center;font-size:18px;padding:10px 6px}
-  button.primary.full{width:100%}
   .search-hits .row .snippet{font-size:12.5px;color:var(--text);margin:2px 0 0;white-space:pre-wrap;word-wrap:break-word}
-  .detail-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin:14px 0 18px}
-  #back{flex:none;white-space:nowrap}
+  .detail-actions{justify-content:flex-end}
   .card.pad{padding:16px}
 </style>
 </head>
@@ -90,6 +80,7 @@ const PAGE_LOGIN = {
 </script>
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-inputs.js"></script>
@@ -123,23 +114,12 @@ function notebookInfo(nb){
   return { kind: null, label: nb.name || "Caderno sem nome", href: null, icon: nb.emoji };
 }
 
-function navHeader(title, backAction, icon){
-  const topRow = '<header><div class="hleft">' +
-    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-    '<h1 style="flex:1">' + (backAction ? "Notas" : esc(title)) + '</h1>' +
-    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
-  if(!backAction) return topRow;
-  return topRow + '<div class="subheader">' +
-    '<button class="link" id="back">← Cadernos</button>' +
-    (title ? '<span class="nb-title-wrap">' +
-      (icon ? '<span class="nb-icon">' + esc(icon) + '</span>' : '') +
-      '<h2 class="nb-title" id="nb-title">' + esc(title) + '</h2></span>' : '') +
-  '</div>';
-}
-function wireNav(backAction){
-  wireMenuButton();
-  if(backAction) document.getElementById("back").addEventListener("click", backAction);
-}
+// navHeader()/wireNav() now live in shared-nav.js. This page's list screen
+// is a plain navHeader("Notas") (no opts, no subheader); the notebook
+// detail screen below passes opts with backLabel "Cadernos" (NOT "Notas" —
+// the h1 above stays "Notas" throughout via listTitle, since this page's
+// own header always says so, only the subheader's back button names where
+// it goes back TO) and the notebook's own name/icon.
 
 // ---- list screen ----
 
@@ -147,13 +127,8 @@ async function load(){
   root.innerHTML = '<p class="msg">Carregando…</p>';
   if(!getPass()){ showLogin(); return; }
   if(!isDefaultEnv()){
-    root.innerHTML =
-      '<header><div class="hleft">' +
-        '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-        '<h1>Notas</h1>' +
-      '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>' +
-      personalPageBlockedHtml();
-    wireMenuButton();
+    root.innerHTML = navHeader("Notas") + personalPageBlockedHtml();
+    wireNav();
     return;
   }
   try{
@@ -172,7 +147,7 @@ async function load(){
     }else if(e.badRequest && e.body && e.body.error === "bad action"){
       root.innerHTML = navHeader("Notas") +
         '<p class="msg">Notas ainda não disponíveis — republique a Edge Function.</p>';
-      wireMenuButton();
+      wireNav();
     }else{
       root.innerHTML = '<p class="msg err">Não foi possível carregar agora.</p>' +
         '<p class="msg"><button class="link" onclick="load()">Tentar novamente</button></p>';
@@ -301,7 +276,7 @@ async function renderList(term){
       '<button class="primary small" id="add-notebook-btn">+ Caderno</button>' +
     '</div>';
 
-  wireMenuButton();
+  wireNav();
 
   const searchEl = document.getElementById("search");
   searchEl.focus();
@@ -429,11 +404,13 @@ function openNotebook(id){
     actions.push('<button class="primary small alt danger" id="del-nb">🗑 Remover</button>');
   }
 
-  root.innerHTML = navHeader(info.label, () => { history.replaceState(null, "", "notas.html"); renderList(""); }, icon) +
+  const backToList = () => { history.replaceState(null, "", "notas.html"); renderList(""); };
+
+  root.innerHTML = navHeader(info.label, { backLabel: "Cadernos", backAction: backToList, listTitle: "Notas", icon }) +
     (actions.length ? '<div class="detail-actions">' + actions.join("") + '</div>' : '') +
     '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
-  wireNav(() => { history.replaceState(null, "", "notas.html"); renderList(""); });
+  wireNav(backToList);
   wireNotesPanel(root.querySelector(".notes-card"), "notebook", id);
 
   if(info.kind === null && nb){

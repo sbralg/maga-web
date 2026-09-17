@@ -11,18 +11,18 @@
 <link rel="apple-touch-icon" href="assets/icon-192.png">
 <title>Preferências</title>
 <link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
 <link rel="stylesheet" href="shared-menu.css">
 <link rel="stylesheet" href="shared-modal.css">
 <link rel="stylesheet" href="shared-toast.css">
 <style>
-  body{
-    padding:max(16px,env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
-  }
-  .wrap{width:100%;max-width:640px;margin:0 auto}
-  header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:4px 0 8px}
-  .hleft{display:flex;align-items:baseline;gap:10px;min-width:0;flex:1}
-  h1{font-size:20px;font-weight:650;margin:0;min-width:0;overflow-wrap:break-word}
-  h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
+  /* ---- page chrome (body/.wrap/header/.hleft/h1/h3) now lives in
+     shared-page.css — see that file for what moved and why. This page has
+     no subheader/detail view, so nothing else there applies here.
+
+     .field below deliberately CONTRADICTS shared-inputs.css's own .field
+     rule — this page doesn't load that file, so the clash never fires;
+     left exactly as-is, not part of this migration. */
 
   .field{display:flex;flex-direction:column;gap:5px;margin:0 0 14px}
   .field label{font-size:12.5px;font-weight:600;color:var(--muted)}
@@ -155,6 +155,7 @@ const PAGE_LOGIN = {
 </script>
 <script src="shared-api.js"></script>
 <script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
 <script src="shared-format.js"></script>
 <script src="shared-prefs.js"></script>
@@ -163,19 +164,17 @@ const PAGE_LOGIN = {
 
 const CURRENT_PAGE = "preferencias";
 
-function header(){
-  return '<header><div class="hleft">' +
-    '<button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>' +
-    '<h1 style="flex:1">Preferências</h1>' +
-    '</div><a class="brand-mark" href="index.html"><img src="assets/logo-badge.svg" alt="Magá"></a></header>';
-}
+// navHeader()/wireNav() now live in shared-nav.js. This page never has a
+// subheader (no detail view), so navHeader("Preferências") with no opts is
+// the plain top-row-only render — the old header() function built that
+// same markup by hand.
 
 // Every exit path renders the header first, so a person who lands on a
 // blocked/failed state can still open the menu and go somewhere else -
 // same rule as the blocked personal pages on a non-default environment.
 function renderShell(inner){
-  root.innerHTML = header() + inner;
-  wireMenuButton();
+  root.innerHTML = navHeader("Preferências") + inner;
+  wireNav();
 }
 
 async function load(){
@@ -316,7 +315,7 @@ function render(){
     relayedByAdult: !!r.relayedByAdult, notes: r.notes || "",
   }));
 
-  let html = header();
+  let html = navHeader("Preferências");
 
   if(prefsStale){
     html += '<div class="banner warn">Mostrando os últimos valores conhecidos — o assistente não respondeu agora. ' +
@@ -477,7 +476,7 @@ function render(){
   );
 
   root.innerHTML = html;
-  wireMenuButton();
+  wireNav();
   wireTabs();
   wireTimezoneField();
   wireGroupRows();

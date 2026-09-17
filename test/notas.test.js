@@ -219,7 +219,7 @@ function noteCountFor(notebookId) {
   check('the custom emoji was saved on create',
     state.notebooks.find(nb => nb.id === userNbId).emoji === '🎂');
   check('the custom emoji shows next to the notebook name in the header',
-    (await page.textContent('.nb-title-wrap')).includes('🎂'));
+    (await page.textContent('.detail-title-wrap')).includes('🎂'));
 
   // --- unlike the object-backed notebooks above, a user-created one DOES
   // show up in the default list, right alongside its note count and its
@@ -240,7 +240,7 @@ function noteCountFor(notebookId) {
   await page.fill('#edit-nb-name', 'Cardápio de verão 2027');
   await page.fill('#edit-nb-emoji', '🍰');
   await page.click('#edit-nb-save');
-  await page.waitForFunction(() => document.getElementById('nb-title').textContent.includes('2027'), null, { timeout: 6000 });
+  await page.waitForFunction(() => document.getElementById('detail-title').textContent.includes('2027'), null, { timeout: 6000 });
   check('the rename persisted', state.notebooks.find(nb => nb.id === userNbId).name === 'Cardápio de verão 2027');
   check('the emoji change persisted', state.notebooks.find(nb => nb.id === userNbId).emoji === '🍰');
 
