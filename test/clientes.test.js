@@ -304,6 +304,13 @@ function handleNotesAction(body) {
   });
   await page.click('#back');
   await page.waitForSelector('#new-cliente', { timeout: 6000 });
+  // cliente2 was created through the raw API while the page held a cached
+  // list, so it arrives via showList()'s background refresh rather than
+  // synchronously with the Back. Wait for the settled state — reading the
+  // row count immediately is the same race this suite has been bitten by
+  // before (see the 2026-09-05 stock.test.js entry in CLAUDE.md).
+  await page.waitForFunction(
+    () => document.querySelectorAll('.row[data-id]').length === 2, null, { timeout: 6000 });
   check('both clientes show in the list', (await page.$$('.row[data-id]')).length === 2);
   await page.fill('#search', 'helvetia');
   await page.waitForFunction(

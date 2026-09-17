@@ -94,15 +94,31 @@ h3{font-size:14px;font-weight:650;margin:22px 0 8px;color:var(--muted)}
 .nb-icon{font-size:18px;flex:none}
 
 /* .row SHELL ONLY — the flex layout (column vs. row, align-items,
-   justify-content) genuinely differs per page and stays page-local. */
-.row{padding:14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background-color .15s ease}
+   justify-content) genuinely differs per page and stays page-local.
+
+   A navigable row is a real <button>, not a <div> with a click handler:
+   phase 1 shipped :focus-visible rings onto rows that could not receive
+   focus at all, which made the app's primary navigation unreachable by
+   keyboard. The reset below is what lets a <button> look like the row it
+   replaced — without width/text-align/font/color/background/border a
+   button would centre its text in a shrink-to-fit box in the UA's own
+   font. Pages whose rows contain their own nested buttons keep a <div>
+   (a button inside a button is invalid and breaks the inner one); they
+   carry role="button" + tabindex="0" instead.
+
+   NOTE for anything added here later: <button>'s content model is
+   PHRASING content, so a row's children are <span class="nm">/<span
+   class="meta">, never <p>. The display:block below is what keeps them
+   stacking the way the old paragraphs did. */
+.row{padding:14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background-color .15s ease;
+     width:100%;text-align:left;font:inherit;color:inherit;background:none;border-left:none;border-right:none;border-top:none}
 .row:hover{background:rgba(127,127,127,.06)}
 .row:last-child{border-bottom:none}
-.row .nm{font-size:15px;font-weight:600;margin:0;word-wrap:break-word}
+.row .nm{display:block;font-size:15px;font-weight:600;margin:0;word-wrap:break-word}
 /* margin varies per page (0 / 2px 0 0 / 3px 0 0) — base is 0, pages that
    want space above override it in their own <style> block, which loads
    after this file and wins on equal specificity. */
-.row .meta{font-size:12.5px;color:var(--muted);margin:0}
+.row .meta{display:block;font-size:12.5px;color:var(--muted);margin:0}
 .row-actions{display:flex;gap:2px;flex:none}
 
 /* ingredientes.html used 12px instead of 8px here — drift, not a real

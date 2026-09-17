@@ -15,7 +15,7 @@
 // from creation through five SHELL_FILES edits) means entries for files
 // that have since been renamed or deleted stay cached forever and are still
 // served offline. v1 -> v2 is the first such purge.
-const CACHE_NAME = "maga-shell-v4";
+const CACHE_NAME = "maga-shell-v5";
 
 const SHELL_FILES = [
   "./",
@@ -47,6 +47,7 @@ const SHELL_FILES = [
   "shared-prefs.js",
   "shared-menu.js",
   "shared-nav.js",
+  "shared-history.js",
   "shared-ui.js",
   "shared-format.js",
   "shared-inputs.js",
