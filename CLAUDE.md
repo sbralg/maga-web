@@ -18,7 +18,8 @@ the shopping list, so Confirmar should just clear those rows itself
 rather than needing a second "Limpar comprados" tap; (2) the button
 should look like a real action, not a muted text link. Backend half
 (`shopping_confirm_purchase` now deletes what it processes) is
-`maga-api`'s own CLAUDE.md entry — **not yet redeployed**.
+`maga-api`'s own CLAUDE.md entry — **merged and redeployed to both
+maga-dev and maga-prod the same day**.
 
 - **`#clear-purchased-btn` and its whole click handler are gone.**
   `#confirm-purchase-btn` is now `class="primary small"` (was `.link`) —
