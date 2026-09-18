@@ -1138,7 +1138,7 @@ function renderLists(lists){
       try{ await api("shopping_list_delete", { id }); loadLists(); }
       catch(e){
         if(e.unauthorized) return handleAuthError(e, loadLists);
-        listToast("Não foi possível excluir a lista.", true);
+        listToast("Não foi possível excluir a lista." + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       }
     });
   });
@@ -1156,7 +1156,7 @@ function renderLists(lists){
     catch(e){
       addBtn.disabled = false;
       if(e.unauthorized) return handleAuthError(e, loadLists);
-      listToast("Não foi possível criar a lista.", true);
+      listToast("Não foi possível criar a lista." + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   };
   addBtn.addEventListener("click", addList);
@@ -1482,7 +1482,7 @@ function renderItems(list, items){
         row.querySelector(".txt").classList.toggle("done", prevPurchased);
         recomputeTotals();
         updateClearButton();
-        listToast("Não foi possível salvar. Tente novamente.", true);
+        listToast("Não foi possível salvar. Tente novamente." + (err.body && err.body.error ? " (" + err.body.error + ")" : ""), true);
       }
     });
     const priceEl = row.querySelector(".price-input");
@@ -1503,7 +1503,7 @@ function renderItems(list, items){
         priceEl.value = fmtPriceInput(prevPrice);
         refreshLineTotal(row, it);
         recomputeTotals();
-        listToast("Não foi possível salvar. Tente novamente.", true);
+        listToast("Não foi possível salvar. Tente novamente." + (err.body && err.body.error ? " (" + err.body.error + ")" : ""), true);
       }
     });
     const qtyEl = row.querySelector(".qty-input");
@@ -1529,7 +1529,7 @@ function renderItems(list, items){
         qtyEl.value = fmtQty(qtyOf(it));
         refreshLineTotal(row, it);
         recomputeTotals();
-        listToast("Não foi possível salvar. Tente novamente.", true);
+        listToast("Não foi possível salvar. Tente novamente." + (err.body && err.body.error ? " (" + err.body.error + ")" : ""), true);
       }
     }
     qtyEl.addEventListener("change", (e) => setQty(e.target.value));
@@ -1582,7 +1582,7 @@ function renderItems(list, items){
         recomputeTotals();
       }catch(err){
         if(err.unauthorized){ handleAuthError(err, loadLists); return true; }
-        listToast("Não foi possível remover o item duplicado. Tente novamente.", true);
+        listToast("Não foi possível remover o item duplicado. Tente novamente." + (err.body && err.body.error ? " (" + err.body.error + ")" : ""), true);
       }
       return true;
     }
@@ -1615,7 +1615,7 @@ function renderItems(list, items){
         // to hang the message on — a toast, not fieldError.
         listToast(err.badRequest
           ? "Verifique o peso/volume (ex: 380 g) e o código de barras."
-          : "Não foi possível salvar. Tente novamente.", true);
+          : "Não foi possível salvar. Tente novamente." + (err.body && err.body.error ? " (" + err.body.error + ")" : ""), true);
       }
     }
     row.querySelector('[data-action="rename-item"]').addEventListener("click", async () => {
@@ -1677,7 +1677,7 @@ function renderItems(list, items){
         parent.insertBefore(row, nextSibling);
         recomputeTotals();
         updateClearButton();
-        listToast("Não foi possível remover. Tente novamente.", true);
+        listToast("Não foi possível remover. Tente novamente." + (err.body && err.body.error ? " (" + err.body.error + ")" : ""), true);
       }
     });
   }
@@ -1724,7 +1724,7 @@ function renderItems(list, items){
         // size; qtyInput is the field this message actually applies to.
         fieldError(qtyInput, "Não entendi o peso/volume. Use algo como 380 g, 1 kg ou 500 ml.");
       }
-      else listToast("Não foi possível adicionar. Tente novamente.", true);
+      else listToast("Não foi possível adicionar. Tente novamente." + (err.body && err.body.error ? " (" + err.body.error + ")" : ""), true);
     }finally{
       addBtn.disabled = false;
     }

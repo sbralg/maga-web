@@ -443,7 +443,7 @@ async function saveEdit(id, patch){
     await load();
   }catch(e){
     if(e.unauthorized){ handleAuthError(e, load); return; }
-    listToast("Não foi possível salvar.", true);
+    listToast("Não foi possível salvar." + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
   }
 }
 
@@ -504,7 +504,7 @@ function openEditModal(it){
       await load();
     }catch(e){
       if(e.unauthorized){ handleAuthError(e, load); return; }
-      listToast("Não foi possível excluir.", true);
+      listToast("Não foi possível excluir." + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 
@@ -559,7 +559,7 @@ function wireStarButtons(){
         btn.classList.toggle("important", it.important);
         btn.title = it.important ? "Remover importância" : "Marcar como importante";
         btn.disabled = false;
-        listToast("Não foi possível salvar.", true);
+        listToast("Não foi possível salvar." + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       }
     });
   });
@@ -694,7 +694,8 @@ async function load(){
       localStorage.removeItem(PASS_KEY);
       showLogin("Senha incorreta.");
     }else{
-      renderShell('<p class="msg err">Não foi possível carregar agora.</p>' +
+      renderShell('<p class="msg err">Não foi possível carregar agora.' +
+        (e.body && e.body.error ? ' (' + esc(e.body.error) + ')' : '') + '</p>' +
         '<p class="msg"><button class="link" onclick="load()">Tentar novamente</button></p>');
     }
   }

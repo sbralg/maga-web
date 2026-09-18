@@ -380,7 +380,7 @@ function openReceitaModal(r){
       }
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadReceitas);
-      listToast("Não foi possível salvar", true);
+      listToast("Não foi possível salvar" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 
@@ -398,7 +398,7 @@ async function receitaItemPickerModal(currentReceitaId){
     recs = receitaListCache.filter(r => r.id !== currentReceitaId);
   }catch(e){
     if(e.unauthorized){ handleAuthError(e, () => openReceita(currentReceitaId)); return null; }
-    listToast("Não foi possível carregar", true);
+    listToast("Não foi possível carregar" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     return null;
   }
 
@@ -688,7 +688,7 @@ function renderReceita(data){
       // server rejected the request and used to throw that reason away.
       listToast(e.badRequest && b.error === "unknown receita"
         ? "Esta receita já foi removida (talvez em outra aba)."
-        : "Não foi possível remover", true);
+        : "Não foi possível remover" + (b.error ? " (" + b.error + ")" : ""), true);
     }
   });
 
@@ -711,7 +711,8 @@ function renderReceita(data){
       const b2 = e.body || {};
       const msg = e.badRequest && b2.error === "would create a cyclic recipe reference"
         ? "Isso faria a receita depender dela mesma (por uma cadeia de sub-receitas) — não é possível adicionar."
-        : (e.badRequest ? "Não foi possível adicionar (verifique o item)" : "Não foi possível adicionar");
+        : (e.badRequest ? "Não foi possível adicionar (verifique o item)" : "Não foi possível adicionar") +
+            (b2.error ? " — " + b2.error : "");
       listToast(msg, true);
     }
   });
@@ -751,7 +752,7 @@ function renderCategoria(data){
         route.navToDetail(r.id);
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadReceitas);
-        listToast("Não foi possível criar o produto", true);
+        listToast("Não foi possível criar o produto" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       }
     });
     return;
@@ -779,7 +780,7 @@ function renderCategoria(data){
       route.navToDetail(r.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadReceitas);
-      listToast("Não foi possível remover", true);
+      listToast("Não foi possível remover" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 
@@ -793,7 +794,7 @@ function renderCategoria(data){
       pd = await api("produto_detail", { id: lp.id });
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadReceitas);
-      listToast("Não foi possível carregar o produto", true);
+      listToast("Não foi possível carregar o produto" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       return;
     }
     if(!pd.found) return;
@@ -902,7 +903,7 @@ function wireItemRowActions(data){
         listToast('Adicionado a "' + list.name + '"');
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadReceitas);
-        listToast("Não foi possível adicionar à lista", true);
+        listToast("Não foi possível adicionar à lista" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       }
     });
   });
@@ -923,7 +924,7 @@ function wireItemRowActions(data){
         route.navToDetail(r.id);
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadReceitas);
-        listToast("Não foi possível salvar", true);
+        listToast("Não foi possível salvar" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       }
     });
   });
@@ -937,7 +938,7 @@ function wireItemRowActions(data){
         route.navToDetail(r.id);
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadReceitas);
-        listToast("Não foi possível remover", true);
+        listToast("Não foi possível remover" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       }
     });
   });

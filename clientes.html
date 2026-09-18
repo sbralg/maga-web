@@ -351,7 +351,7 @@ function openClienteModal(c){
       }
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadClientes);
-      listToast("Não foi possível salvar", true);
+      listToast("Não foi possível salvar" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 
@@ -461,7 +461,7 @@ function renderCliente(data){
       route.navToList();
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadClientes);
-      listToast("Não foi possível remover", true);
+      listToast("Não foi possível remover" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 

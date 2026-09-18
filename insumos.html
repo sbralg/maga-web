@@ -768,7 +768,7 @@ function renderInsumo(data){
         : 'Adicionado a "' + list.name + '"');
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadCatalog);
-      listToast("Não foi possível adicionar à lista", true);
+      listToast("Não foi possível adicionar à lista" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 
@@ -790,7 +790,7 @@ function renderInsumo(data){
       route.navToDetail(p.gtin);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadCatalog);
-      listToast("Não foi possível salvar", true);
+      listToast("Não foi possível salvar" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 
@@ -810,7 +810,7 @@ function renderInsumo(data){
       route.navToDetail(p.gtin);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadCatalog);
-      listToast("Não foi possível salvar o ingrediente", true);
+      listToast("Não foi possível salvar o ingrediente" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 
@@ -849,7 +849,7 @@ function renderInsumo(data){
       route.navToList();
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadCatalog);
-      listToast("Não foi possível remover", true);
+      listToast("Não foi possível remover" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 
@@ -874,7 +874,7 @@ function renderInsumo(data){
         if(e.unauthorized) return handleAuthError(e, loadCatalog);
         retryBtn.disabled = false;
         retryBtn.textContent = "Tentar novamente";
-        listToast("Não foi possível consultar agora", true);
+        listToast("Não foi possível consultar agora" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       }
     });
   }
@@ -894,7 +894,7 @@ function renderInsumo(data){
       }catch(e){
         parent.insertBefore(row, next);
         if(e.unauthorized) return handleAuthError(e, loadCatalog);
-        listToast("Não foi possível remover", true);
+        listToast("Não foi possível remover" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       }
     });
   });

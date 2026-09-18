@@ -281,7 +281,7 @@ function wireRows(){
         loadLancamentos();
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadLancamentos);
-        listToast("Não foi possível remover", true);
+        listToast("Não foi possível remover" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       }
     });
   });
@@ -375,7 +375,7 @@ function openLancModal(l){
       loadLancamentos();
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadLancamentos);
-      listToast("Não foi possível salvar", true);
+      listToast("Não foi possível salvar" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 

@@ -468,7 +468,8 @@ async function wirePushOptIn(){
         msg.textContent = "Notificações não são compatíveis com este navegador.";
         btn.hidden = true;
       }else{
-        listToast("Não foi possível ativar as notificações agora.", true);
+        listToast("Não foi possível ativar as notificações agora." +
+          (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       }
     }finally{
       btn.disabled = false;
@@ -531,7 +532,8 @@ async function load(){
       localStorage.removeItem(PASS_KEY);
       showLogin("Senha incorreta.");
     }else{
-      renderShell('<p class="msg err">Não foi possível carregar agora.</p>' +
+      renderShell('<p class="msg err">Não foi possível carregar agora.' +
+        (e.body && e.body.error ? ' (' + esc(e.body.error) + ')' : '') + '</p>' +
         '<p class="msg"><button class="link" onclick="load()">Tentar novamente</button></p>');
     }
   }

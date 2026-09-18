@@ -217,7 +217,7 @@ function itemSaveErrorMsg(e){
   const b = e.body || {};
   return (e.badRequest && b.error === "unknown produto_id")
     ? "O produto vinculado não foi encontrado — tente salvar de novo sem ele."
-    : "Não foi possível salvar o item";
+    : "Não foi possível salvar o item" + (b.error ? " (" + b.error + ")" : "");
 }
 
 function renderShell(inner, opts){
@@ -440,7 +440,7 @@ async function clientePickerModal(){
       all = clienteCache;
     }catch(e){
       if(e.unauthorized){ handleAuthError(e, loadEventos); return resolve(null); }
-      listToast("Não foi possível carregar os clientes", true);
+      listToast("Não foi possível carregar os clientes" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       return resolve(null);
     }
 
@@ -494,7 +494,7 @@ async function clientePickerModal(){
             close(res.cliente);
           }catch(err){
             if(err.unauthorized){ handleAuthError(err, loadEventos); return close(null); }
-            listToast("Não foi possível criar o cliente", true);
+            listToast("Não foi possível criar o cliente" + (err.body && err.body.error ? " (" + err.body.error + ")" : ""), true);
           }
         });
       }
@@ -535,7 +535,7 @@ async function produtoPickerModal(){
       all = produtoCache;
     }catch(e){
       if(e.unauthorized){ handleAuthError(e, loadEventos); return resolve(null); }
-      listToast("Não foi possível carregar os produtos", true);
+      listToast("Não foi possível carregar os produtos" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       return resolve(null);
     }
 
@@ -572,7 +572,7 @@ async function produtoPickerModal(){
             close(detail.found ? { produto: detail.produto, cost: detail.cost } : null);
           }catch(err){
             if(err.unauthorized){ handleAuthError(err, loadEventos); return close(null); }
-            listToast("Não foi possível carregar o produto", true);
+            listToast("Não foi possível carregar o produto" + (err.body && err.body.error ? " (" + err.body.error + ")" : ""), true);
             close(null);
           }
         });
@@ -696,7 +696,7 @@ function openCreateModal(){
       route.navToDetail(res.evento.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadEventos);
-      listToast("Não foi possível criar o evento", true);
+      listToast("Não foi possível criar o evento" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 }
@@ -833,7 +833,7 @@ function renderEvento(data){
       route.navToDetail(v.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadEventos);
-      listToast("Não foi possível salvar", true);
+      listToast("Não foi possível salvar" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 
@@ -846,7 +846,7 @@ function renderEvento(data){
       route.navToDetail(v.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadEventos);
-      listToast("Não foi possível salvar", true);
+      listToast("Não foi possível salvar" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 
@@ -859,7 +859,7 @@ function renderEvento(data){
       route.navToDetail(v.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadEventos);
-      listToast("Não foi possível salvar", true);
+      listToast("Não foi possível salvar" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 
@@ -870,7 +870,7 @@ function renderEvento(data){
       listToast("Data salva");
     }catch(err){
       if(err.unauthorized) return handleAuthError(err, loadEventos);
-      listToast("Não foi possível salvar a data", true);
+      listToast("Não foi possível salvar a data" + (err.body && err.body.error ? " (" + err.body.error + ")" : ""), true);
     }
   });
 
@@ -895,7 +895,7 @@ function renderEvento(data){
       route.navToList();
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadEventos);
-      listToast("Não foi possível remover", true);
+      listToast("Não foi possível remover" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 
@@ -937,7 +937,7 @@ function renderEvento(data){
         route.navToDetail(v.id);
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadEventos);
-        listToast("Não foi possível remover", true);
+        listToast("Não foi possível remover" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       }
     });
   });
@@ -952,7 +952,7 @@ function renderEvento(data){
       route.navToDetail(v.id);
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadEventos);
-      listToast("Não foi possível confirmar o pagamento", true);
+      listToast("Não foi possível confirmar o pagamento" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
   root.querySelectorAll("[data-edit-pay]").forEach(btn => {
@@ -967,7 +967,7 @@ function renderEvento(data){
         route.navToDetail(v.id);
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadEventos);
-        listToast("Não foi possível salvar o pagamento", true);
+        listToast("Não foi possível salvar o pagamento" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       }
     });
   });
@@ -982,7 +982,7 @@ function renderEvento(data){
         route.navToDetail(v.id);
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadEventos);
-        listToast("Não foi possível remover", true);
+        listToast("Não foi possível remover" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       }
     });
   });

@@ -266,7 +266,7 @@ async function pickFornecedorModal(){
     if(!fornecedorCache) fornecedorCache = (await api("fornecedores")).fornecedores || [];
   }catch(e){
     if(e.unauthorized){ handleAuthError(e, loadProdutos); return null; }
-    listToast("Não foi possível carregar", true);
+    listToast("Não foi possível carregar" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     return null;
   }
   return new Promise(resolve => {
@@ -314,7 +314,7 @@ async function pickReceitaModal(){
     if(!receitaListCache) receitaListCache = (await api("receitas")).receitas || [];
   }catch(e){
     if(e.unauthorized){ handleAuthError(e, loadProdutos); return null; }
-    listToast("Não foi possível carregar", true);
+    listToast("Não foi possível carregar" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     return null;
   }
   return new Promise(resolve => {
@@ -533,7 +533,7 @@ function openProdutoModal(p, presetFornecedor){
         }
       }catch(e){
         if(e.unauthorized) return handleAuthError(e, loadProdutos);
-        listToast("Não foi possível salvar", true);
+        listToast("Não foi possível salvar" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       }
     });
 
@@ -616,7 +616,7 @@ function renderProduto(data){
       route.navToList();
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadProdutos);
-      listToast("Não foi possível remover", true);
+      listToast("Não foi possível remover" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     }
   });
 

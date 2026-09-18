@@ -405,7 +405,7 @@ function wireStockRow(row){
         : 'Adicionado a "' + list.name + '"');
     }catch(err){
       if(err.unauthorized) return handleAuthError(err, loadStock);
-      listToast("Não foi possível adicionar à lista", true);
+      listToast("Não foi possível adicionar à lista" + (err.body && err.body.error ? " (" + err.body.error + ")" : ""), true);
     }
   });
 
@@ -464,7 +464,7 @@ async function addOne(p, row){
     listToast("+1 " + p.name + (cost != null ? " · " + fmtMoney(cost) : ""));
   }catch(e){
     if(e.unauthorized) return handleAuthError(e, loadStock);
-    listToast("Não foi possível guardar", true);
+    listToast("Não foi possível guardar" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
   }
 }
 
@@ -481,7 +481,7 @@ async function removeOne(p, row){
     applyQty(p, row, Number(res.qty));
   }catch(e){
     if(e.unauthorized) return handleAuthError(e, loadStock);
-    listToast("Não foi possível tirar do estoque", true);
+    listToast("Não foi possível tirar do estoque" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
   }
 }
 
@@ -497,7 +497,7 @@ async function recount(p, row){
     if(!res.unchanged) listToast(p.name + ": " + fmtStockQty(res.qty));
   }catch(e){
     if(e.unauthorized) return handleAuthError(e, loadStock);
-    listToast("Não foi possível ajustar", true);
+    listToast("Não foi possível ajustar" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
   }
 }
 
@@ -519,7 +519,7 @@ async function setIngredient(p, row){
     listToast(name ? "Ingrediente: " + name : "Ingrediente removido");
   }catch(e){
     if(e.unauthorized) return handleAuthError(e, loadStock);
-    listToast("Não foi possível salvar o ingrediente", true);
+    listToast("Não foi possível salvar o ingrediente" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
   }
 }
 
@@ -553,7 +553,7 @@ async function resolveShortfall(p, row, wanted, info){
       (decision.price != null ? fmtMoney(decision.price) : "sem preço"));
   }catch(e){
     if(e.unauthorized) return handleAuthError(e, loadStock);
-    listToast("Não foi possível registrar a compra", true);
+    listToast("Não foi possível registrar a compra" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
     loadStock();
   }
 }
@@ -712,7 +712,7 @@ function fornecedorPickerModal(){
       all = fornecedorCache;
     }catch(e){
       if(e.unauthorized){ handleAuthError(e, loadStock); return resolve(null); }
-      listToast("Não foi possível carregar os fornecedores", true);
+      listToast("Não foi possível carregar os fornecedores" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
       return resolve(null);
     }
     const backdrop = document.createElement("div");
