@@ -95,7 +95,6 @@
   .total-bar{padding:12px 4px 0;text-align:right;color:var(--muted);font-size:13px}
   .total-bar strong{color:var(--text);font-size:14px}
   .clear-row{text-align:right;margin:6px 4px 0}
-  .clear-row .danger{color:var(--danger)}
   /* Layering, bottom to top: ordinary dialogs (100) < the camera overlay
      (110), so a scan can be started from the edit dialog < the camera
      picker (120), which is opened from inside that overlay. */
@@ -1326,14 +1325,15 @@ function renderItems(list, items){
     '<div class="clear-row">' +
       // Hidden until at least one row is purchased — audit C13's own
       // lesson (a permanently half-visible bulk-action bar reads as
-      // broken), kept in sync by updateClearButton() below. Confirmar
-      // shares the same visibility rule as Limpar: both only make sense
-      // once something is actually in the cart, and unlike Limpar it's
-      // safe to click more than once (the server upserts by row, so a
-      // second click on an unchanged cart just re-confirms the same
-      // movements rather than double-posting).
-      '<button type="button" class="link" id="confirm-purchase-btn" hidden>✅ Confirmar compra</button>' +
-      '<button type="button" class="link danger" id="clear-purchased-btn" hidden>🗑 Limpar comprados</button>' +
+      // broken), kept in sync by updateClearButton() below. This used to
+      // be two buttons (Confirmar + a separate Limpar comprados) — folded
+      // into one on the user's own call: a purchase that's already been
+      // posted to stock/Financeiro has nothing left to do sitting in the
+      // list, so Confirmar now clears the rows it processes itself. Safe
+      // to click more than once regardless — the server upserts by row,
+      // so a second click on an unchanged cart (nothing left purchased)
+      // is simply hidden away with nothing to do.
+      '<button type="button" class="primary small" id="confirm-purchase-btn" hidden>✅ Confirmar compra</button>' +
     '</div>';
 
   wireNav(route.navToList);
@@ -1359,13 +1359,10 @@ function renderItems(list, items){
 
   // Independent of the search filter on purpose: "how many are checked
   // off" is a fact about the LIST, not about what's currently visible, so
-  // searching for one thing must not hide the button for clearing another.
+  // searching for one thing must not hide the button.
   function updateClearButton(){
-    const anyPurchased = items.some(i => i.purchased);
-    const clearBtn = document.getElementById("clear-purchased-btn");
-    if(clearBtn) clearBtn.hidden = !anyPurchased;
     const confirmBtn = document.getElementById("confirm-purchase-btn");
-    if(confirmBtn) confirmBtn.hidden = !anyPurchased;
+    if(confirmBtn) confirmBtn.hidden = !items.some(i => i.purchased);
   }
 
   const searchInput = document.getElementById("search");
@@ -1393,13 +1390,39 @@ function renderItems(list, items){
     btn.disabled = true;
     try{
       const res = await api("shopping_confirm_purchase", { list_id: currentList.id });
+      // The server already deleted whatever it processed — mirror that
+      // here rather than re-deleting anything, and drive the removal off
+      // res.removed_ids (not the local `purchased` snapshot) so the UI
+      // only drops rows the server actually confirmed gone.
+      const removedIds = res.removed_ids || [];
+      removedIds.forEach(id => {
+        const idx = items.findIndex(i => i.id === id);
+        if(idx !== -1) items.splice(idx, 1);
+        const row = root.querySelector('.row[data-id="' + id + '"]');
+        if(row) row.remove();
+      });
+      if(items.length === 0){
+        const card = document.getElementById("items-card");
+        if(card){
+          const emptyMsg = document.createElement("p");
+          emptyMsg.className = "msg";
+          emptyMsg.id = "items-empty";
+          emptyMsg.textContent = "Nenhum item nesta lista ainda.";
+          card.replaceWith(emptyMsg);
+        }
+      }
+      recomputeTotals();
+      applySearchFilter();
+      updateClearButton();
+
       const parts = [];
-      parts.push(res.confirmed + (res.confirmed === 1 ? " item lançado" : " itens lançados"));
+      parts.push(removedIds.length + (removedIds.length === 1
+        ? " item confirmado e removido" : " itens confirmados e removidos"));
       if(res.skipped_no_price && res.skipped_no_price.length){
         parts.push(res.skipped_no_price.length + " sem preço (só entrou no estoque)");
       }
       if(res.skipped_no_gtin && res.skipped_no_gtin.length){
-        parts.push(res.skipped_no_gtin.length + " sem código (ignorado)");
+        parts.push(res.skipped_no_gtin.length + " sem código (não entrou no estoque)");
       }
       listToast(parts.join(" · "));
     }catch(err){
@@ -1407,54 +1430,6 @@ function renderItems(list, items){
       listToast("Não foi possível confirmar a compra." + (err.body && err.body.error ? " (" + err.body.error + ")" : ""), true);
     }finally{
       btn.disabled = false;
-    }
-  });
-
-  document.getElementById("clear-purchased-btn").addEventListener("click", async () => {
-    const purchased = items.filter(i => i.purchased);
-    if(purchased.length === 0) return;
-    if(!(await confirmModal(
-      "Remover " + purchased.length + (purchased.length === 1 ? " item comprado" : " itens comprados") +
-        " da lista? Não dá para desfazer.",
-      "Limpar"))) return;
-    let removed = 0, failed = 0;
-    for(const it of purchased){
-      try{
-        await api("shopping_item_delete", { id: it.id });
-        const idx = items.indexOf(it);
-        if(idx !== -1) items.splice(idx, 1);
-        const row = root.querySelector('.row[data-id="' + it.id + '"]');
-        if(row) row.remove();
-        removed++;
-      }catch(err){
-        // Deliberately NOT routed through handleAuthError unless it's
-        // actually an auth failure — phase 0's A5 bug on this exact page
-        // was handleAuthError wiping the whole screen for an ordinary
-        // failed row.
-        if(err.unauthorized){ handleAuthError(err, loadLists); return; }
-        failed++;
-      }
-    }
-    if(items.length === 0){
-      const card = document.getElementById("items-card");
-      if(card){
-        const emptyMsg = document.createElement("p");
-        emptyMsg.className = "msg";
-        emptyMsg.id = "items-empty";
-        emptyMsg.textContent = "Nenhum item nesta lista ainda.";
-        card.replaceWith(emptyMsg);
-      }
-    }
-    recomputeTotals();
-    applySearchFilter();
-    updateClearButton();
-    if(failed === 0){
-      listToast(removed + (removed === 1 ? " item removido" : " itens removidos"));
-    }else{
-      // A toast claiming success while rows survive is worse than the
-      // error — the count is the whole point of this message.
-      listToast(removed + " de " + (removed + failed) + " removidos — " + failed +
-        (failed === 1 ? " falhou" : " falharam"), true);
     }
   });
 
@@ -1480,11 +1455,11 @@ function renderItems(list, items){
   // The row a barcode already belongs to, if the list has one. A checked-off
   // row still counts: "purchased" means IN THE CART, not gone — scanning it
   // again is a walk back to the aisle for one more, which belongs on that
-  // same line rather than starting a second one. (It's "Confirmar compra"
-  // that will clear the checked rows out into stock and finance; until then
-  // they're as much a part of the list as any other.) When both a checked
-  // and an unchecked row carry the code, the unchecked one wins — that's
-  // the line still saying "you need this".
+  // same line rather than starting a second one. ("Confirmar compra" is
+  // what actually clears a checked row out into stock and finance; until
+  // that's tapped they're as much a part of the list as any other.) When
+  // both a checked and an unchecked row carry the code, the unchecked one
+  // wins — that's the line still saying "you need this".
   function rowForGtin(code, exceptId){
     if(!code) return null;
     const matches = items.filter(i => i.gtin === code && i.id !== exceptId);

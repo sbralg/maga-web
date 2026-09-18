@@ -9,6 +9,39 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-18, phase 3 revision): "Limpar comprados" folded into "Confirmar compra" and removed; the button restyled
+
+Same-day follow-up after the entry directly below. Two pieces of user
+feedback from actually using the shipped feature: (1) a purchase that's
+already been posted to stock/Financeiro has nothing left to do sitting in
+the shopping list, so Confirmar should just clear those rows itself
+rather than needing a second "Limpar comprados" tap; (2) the button
+should look like a real action, not a muted text link. Backend half
+(`shopping_confirm_purchase` now deletes what it processes) is
+`maga-api`'s own CLAUDE.md entry — **not yet redeployed**.
+
+- **`#clear-purchased-btn` and its whole click handler are gone.**
+  `#confirm-purchase-btn` is now `class="primary small"` (was `.link`) —
+  matching the solid-button convention `notas.html`'s "+ Caderno" already
+  uses for its primary add action, not the muted-link styling that made
+  sense when this was a low-stakes bulk-tidy action rather than the thing
+  that posts real money to Financeiro. `.clear-row .danger` dropped from
+  the page's `<style>` block too — dead CSS once nothing in that row uses
+  `.danger` any more.
+- **The confirm handler now removes rows itself**, driven by the server's
+  `res.removed_ids` (never re-deleting client-side, never assuming every
+  purchased id it sent actually got cleared) — same DOM-removal/empty-
+  state/`recomputeTotals()` shape Limpar's old handler had, just triggered
+  from one API round trip instead of an N-call loop. The toast now reads
+  "X itens confirmados e removidos" as the headline, with the same
+  sem-preço/sem-código breakdown notes as before.
+- **`test/compras.test.js` updated to match**: the confirm scenario now
+  asserts the row is GONE after confirming (previously asserted it
+  survived, back when Confirmar and Limpar were separate). Verified
+  against the real file via the [[feedback_sandbox_playwright_raf]]
+  monkeypatch — clean on run 1, only the suite's known pre-existing
+  lens-autopick flakiness seen on repeat runs.
+
 ## Status (2026-09-18, phase 3): "Confirmar compra" — checking off a shopping item can finally become real pantry stock and a real despesa
 
 First item of phase 3 (the plan's own "still open" list, carried since
