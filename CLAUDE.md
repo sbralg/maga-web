@@ -9,7 +9,233 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
-## Status (2026-09-17, phase 2b): new capabilities — an insumo can finally be created without a barcode, category CRUD gets a caller, the shopping list stops being an island, and three pages gain search
+## Status (2026-09-17, phase 2c): insumo categories removed, error detail surfaces everywhere, delete refusals get consistent, financeiro gains cross-links, and "Usado em" finally answers where a thing is used
+
+Phase 2c of the audit, all on `maga-api`'s `claude/audit-2c-insumo-categories`
+branch (PR [#37](../../maga-api/pull/37), **open, not yet merged or
+redeployed** — see "Process notes") paired with `maga-web` commits
+`d200a06`..`f549b7d` pushed straight to `main` as each went green, per this
+repo's own convention. Front end + backend both changed this phase, unlike
+2b — every item here needed a `maga-api` change; two needed a live schema
+migration (already applied to both `maga-dev`/`maga-prod`, verified zero
+rows before dropping anything).
+
+### 1. Insumo Categories removed entirely — not deferred, not staged, just gone
+
+Raised mid-session as a design question, not originally in the plan: *"I
+wonder if that makes any sense. We already have ingredients... I'm not sure
+how it would ever be used in the system."* Audited every consumer before
+agreeing: no filter chip (only `kind` gets one), no badge on the catalogue
+row, no recipe/costing/shopping-list logic ever read `category_id` — the
+2026-08-24 design comment's own claim ("purely organizational") was true in
+a way that meant it never actually organized anything. `select count(*)
+from insumo_categories` / `insumos where category_id is not null` came back
+**zero on both `maga-dev` and `maga-prod`** — never used even once — so this
+was a straight `DROP TABLE`/`DROP COLUMN` migration
+(`20260917190000_drop_insumo_categories.sql`), not the keep-dead-first
+staging the five frozen `notes` columns used (that case had real backfilled
+data to protect; this one had nothing to lose). `insumos.html` loses the
+"🏷️ Categorias" modal and the category `<select>` in `insumoEditModal`
+(now `(p, opts)`, not `(p, categories, opts)`) — the whole feature phase 2b
+had *just* wired a caller for a session earlier.
+
+### 2. Dead `shopping_item_rename` action removed
+
+Zero callers anywhere in `maga-web` (grepped every `*.html`) —
+`shopping_item_update`'s `"name" in body` branch has fully covered a rename
+since it shipped, with strictly more validation than the dedicated action
+ever had.
+
+### 3. Backend error detail surfaces in ~72 generic "Não foi possível" messages
+
+Every `maga-api` error string is raw, English, developer-facing —
+`"invalid net_qty"`, `"unknown cliente"`, `"id required"` (sampled ~50
+unique ones) — never written for a Portuguese-speaking end user, so this
+does **not** replace the existing message with the raw string. It appends
+it as parenthetical diagnostic text, guarded on `e.body && e.body.error`
+(silently absent on a network failure or any non-JSON error body):
+`"Não foi possível salvar" + (e.body && e.body.error ? " (" + e.body.error
++ ")" : "")`. Touches 13 pages. Left completely alone: every
+`e.unauthorized` branch, and every catch that already builds a *specific*
+structured message from `e.body` (the six delete-refusal flows below,
+`receita_item_add`'s cyclic-reference detection, `ingredientes.html`'s
+duplicate-name field error) — those already do better than a raw
+parenthetical, though a few (`receita_delete`'s fallback branch,
+`receita_item_add`'s fallback branch, `eventos.html`'s shared
+`itemSaveErrorMsg()`) got the parenthetical appended to their own
+*remaining* generic branch, on top of what they already did.
+`preferencias.html` was **skipped entirely** — it already surfaces detail
+via `e.message` from its own MCP-layer wrapper functions (`changePassword()`
+etc.), a different backend than `shared-api.js`'s `api()`, where `e.body`
+isn't even the right shape.
+
+Two sites (`hoje.html`, `tarefas.html`'s own daily-summary error states)
+route the message through `innerHTML` via `renderShell()`, so those got
+`esc()` on the appended text; every `listToast()` site didn't need it
+(`.textContent`, not `innerHTML` — confirmed by reading `listToast()`
+itself before assuming).
+
+### 4. Delete-refusal protocols unified — three shapes down to one, deliberately keeping the one real exception
+
+Audited all six "delete something other things reference" actions and
+found three different shapes where there should have been one:
+- **`evento`/`insumo`/`fornecedor`/`notebook_delete`** — already
+  consistent with each other: refuse with real counts, confirm, retry with
+  `force:true`.
+- **`cliente_delete`** — deleted unconditionally, reported
+  `eventos_unlinked` only *after* the fact. No warning. The one real
+  inconsistency.
+- **`produto_delete`** — deleted unconditionally and reported nothing at
+  all.
+
+`cliente_delete` now matches `fornecedor_delete`'s exact shape (the closest
+analog — `eventos`↔`cliente` is the same relationship as `produtos`/
+`movements`↔`fornecedor`). `produto_delete` now reports
+`evento_itens_unlinked` (informational only, not a new refusal gate —
+`evento_itens.produto_id` is `ON DELETE SET NULL` and a line's own
+`description`/`unit_cost`/`unit_price` survive fully intact either way, so
+there was never anything worth blocking on).
+
+**Deliberately NOT touched: `ingredient_delete`/`receita_delete`'s hard
+block (400, no force, ever).** That's a different, genuinely correct
+semantic, not a fourth inconsistent shape — both FKs
+(`produto_embalagens.ingredient_id`, `receita_itens.ingredient_id`) are `ON
+DELETE RESTRICT` at the schema level, so a force option literally cannot
+work without either cascading (silently destroying recipe lines) or nulling
+a `NOT NULL` column. Unifying the *code shape* across all six would have
+papered over that real difference.
+
+### 5. Financeiro cross-links — no schema change needed for either direction
+
+The plan's own note ("blocked on a missing backend field") turned out to be
+stale on inspection: `financeiro_lancamentos.evento_id` already existed,
+unused by any filter; `eventos.cliente_id` already existed, making the
+cliente direction a one-extra-query join, not a new column.
+`financeiro_lancamentos` gained `evento_id`/`cliente_id` filters;
+`eventos.html`/`clientes.html` gained a "💰 Ver no Financeiro" link in
+`.detail-actions`. `financeiro.html` already rendered a "🔗 evento" link
+*back* to an evento (`entryRowHtml()`) and already had a `?id=` deep link
+that opens one entry's edit modal — per its own code comment, these were
+*"what the evento and cliente cross-links point at"*, built ahead of time
+and never connected. `?evento_id=`/`?cliente_id=` are read at load, kept in
+the URL (unlike `?id=`, which is stripped after opening its modal once —
+this is a persistent filtered *view*, so reload/back-forward should keep
+showing it), and shown as a "Filtrado por evento/cliente · Ver tudo"
+banner. The evento name in the banner comes from the already-embedded
+`evento:eventos(id,name)` on the first returned row, not a second round
+trip; a cliente filter has no such embed (a lançamento doesn't carry a
+cliente directly), so that banner stays generic.
+
+### 6. "Usado em" (B7) — named reference lists, not counts, and a proactive read path
+
+Closes the plan's own long-standing note: *"`ingredient_delete` returns
+counts only, `receita_delete` returns names but only as a 400 refusal, and
+no read action carries reverse references."*
+
+- `ingredient_delete`'s refusal now returns `used_by_receitas`/
+  `used_by_produtos` (names, via a new `ingredientUsage()` helper) instead
+  of bare `receita_itens`/`produto_embalagens` counts — parity with
+  `receita_delete`'s existing shape, which already named its blockers.
+- New `ingredient_usage` action (`{id} -> {receitas, produtos}`) — same
+  query, callable without attempting a delete. `ingredientes.html` gains a
+  new "Usado em" card, **lazy-fetched only when a detail sheet opens** — a
+  separate round trip on purpose, since `receita_itens`/`produto_embalagens`
+  aren't part of the `ingredients`/`insumos` data this page already has
+  loaded, and fetching them for every row in the list would cost far more
+  than it's worth.
+- `receita_detail` now also returns `used_by_receitas`/`used_by_produtos`
+  (via a new `receitaUsage()` helper, extracted from `receita_delete`'s own
+  query so both share one implementation) — **no new read action needed**,
+  since `receita_detail` already round-trips on every page open.
+  `receitas.html` shows only the `used_by_receitas` direction (which
+  *other* recipe uses this one as a sub-receita) — deliberately **not**
+  `used_by_produtos`, since which produto this receita is Produto Final of
+  is already shown, with a working link, by the Categoria section right
+  below it. Repeating it would be the same fact twice.
+
+Both pages' delete-refusal dialogs updated to the new named-list shape —
+`ingredientes.html`'s now reads the same way `receitas.html`'s always has
+("está em uso por: X, Y").
+
+### Process notes
+
+**`maga-api`'s PR #37 is open, not merged, and not redeployed** — per this
+repo's own gotcha #20 (redeploy is always the user's own call) and the fact
+that `maga-api` keeps PRs (unlike this repo's push-to-`main`). The schema
+migration (item 1's `DROP TABLE`/`DROP COLUMN`) **has already been applied
+live** to both `maga-dev` and `maga-prod` — that part doesn't wait on the
+PR merge, since a migration and an Edge Function redeploy are independent
+steps in this project's own convention. The PR also folds in `maga-api`'s
+previously-loose `15f9834` ("Record audit phase 0 in CLAUDE.md") commit,
+cherry-picked cleanly — it sat on the old, already-merged
+`claude/app-audit-improvements-n54adl` branch and never reached that repo's
+`main`.
+
+**Two items from 2b's own "Still open" note turned out to be stale**, caught
+by re-reading the actual current code instead of trusting the carried-over
+description: `compras.html`'s "four full-screen reloads" don't exist — every
+mutation path (add/delete/edit/scan/merge/clear) already patches the DOM in
+place, most likely from phase 0's own earlier work. And the financeiro
+cross-links' "missing backend field" wasn't actually missing (see item 5).
+Worth remembering for future phases: a plan document's own language is a
+starting point to verify, not a fact to build from unchecked.
+
+**Same standing environment limitation as phase 2b, but this session got
+further**: headless Chromium's `requestAnimationFrame` still never fires in
+this sandbox (confirmed again — `env-scope.test.js` needed a fresh `npx
+playwright install chromium` this session, and even with a byte-correct
+binary, a minimal rAF repro still times out). Unlike 2b, this session
+**did** get real Playwright runs, by additionally monkeypatching
+`page.waitForSelector` (default to `state:'attached'`, skipping the
+rAF-blocked visibility/stability computation), `page.click` (`force:true`),
+`page.waitForFunction` (`polling:100`, a real-timer interval instead of the
+rAF-based default), and `page.screenshot` (a couple of test files' own final
+debug screenshot call hangs on Playwright's internal "wait for fonts to
+load" check, which is itself rAF-driven — stubbed to a no-op since the
+image isn't needed for a pass/fail read). Applied to copies of
+`clientes`/`produtos`/`financeiro`/`eventos`/`receitas`/`ingredientes`/
+`notas`/`hoje`/`fornecedores.test.js` (9 of the 13 touched pages) — all
+genuinely green, zero failures, zero JS errors, run for real through the
+actual committed test files (not a throwaway driver script, unlike 2b).
+`ingredientes.test.js` needed a real fix first (see item 6) and, once
+fixed, passed clean too. `tarefas.test.js`/`stock.test.js` hit a **different,
+confirmed-unrelated** hang — `shared-menu.js`'s hamburger-drawer-open
+animation calls `requestAnimationFrame` directly
+(`requestAnimationFrame(() => requestAnimationFrame(() => panel.classList
+.add("open")))`), so `.menu-panel.open` never appears no matter what the
+test harness's own waits are patched to do. That's the same sandbox
+limitation showing up at the *application* level, not just Playwright's
+internal one — no test-harness patch can fix it, since the app code itself
+is waiting on a browser API that this sandbox's Chromium never services.
+Not fixed, not worked around — flagged for a session with a real browser.
+
+`ingredientes.test.js`'s fix surfaced one more thing, confirmed **not**
+caused by this session: after the delete-refusal/"Usado em" assertions all
+pass clean, a *later*, unrelated step in that same test (`#back` after
+editing a freshly-created ingredient's unit, then re-opening a different
+row) hangs with a fully blank page body and zero JS errors. Verified this
+is pre-existing by disabling the new "Usado em" fetch entirely and
+reproducing the identical hang — `git log` shows only this session's two
+commits ever touched `ingredientes.html`, and neither touches the
+list/routing code anywhere near this path. Never previously reachable in
+this sandbox (earlier assertions always failed first), so never actually
+verified passing by any session, ever, here. Flagged, not chased further —
+out of scope for this phase.
+
+### Still open
+
+**Phases 3–5 unchanged**: the "Confirmar compra" loop (shopping → stock →
+auto-post despesa to Financeiro), a live dashboard, and a final test/tidy
+pass. Not yet scoped in detail.
+
+**New, from this phase's own findings**: `tarefas.test.js`/`stock.test.js`'s
+rAF-at-the-application-level hang (see Process notes) needs a session with
+a working Chromium to actually investigate — this sandbox categorically
+cannot service it. `ingredientes.test.js`'s later, unrelated hang
+(also Process notes) likewise. Neither blocks anything — both are
+test-environment findings, not known app bugs.
+
+
 
 Phase 2b of the audit (`65fa16e`, `98b5655`, `bdf6777`, `e2c3405`), the plan
 for which was committed and read from `PLAN-2b.md` (now deleted — its
