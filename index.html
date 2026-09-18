@@ -19,10 +19,17 @@
   and nothing live.
 
   Deliberately module tiles only, no live data, to start (the user's own
-  call when this page was planned) — a quick summary per module is a
-  reasonable next step once there's something worth summarizing on the
-  busier modules (Eventos/Financeiro), but bolting that on before those
-  exist would be building it for data that isn't there yet.
+  call when this page was planned) — a quick summary per module was always
+  flagged as the reasonable next step once there was something worth
+  summarizing. Phase 4 of the app audit is that: five tiles (tarefas,
+  compras, eventos, estoque, financeiro — the modules that accumulate
+  state day to day, not the reference catalogues) grow a second, small
+  line fetched from `dashboard_summary` after the tile grid itself has
+  already painted. Deliberately non-blocking and best-effort: this call
+  is enrichment on a landing page, never the reason the page fails to
+  load, so any failure other than an expired session (network hiccup, or
+  simply an older `maga-api` deploy that doesn't know this action yet)
+  just leaves the five tiles as plain navigation, exactly as before.
 
   This page took over `index.html` from the daily-task checklist, which
   moved to `tarefas.html` — deliberately with NO redirect stub at the old
@@ -76,6 +83,11 @@
   .tile .emoji{font-size:28px;line-height:1}
   .tile .label{font-size:15px;font-weight:650}
   .tile .desc{font-size:12px;color:var(--muted);line-height:1.35;margin:0}
+  /* Filled in best-effort by loadStats() once dashboard_summary answers —
+     starts hidden (not empty text) so a slow/failed fetch leaves the tile
+     exactly as it always looked, no empty gap held open for it. */
+  .tile .tile-stat{font-size:11.5px;font-weight:650;color:var(--muted);margin:2px 0 0}
+  .tile .tile-stat.warn{color:var(--danger)}
 </style>
 </head>
 <body>
@@ -91,6 +103,7 @@ const PAGE_LOGIN = {
 };
 </script>
 <script src="shared-api.js"></script>
+<script src="shared-format.js"></script>
 <script src="shared-menu.js"></script>
 <script src="shared-nav.js"></script>
 <script src="shared-ui.js"></script>
@@ -132,6 +145,12 @@ const GROUP_HINT = {
   conta: "Como o assistente se comporta para esta conta.",
 };
 
+// The five modules that accumulate state day to day — the ones worth a
+// live stat. Reference catalogues (insumos/receitas/produtos/
+// fornecedores/clientes) and notas have no single number that means
+// "needs attention", so they stay plain navigation.
+const STAT_PAGES = ["tarefas", "compras", "eventos", "estoque", "financeiro"];
+
 function render(){
   let lastGroup = null;
   let body = "";
@@ -148,10 +167,11 @@ function render(){
       '</div><div class="tiles">';
       lastGroup = item.group;
     }
-    body += '<a class="tile" href="' + item.href + '">' +
+    body += '<a class="tile" href="' + item.href + '" data-page="' + item.page + '">' +
       '<span class="emoji">' + item.emoji + '</span>' +
       '<span class="label">' + esc(item.label) + '</span>' +
       '<p class="desc">' + esc(TILE_DESC[item.page] || "") + '</p>' +
+      (STAT_PAGES.indexOf(item.page) !== -1 ? '<p class="tile-stat" hidden></p>' : '') +
     '</a>';
   });
   if(lastGroup !== null) body += '</div>';
@@ -171,6 +191,84 @@ function render(){
     '<div class="brand-hero"><img src="assets/logo-badge.svg" alt="Magá — Cozinha Artesanal"></div>' +
     body;
   wireNav();
+  loadStats();
+}
+
+// Fetches the five tiles' live stats and patches them in. Never blocks or
+// replaces the tile grid render() already painted: an unauthorized
+// response bounces to login (the session really did expire, same as any
+// other api() call), but anything else — a network hiccup, or simply an
+// `maga-api` deploy that predates this action and answers 400 "bad
+// action" — is swallowed here. This is the one api() call in the whole
+// app deliberately NOT routed through handleAuthError's generic branch,
+// since that replaces the whole page with an error+retry screen, which is
+// right for a page whose only content IS that data and wrong for a
+// decorative line on five otherwise-fully-functional nav tiles.
+async function loadStats(){
+  let s;
+  try{ s = await api("dashboard_summary"); }
+  catch(err){
+    if(err.unauthorized) handleAuthError(err, loadStats);
+    return;
+  }
+  setStat("tarefas", tarefasStat(s.tarefas));
+  setStat("compras", comprasStat(s.compras));
+  setStat("eventos", eventosStat(s.eventos));
+  setStat("estoque", estoqueStat(s.estoque));
+  setStat("financeiro", financeiroStat(s.financeiro));
+}
+
+function setStat(page, stat){
+  if(!stat) return;
+  const el = root.querySelector('.tile[data-page="' + page + '"] .tile-stat');
+  if(!el) return;
+  el.textContent = stat.text;
+  el.hidden = false;
+  if(stat.warn) el.classList.add("warn");
+}
+
+function tarefasStat(t){
+  if(!t) return null;
+  if(t.pending_count === 0) return { text: "Nada pendente", warn: false };
+  const parts = [t.pending_count + (t.pending_count === 1 ? " pendente" : " pendentes")];
+  if(t.overdue_count > 0){
+    parts.push(t.overdue_count + (t.overdue_count === 1 ? " atrasada" : " atrasadas"));
+  }
+  return { text: parts.join(" · "), warn: t.overdue_count > 0 };
+}
+
+function comprasStat(c){
+  if(!c) return null;
+  if(c.items_open === 0) return { text: c.lists_count > 0 ? "Nada pendente" : "Nenhuma lista", warn: false };
+  return { text: c.items_open + (c.items_open === 1 ? " item para comprar" : " itens para comprar"), warn: false };
+}
+
+function eventosStat(e){
+  if(!e) return null;
+  if(e.active_count === 0) return { text: "Nenhum em andamento", warn: false };
+  let text = e.active_count + " em andamento";
+  if(e.next) text += " · próximo " + ddmm(e.next.event_date);
+  return { text, warn: false };
+}
+
+function estoqueStat(s){
+  if(!s) return null;
+  if(s.out_of_stock_count === 0) return { text: "Tudo em estoque", warn: false };
+  return { text: s.out_of_stock_count + (s.out_of_stock_count === 1 ? " item em falta" : " itens em falta"), warn: true };
+}
+
+function financeiroStat(f){
+  if(!f) return null;
+  return { text: "Saldo do mês: " + fmtMoney(f.month_saldo), warn: f.month_saldo < 0 };
+}
+
+// A plain "DD/MM" from a YYYY-MM-DD string, with no Date object involved —
+// event_date has no time component, so parsing it as a Date and formatting
+// back with toLocaleDateString risks the UTC-midnight-vs-America/Sao_Paulo
+// off-by-one-day shift documented on eventos.html's own fmtEventDate.
+function ddmm(dateStr){
+  const parts = String(dateStr || "").split("-");
+  return parts.length === 3 ? (parts[2] + "/" + parts[1]) : "";
 }
 
 // The configured "Página inicial" (Preferências → Aplicativo, phase 3 of

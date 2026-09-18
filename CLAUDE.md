@@ -9,6 +9,68 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-19): phase 4 — `index.html`'s five busiest tiles gain a live stat line
+
+Continuation of the app audit past phase 3. This page's own header comment
+has said since it was built that a quick per-module summary is "a
+reasonable next step once there's something worth summarizing" — phase 3
+and the rest of the audit gave every module something worth summarizing,
+so this is that. Backend half (the new `dashboard_summary` action) is
+`maga-api`'s own CLAUDE.md entry, PR
+[#40](https://github.com/sbralg/maga-api/pull/40) — **not yet merged or
+deployed**, per that repo's own gotcha #20: redeploy is always the user's
+call. `index.html` degrades cleanly meanwhile (see below).
+
+- **Five tiles, not all fourteen**: `tarefas`, `compras`, `eventos`,
+  `estoque`, `financeiro` — the modules that accumulate state day to day.
+  Reference catalogues (`insumos`/`receitas`/`produtos`/`fornecedores`/
+  `clientes`) and `notas` have no single number that means "needs
+  attention", so they stay plain navigation, same as always.
+- **Two-phase render, deliberately non-blocking**: `render()` paints the
+  full tile grid exactly as before (fast, no data dependency), then calls
+  the new `loadStats()`, which fetches `dashboard_summary` and patches a
+  `<p class="tile-stat" hidden>` placeholder per relevant tile once it
+  answers — `data-page` attributes on each `<a class="tile">` are what
+  `setStat()` uses to find the right one. A landing page never waits on a
+  network round trip just to become navigable.
+- **A stat can carry `.warn`** (`var(--danger)`, matching the despesas-row
+  convention already established on `financeiro.html`): tarefas' overdue
+  count, estoque's out-of-stock count, and a negative financeiro saldo all
+  set it; a plain pending/open/in-progress count does not — a shopping
+  list with items on it isn't an alarm, but a bill overdue or a shelf
+  actually empty is.
+- **Failure is silent and total on purpose, except for one case.**
+  `loadStats()` is the one `api()` call in the app deliberately NOT routed
+  through `handleAuthError`'s generic branch (which replaces `#root` with
+  a full error+retry screen) — right for a page whose only content IS the
+  data it fetched, wrong for a decorative line on five otherwise-complete
+  nav tiles. An expired session (`err.unauthorized`) still bounces to
+  login like any other call; a network hiccup or (today, before PR #40
+  deploys) a 400 "bad action" from an `maga-api` that doesn't know this
+  action yet just leaves all five tiles as plain navigation, same as
+  before this phase shipped.
+- **`fmtMoney`/`shared-format.js` newly loaded on this page** — the saldo
+  stat is the first thing `index.html` has ever needed to format as
+  currency. A small local `ddmm()` renders the next event's date as
+  `DD/MM` from the raw `YYYY-MM-DD` string with no `Date` object involved
+  at all, sidestepping the UTC-midnight-vs-America/Sao_Paulo off-by-one
+  shift `eventos.html`'s own `fmtEventDate` comment already documents.
+- **New `test/index.test.js`** (this page's first automated coverage —
+  it had none before, being pure navigation with nothing to assert against)
+  covers both the happy path (all five stats render with the right text
+  and the right two carry `.warn`) and the degraded path (a mocked 400
+  "bad action" — the actual pre-deploy shape — leaves every tile a working
+  link, no error screen, no stray dialog, no console error beyond the
+  expected failed-request log). The happy-path scenario uses a manually-
+  released gate on the mocked route rather than a fixed delay, so the
+  "starts hidden, then fills in" assertion is deterministic regardless of
+  this sandbox's unpredictable Playwright↔Chromium round-trip latency —
+  see [[feedback_sandbox_playwright_raf]]. Run via that same monkeypatch
+  workaround, green across 3 runs.
+- **Still open, unchanged**: no schema/backend badge shows a despesa's
+  "came from a shopping list" origin on `financeiro.html` itself; phase 5
+  (a final test/tidy pass) is next and not yet scoped in detail.
+
 ## Status (2026-09-18, phase 3 revision): "Limpar comprados" folded into "Confirmar compra" and removed; the button restyled
 
 Same-day follow-up after the entry directly below. Two pieces of user
