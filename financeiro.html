@@ -42,6 +42,13 @@
   .stat.receitas .val{color:var(--ok)}
   .stat.despesas .val{color:var(--danger)}
 
+  /* The banner shown when ?evento_id=/?cliente_id= narrows the list — what
+     eventos.html's/clientes.html's "Ver no Financeiro" link points at. */
+  .filter-banner{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:10px 12px;margin:0 0 12px;border-radius:10px;font-size:13px;
+    background:rgba(var(--accent-rgb),.1);color:var(--accent);
+  }
   /* Tighter than the shared 14px: this page stacks a second
      filter row (.periodrow) directly underneath. */
   .chiprow{margin:0 0 10px}
@@ -82,6 +89,13 @@ let totals = { total_receitas: 0, total_despesas: 0, saldo: 0 };
 let tipoFilter = "";
 let periodo = "all";
 let searchTerm = "";
+// Set from ?evento_id=/?cliente_id= at load — what eventos.html's "Ver no
+// Financeiro" link and clientes.html's own equivalent point at. Kept (not
+// stripped like consumeDeepLink()'s ?id=) so reload/back-forward preserve
+// the filtered view; "Ver tudo" below is the explicit way out of it.
+const filterParams = new URLSearchParams(location.search);
+const filterEventoId = filterParams.get("evento_id") || "";
+const filterClienteId = filterParams.get("cliente_id") || "";
 
 const PAGE_LOGIN = {
   title: "Financeiro",
@@ -134,7 +148,10 @@ async function loadLancamentos(){
   if(!getPass()){ showLogin(); return; }
   renderShell('<p class="msg">Carregando…</p>');
   try{
-    const data = await api("financeiro_lancamentos", periodRange(periodo));
+    const filter = Object.assign(periodRange(periodo),
+      filterEventoId ? { evento_id: filterEventoId } : {},
+      filterClienteId ? { cliente_id: filterClienteId } : {});
+    const data = await api("financeiro_lancamentos", filter);
     lancamentos = data.lancamentos || [];
     totals = {
       total_receitas: data.total_receitas || 0,
@@ -195,6 +212,22 @@ function entryRowHtml(l){
 function render(){
   const shown = lancamentos.filter(l => (!tipoFilter || l.tipo === tipoFilter) && matchesSearch(l, searchTerm));
 
+  // The evento's own name comes along embedded on any row that has one
+  // (LANCAMENTO_COLS' evento:eventos(id,name)) — cheaper than a second
+  // round trip just to label the banner. A cliente filter has no such
+  // embed (lançamentos don't carry a cliente directly), so that banner
+  // stays generic.
+  const filterHtml = (filterEventoId || filterClienteId)
+    ? '<div class="filter-banner">' +
+        '<span>Filtrado por ' +
+          (filterEventoId
+            ? 'evento' + (lancamentos[0] && lancamentos[0].evento ? ': ' + esc(lancamentos[0].evento.name) : '')
+            : 'cliente') +
+        '</span>' +
+        '<a class="link" href="financeiro.html">Ver tudo</a>' +
+      '</div>'
+    : '';
+
   const statsHtml = '<div class="stats">' +
     '<div class="stat receitas"><p class="lbl">Receitas</p><p class="val">' + fmtMoney(totals.total_receitas) + '</p></div>' +
     '<div class="stat despesas"><p class="lbl">Despesas</p><p class="val">' + fmtMoney(totals.total_despesas) + '</p></div>' +
@@ -221,12 +254,14 @@ function render(){
   '</div>';
 
   const rowsHtml = lancamentos.length === 0
-    ? '<p class="msg">Nenhum lançamento ainda. Toque em "+ Novo lançamento" para começar.</p>'
+    ? '<p class="msg">' + ((filterEventoId || filterClienteId)
+        ? 'Nenhum lançamento para este ' + (filterEventoId ? 'evento' : 'cliente') + '.'
+        : 'Nenhum lançamento ainda. Toque em "+ Novo lançamento" para começar.') + '</p>'
     : (shown.length === 0
         ? '<p class="msg" id="no-match">Nenhum lançamento neste filtro.</p>'
         : '<div class="card" id="list-card">' + shown.map(entryRowHtml).join("") + '</div>');
 
-  root.innerHTML = navHeader("Financeiro") + statsHtml + chips + searchHtml + periodHtml + rowsHtml +
+  root.innerHTML = navHeader("Financeiro") + filterHtml + statsHtml + chips + searchHtml + periodHtml + rowsHtml +
     '<button class="primary full addrow-btn" id="new-lanc">+ Novo lançamento</button>';
 
   wireNav();

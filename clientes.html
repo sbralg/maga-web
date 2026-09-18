@@ -422,6 +422,7 @@ function renderCliente(data){
     infoFieldHtml("E-mail", c.email) +
     '<div class="detail-actions">' +
       '<button class="primary small alt" id="edit-cliente">✎ Editar</button>' +
+      '<a class="primary small alt" href="financeiro.html?cliente_id=' + esc(c.id) + '">💰 Ver no Financeiro</a>' +
       '<button class="primary small alt danger" id="del-cliente">🗑 Remover</button>' +
     '</div>' +
     (eventos.length > 0 ?
