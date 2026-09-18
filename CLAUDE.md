@@ -13,11 +13,12 @@ Context file for Claude Code / Claude sessions working on this repo.
 
 First item of phase 3 (the plan's own "still open" list, carried since
 phase 0/1). Backend half (`shopping_confirm_purchase`, the idempotency
-migration) is `maga-api`'s own CLAUDE.md entry on branch
-`claude/audit-phase3-confirmar-compra` — **not yet merged, `maga-api`
-NOT redeployed**, so this button 400s with "bad action" against the live
-Edge Function until that happens (same explicit-redeploy-only-on-request
-rule as every other backend-touching change in this project).
+migration) is `maga-api`'s own CLAUDE.md entry, written on branch
+`claude/audit-phase3-confirmar-compra` — **merged and redeployed to both
+maga-dev and maga-prod in a follow-up session the same day**, at the
+user's explicit instruction ("Update supabase, both projects"), matching
+`maga-api`'s own gotcha #20/[[feedback_edge_function_deploy]] convention
+of never redeploying proactively.
 
 - **New `#confirm-purchase-btn` ("✅ Confirmar compra")** in
   `compras.html`'s items screen, sitting beside "🗑 Limpar comprados" in
