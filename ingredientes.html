@@ -114,6 +114,11 @@
   .infofield .lbl{font-size:12px;color:var(--muted);margin:0;flex:none}
   .infofield .val{font-size:14px;text-align:right;word-break:break-word}
   .infofield .val.empty{color:var(--muted);font-style:italic}
+  /* B7 "Usado em" — reference names, not counts, matching receitas.html's
+     own used_by_receitas/used_by_produtos toast wording. */
+  .usage-line{font-size:13.5px;margin:0 0 8px;line-height:1.4}
+  .usage-line:last-child{margin-bottom:0}
+  .usage-line .lbl{font-size:11.5px;color:var(--muted);display:block;margin:0 0 2px}
   /* The payoff of the whole two-level model, stated in one card: how much
      of this THING is in the cupboard, summed across every brand of it. */
   .have-card{padding:16px;text-align:center}
@@ -624,6 +629,8 @@ function renderIngrediente(i){
     costHtml +
     haveHtml +
     '<h3>Insumos</h3>' + insumosHtml +
+    '<h3>Usado em</h3>' +
+    '<div id="usage-card"><p class="msg small">Carregando…</p></div>' +
     '<h3>Notas</h3>' +
     '<div class="card pad notes-card">' + notesPanelHtml() + '</div>';
 
@@ -638,6 +645,36 @@ function renderIngrediente(i){
       location.href = "insumos.html?gtin=" + encodeURIComponent(row.dataset.gtin);
     });
   });
+
+  // A separate round trip on purpose — receita_itens/produto_embalagens
+  // aren't part of the ingredients/insumos data this page already has
+  // loaded, and fetching them for every row in the list (rather than only
+  // when a detail sheet is open) would cost far more than it's worth.
+  (async () => {
+    const holder = document.getElementById("usage-card");
+    if(!holder) return;
+    let usage;
+    try{
+      usage = await api("ingredient_usage", { id: i.id });
+    }catch(e){
+      if(e.unauthorized) return handleAuthError(e, loadIngredientes);
+      holder.innerHTML = '<p class="msg small err">Não foi possível carregar' +
+        (e.body && e.body.error ? " (" + esc(e.body.error) + ")" : "") + '.</p>';
+      return;
+    }
+    const receitas = usage.receitas || [];
+    const produtos = usage.produtos || [];
+    if(receitas.length === 0 && produtos.length === 0){
+      holder.innerHTML = '<p class="msg small">Nenhuma receita ou embalagem usa este ingrediente ainda.</p>';
+      return;
+    }
+    const bits = [];
+    if(receitas.length) bits.push('<p class="usage-line"><span class="lbl">Receitas</span> ' +
+      receitas.map(esc).join(", ") + '</p>');
+    if(produtos.length) bits.push('<p class="usage-line"><span class="lbl">Embalagem de</span> ' +
+      produtos.map(esc).join(", ") + '</p>');
+    holder.innerHTML = '<div class="card pad">' + bits.join("") + '</div>';
+  })();
 }
 
 // Two different outcomes, and the difference matters: deleting UNLINKS the
@@ -664,19 +701,12 @@ async function deleteIngrediente(i){
     route.navToList();
   }catch(e){
     if(e.unauthorized) return handleAuthError(e, loadIngredientes);
-    if(e.badRequest && e.body && (e.body.receita_itens || e.body.produto_embalagens)){
-      const parts = [];
-      if(e.body.receita_itens){
-        parts.push(e.body.receita_itens +
-          (e.body.receita_itens === 1 ? " linha de receita" : " linhas de receita"));
-      }
-      if(e.body.produto_embalagens){
-        parts.push(e.body.produto_embalagens +
-          (e.body.produto_embalagens === 1 ? " linha de embalagem" : " linhas de embalagem"));
-      }
+    const b = e.body || {};
+    const blockers = (b.used_by_receitas || []).concat(b.used_by_produtos || []);
+    if(e.badRequest && blockers.length > 0){
       await confirmModal(
-        '"' + i.name + '" está em uso por ' + parts.join(" e ") + '. ' +
-        'Remova essas linhas primeiro — apagar o ingrediente agora deixaria ' +
+        '"' + i.name + '" está em uso por: ' + blockers.join(", ") + '. ' +
+        'Remova essas referências primeiro — apagar o ingrediente agora deixaria ' +
         'a receita sem saber o que custear.',
         "Entendi",
       );

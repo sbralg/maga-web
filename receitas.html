@@ -49,6 +49,9 @@
   .row .meta{margin:2px 0 0}
   /* ---- detail ---- */
   .rec-sub{font-size:13px;color:var(--muted);margin:-2px 0 0;text-align:right}
+  /* B7 "Usado em" — matches ingredientes.html's own usage-line styling. */
+  .usage-line{font-size:13.5px;margin:0;line-height:1.4}
+  .usage-line .lbl{font-size:11.5px;color:var(--muted);display:block;margin:0 0 2px}
   /* Section heading with a count/hint on the right of the same line. */
   .sec-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:22px 0 8px}
   .sec-head h3{margin:0}
@@ -565,12 +568,28 @@ function itemRowHtml(it, scale, itemCosts){
   '</div>';
 }
 
+// B7 "Usado em" — receita_delete's own refusal already computes both
+// used_by_receitas and used_by_produtos, but only the sub-recipe direction
+// is genuinely NEW information here: which recipe is Produto Final of, if
+// any, is already shown (with a working link) by the Categoria section
+// right below this, so repeating it would just be the same fact twice.
+function usageHtml(receitas){
+  if(receitas.length === 0){
+    return '<p class="msg small">Nenhuma outra receita usa esta como sub-receita.</p>';
+  }
+  return '<div class="card pad"><p class="usage-line"><span class="lbl">Sub-receita de</span> ' +
+    receitas.map(esc).join(", ") + '</p></div>';
+}
+
 function renderReceita(data){
   const r = data.receita;
   const itens = data.itens || [];
   const cost = data.cost;
   const incomplete = data.incomplete || [];
   const itemCosts = cost && cost.item_costs;
+  // used_by_produtos also comes back on data but isn't shown here — the
+  // Categoria section below already covers that same fact via linked_produto.
+  const usedByReceitas = data.used_by_receitas || [];
 
   // The page reads top-down as cause then effect: what goes in (the
   // ingredient lines, and the batch you want to make) comes FIRST, and the
@@ -644,6 +663,7 @@ function renderReceita(data){
       '<span class="cnt" id="cost-note">' + costNoteText(r, 1) + '</span></div>' +
     (costHtml || '<div class="card"><p class="msg small">Adicione ingredientes para ver o custo.</p></div>') +
     warnHtml +
+    '<h3>Usado em</h3>' + usageHtml(usedByReceitas) +
     '<div class="sec-head"><h3>Categoria</h3></div>' +
     '<div id="rec-categoria"></div>' +
     '<h3>Notas</h3>' +
