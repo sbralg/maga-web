@@ -610,9 +610,11 @@ function renderProduto(data){
   document.getElementById("del-produto").addEventListener("click", async () => {
     if(!(await confirmModal('Remover o produto "' + p.name + '"?', "Remover"))) return;
     try{
-      await api("produto_delete", { id: p.id });
+      const res = await api("produto_delete", { id: p.id });
       listLoaded = false;
-      listToast("Produto removido");
+      listToast(res.evento_itens_unlinked > 0
+        ? "Produto removido — " + res.evento_itens_unlinked + " item(ns) de evento ficaram sem produto"
+        : "Produto removido");
       route.navToList();
     }catch(e){
       if(e.unauthorized) return handleAuthError(e, loadProdutos);

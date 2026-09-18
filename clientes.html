@@ -453,7 +453,14 @@ function renderCliente(data){
   document.getElementById("del-cliente").addEventListener("click", async () => {
     if(!(await confirmModal('Remover "' + c.name + '"?', "Remover"))) return;
     try{
-      const res = await api("cliente_delete", { id: c.id });
+      let res = await api("cliente_delete", { id: c.id });
+      if(res.ok === false && res.reason === "has_content"){
+        if(!(await confirmModal(
+          'Este cliente tem ' + res.eventos + (res.eventos === 1 ? " evento" : " eventos") +
+          '. Removê-lo mantém tudo, apenas sem o vínculo com o cliente. Não dá para desfazer.',
+          "Remover mesmo assim"))) return;
+        res = await api("cliente_delete", { id: c.id, force: true });
+      }
       listLoaded = false;
       listToast(res.eventos_unlinked > 0
         ? "Cliente removido — " + res.eventos_unlinked + " evento(s) ficaram sem cliente"
