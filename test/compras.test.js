@@ -277,6 +277,21 @@ function handleScan(body) {
       const idx = state.items.findIndex(i => i.id === body.id);
       if (idx !== -1) state.items.splice(idx, 1);
       resp = { ok: true };
+    } else if (body.action === 'shopping_confirm_purchase') {
+      const purchased = state.items.filter(i => i.purchased);
+      const withGtin = purchased.filter(i => i.gtin);
+      state.lastConfirmBody = { ...body };
+      resp = {
+        ok: true,
+        confirmed: withGtin.filter(i => i.price != null).length,
+        skipped_no_gtin: purchased.filter(i => !i.gtin).map(i => i.name),
+        skipped_no_price: withGtin.filter(i => i.price == null).map(i => i.name),
+      };
+    } else if (body.action === 'shopping_item_update' && !('name' in body) &&
+               ('purchased' in body)) {
+      const it = state.items.find(i => i.id === body.id);
+      if (it) it.purchased = body.purchased;
+      resp = { ok: true, item: it ? { ...it } : null };
     } else if (body.action === 'shopping_item_update' && !('name' in body) &&
                ('price' in body)) {
       const it = state.items.find(i => i.id === body.id);
@@ -1054,8 +1069,9 @@ function handleScan(body) {
   // --- a row already IN THE CART still matches: checking it off means it's
   // in the trolley, not that it's off the list, so scanning the code again
   // is a walk back to the aisle for one more and belongs on that same line.
-  // (It's "Confirmar compra" that will later clear checked rows out into
-  // stock and finance.) ---
+  // ("Confirmar compra" is a separate, explicit step that posts checked
+  // rows to stock/finance — it never removes a row, so a checked row stays
+  // matchable for a repeat scan either way.) ---
   await page.click('.row[data-id="S2"] [data-purchase]');
   await page.waitForFunction(
     () => document.querySelector('.row[data-id="S2"] .txt').classList.contains('done'),
@@ -1074,6 +1090,28 @@ function handleScan(body) {
   check('no new row for a checked-off item', (await rows()) === rowsBeforeCartScan);
   check('no dialog either', (await page.$$('.modal-card')).length === 0);
   check('it stays in the cart', await page.locator('.row[data-id="S2"] [data-purchase]')
+    .evaluate(el => el.checked));
+
+  // --- "Confirmar compra": posts the checked rows to stock/finance, and
+  // never removes a row (that's still Limpar comprados' job) ---
+  check('confirm button visible once something is checked off',
+    await page.isVisible('#confirm-purchase-btn'));
+  await page.click('#confirm-purchase-btn');
+  await page.waitForSelector('.modal-card');
+  const confirmMsg = await page.textContent('.modal-card p');
+  check('confirm dialog names the barcoded count, got: ' + confirmMsg,
+    /1 item comprado/.test(confirmMsg));
+  await page.click('.modal-card .save');
+  await page.waitForFunction(
+    () => (document.getElementById('list-toast') || {}).textContent.includes('lançado'),
+    null, { timeout: 6000 });
+  check('confirm sent the right list_id, got: ' + JSON.stringify(state.lastConfirmBody),
+    state.lastConfirmBody && state.lastConfirmBody.list_id === 'L1');
+  check('toast reports the confirmed count, got: ' + await page.textContent('#list-toast'),
+    /1 item lançado/.test(await page.textContent('#list-toast')));
+  check('row still on the list — Confirmar never deletes it',
+    (await page.$$('.row[data-id="S2"]')).length === 1);
+  check('still in the cart afterwards', await page.locator('.row[data-id="S2"] [data-purchase]')
     .evaluate(el => el.checked));
 
   await page.screenshot({ path: path.join(SHOTS, 'after_scan.png'), fullPage: true });

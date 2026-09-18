@@ -1326,7 +1326,13 @@ function renderItems(list, items){
     '<div class="clear-row">' +
       // Hidden until at least one row is purchased — audit C13's own
       // lesson (a permanently half-visible bulk-action bar reads as
-      // broken), kept in sync by updateClearButton() below.
+      // broken), kept in sync by updateClearButton() below. Confirmar
+      // shares the same visibility rule as Limpar: both only make sense
+      // once something is actually in the cart, and unlike Limpar it's
+      // safe to click more than once (the server upserts by row, so a
+      // second click on an unchanged cart just re-confirms the same
+      // movements rather than double-posting).
+      '<button type="button" class="link" id="confirm-purchase-btn" hidden>✅ Confirmar compra</button>' +
       '<button type="button" class="link danger" id="clear-purchased-btn" hidden>🗑 Limpar comprados</button>' +
     '</div>';
 
@@ -1355,14 +1361,53 @@ function renderItems(list, items){
   // off" is a fact about the LIST, not about what's currently visible, so
   // searching for one thing must not hide the button for clearing another.
   function updateClearButton(){
-    const btn = document.getElementById("clear-purchased-btn");
-    if(btn) btn.hidden = !items.some(i => i.purchased);
+    const anyPurchased = items.some(i => i.purchased);
+    const clearBtn = document.getElementById("clear-purchased-btn");
+    if(clearBtn) clearBtn.hidden = !anyPurchased;
+    const confirmBtn = document.getElementById("confirm-purchase-btn");
+    if(confirmBtn) confirmBtn.hidden = !anyPurchased;
   }
 
   const searchInput = document.getElementById("search");
   searchInput.addEventListener("input", () => {
     searchTerm = searchInput.value.trim();
     applySearchFilter();
+  });
+
+  document.getElementById("confirm-purchase-btn").addEventListener("click", async () => {
+    const purchased = items.filter(i => i.purchased);
+    if(purchased.length === 0) return;
+    const withCode = purchased.filter(i => i.gtin).length;
+    const withoutCode = purchased.length - withCode;
+    if(!(await confirmModal(
+      "Lançar " + withCode + (withCode === 1 ? " item comprado" : " itens comprados") +
+        " no estoque e no financeiro?" +
+        (withoutCode > 0
+          ? " " + withoutCode + (withoutCode === 1
+              ? " item sem código de barras não entra no estoque."
+              : " itens sem código de barras não entram no estoque.")
+          : ""),
+      "Confirmar"
+    ))) return;
+    const btn = document.getElementById("confirm-purchase-btn");
+    btn.disabled = true;
+    try{
+      const res = await api("shopping_confirm_purchase", { list_id: currentList.id });
+      const parts = [];
+      parts.push(res.confirmed + (res.confirmed === 1 ? " item lançado" : " itens lançados"));
+      if(res.skipped_no_price && res.skipped_no_price.length){
+        parts.push(res.skipped_no_price.length + " sem preço (só entrou no estoque)");
+      }
+      if(res.skipped_no_gtin && res.skipped_no_gtin.length){
+        parts.push(res.skipped_no_gtin.length + " sem código (ignorado)");
+      }
+      listToast(parts.join(" · "));
+    }catch(err){
+      if(err.unauthorized){ handleAuthError(err, loadLists); return; }
+      listToast("Não foi possível confirmar a compra." + (err.body && err.body.error ? " (" + err.body.error + ")" : ""), true);
+    }finally{
+      btn.disabled = false;
+    }
   });
 
   document.getElementById("clear-purchased-btn").addEventListener("click", async () => {

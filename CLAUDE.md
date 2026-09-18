@@ -9,6 +9,54 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-18, phase 3): "Confirmar compra" — checking off a shopping item can finally become real pantry stock and a real despesa
+
+First item of phase 3 (the plan's own "still open" list, carried since
+phase 0/1). Backend half (`shopping_confirm_purchase`, the idempotency
+migration) is `maga-api`'s own CLAUDE.md entry on branch
+`claude/audit-phase3-confirmar-compra` — **not yet merged, `maga-api`
+NOT redeployed**, so this button 400s with "bad action" against the live
+Edge Function until that happens (same explicit-redeploy-only-on-request
+rule as every other backend-touching change in this project).
+
+- **New `#confirm-purchase-btn` ("✅ Confirmar compra")** in
+  `compras.html`'s items screen, sitting beside "🗑 Limpar comprados" in
+  `.clear-row` and sharing its exact visibility rule (hidden until at
+  least one row is checked off — `updateClearButton()` now toggles both,
+  renamed in spirit if not in name). **Deliberately a separate button,
+  not folded into Limpar** — Confirmar posts to stock/Financeiro and never
+  deletes a row; Limpar tidies the list and never touches stock/Financeiro.
+  The two compose in either order: confirm then clear, or clear stragglers
+  first and confirm what's left.
+- Clicking it counts how many checked rows actually carry a barcode (only
+  those can feed stock — a hand-typed row has no insumo behind it, same
+  limitation the row's own muted camera icon already signals) and confirms
+  with a wording that names both counts before calling
+  `shopping_confirm_purchase`. The result toast reports how many were
+  lançados, how many moved stock with no despesa (no price was ever typed),
+  and how many were skipped outright (no barcode) — three different
+  outcomes, three different phrases, rather than one bare success/fail.
+  **Safe to click more than once**: the server upserts by row, so a repeat
+  click (or a click after editing a still-checked row's price) updates the
+  same movement/lançamento in place instead of double-posting — see
+  `maga-api`'s entry for the two new unique indexes that make that true at
+  the database level, not just in this page's intent.
+- **Verified against the real, committed `test/compras.test.js`** — the
+  mock route gained a `shopping_confirm_purchase` branch (and, along the
+  way, a genuine pre-existing gap was found and fixed: the mock's generic
+  `shopping_item_update` fallback never persisted a bare
+  `{purchased: true}` patch onto its own fake state, so `state.items`
+  silently disagreed with what the page showed on screen — every other
+  test in this file happened to check the *rendered row*, not
+  `state.items`, so nothing had ever caught it before this session needed
+  the server-side mock to know which rows were actually in the cart). New
+  assertions (button visibility, the confirm dialog's wording, the toast,
+  that the row and its checked state survive the call) pass clean across
+  3 runs of the real file via the [[feedback_sandbox_playwright_raf]]
+  monkeypatch; the file's pre-existing lens-autopick flakiness (confirmed
+  unrelated — reproduces identically against the untouched file) is the
+  only noise seen.
+
 ## Status (2026-09-17, phase 2c): insumo categories removed, error detail surfaces everywhere, delete refusals get consistent, financeiro gains cross-links, and "Usado em" finally answers where a thing is used
 
 Phase 2c of the audit, all on `maga-api`'s `claude/audit-2c-insumo-categories`
