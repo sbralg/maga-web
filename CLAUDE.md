@@ -12,8 +12,9 @@ Context file for Claude Code / Claude sessions working on this repo.
 ## Status (2026-09-17, phase 2c): insumo categories removed, error detail surfaces everywhere, delete refusals get consistent, financeiro gains cross-links, and "Usado em" finally answers where a thing is used
 
 Phase 2c of the audit, all on `maga-api`'s `claude/audit-2c-insumo-categories`
-branch (PR [#37](../../maga-api/pull/37), **open, not yet merged or
-redeployed** — see "Process notes") paired with `maga-web` commits
+branch (PR [#37](../../maga-api/pull/37), **merged and redeployed to both
+projects in a follow-up session** — see "Process notes" and that repo's
+own 2026-09-17-later entry) paired with `maga-web` commits
 `d200a06`..`f549b7d` pushed straight to `main` as each went green, per this
 repo's own convention. Front end + backend both changed this phase, unlike
 2b — every item here needed a `maga-api` change; two needed a live schema
@@ -159,15 +160,23 @@ Both pages' delete-refusal dialogs updated to the new named-list shape —
 
 ### Process notes
 
-**`maga-api`'s PR #37 is open, not merged, and not redeployed** — per this
-repo's own gotcha #20 (redeploy is always the user's own call) and the fact
-that `maga-api` keeps PRs (unlike this repo's push-to-`main`). The schema
-migration (item 1's `DROP TABLE`/`DROP COLUMN`) **has already been applied
-live** to both `maga-dev` and `maga-prod` — that part doesn't wait on the
-PR merge, since a migration and an Edge Function redeploy are independent
-steps in this project's own convention. The PR also folds in `maga-api`'s
-previously-loose `15f9834` ("Record audit phase 0 in CLAUDE.md") commit,
-cherry-picked cleanly — it sat on the old, already-merged
+**`maga-api`'s PR #37 was merged and redeployed to both projects in a
+follow-up session** (the user's explicit request: "use [the Supabase CLI]
+to redeploy and perform the required changes in supabase for both
+environments"), after this session's own work ended with it still open —
+per that repo's own gotcha #20, redeploy is always the user's own call, and
+that session was the user making it. The schema migration (item 1's `DROP
+TABLE`/`DROP COLUMN`) had already been applied live to both `maga-dev` and
+`maga-prod` back in *this* session — a migration and an Edge Function
+redeploy are independent steps in this project's own convention, so the
+follow-up session's redeploy needed no further schema change, just the
+code. Verified live (auth-gate only — no path to the real `CHECKLIST_PASS`
+in-session, which is correct per that repo's NO SECRETS framing, not a
+gap) and merged after, matching that repo's own established
+deploy-then-merge precedent. Full detail: `maga-api/CLAUDE.md`'s
+2026-09-17-later entry. The PR also folds in `maga-api`'s previously-loose
+`15f9834` ("Record audit phase 0 in CLAUDE.md") commit, cherry-picked
+cleanly — it sat on the old, already-merged
 `claude/app-audit-improvements-n54adl` branch and never reached that repo's
 `main`.
 
