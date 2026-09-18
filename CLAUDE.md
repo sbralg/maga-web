@@ -46,20 +46,29 @@ verification, **no app code changed**: nothing broken was found.
     further (out of scope here too).
   - **`compras.test.js`**: the file's own long-documented pre-existing
     lens-autopick flakiness (present since 2b/2c), not a new issue.
-  - **One genuinely NEW finding, not previously reachable**:
-    `stock.test.js` times out waiting for `#ing-list [data-clear]` to
-    attach after re-opening a row whose ingredient link was set earlier
-    in the same test — `shared-catalog.js`'s `ingredientModal()` only
-    renders that button when `p.ingredient` is truthy, and it isn't
-    coming back set for a reason not yet diagnosed. **Confirmed NOT
-    caused by this audit**: `insumos.html`/`shared-catalog.js` haven't
-    changed since phase 2c (2026-09-17), well before phases 3-4, and
-    `stock.test.js` never reached this deep in any prior session — it
-    always hit the hamburger-menu wall first. Genuinely unverified
-    territory, not a known-and-accepted gap; flagged for a real-browser
-    session, since telling a real app bug from a mock/test artifact needs
-    one. Full detail (including the exact patch) in
-    [[feedback_sandbox_playwright_raf]].
+  - **The `stock.test.js` finding flagged here originally turned out to
+    be the same environment artifact, not a real app-state question —
+    resolved the same day.** The user asked whether a browser could be
+    enabled for the session; testing that found the assistant's own Bash
+    tool genuinely cannot reach any display (confirmed via a failed
+    headed-mode launch, not a config issue), but a user-run (`!`-
+    prefixed) shell reaches a real, working one — `tarefas.test.js` and
+    `compras.test.js` both then passed **completely clean, unpatched**,
+    proving rAF itself is fine there. But `hoje`/`ingredientes`/
+    `preferencias.test.js` still hung on ordinary clicks against
+    completely static elements, isolated down to: Playwright's own
+    internal frame-stability polling (behind `.click()`/`.check()`/
+    `.screenshot()`) contends over CDP with active `route()`
+    interception, in a way unrelated to the app — a throwaway diagnostic
+    confirmed the exact same element was perfectly stable and correctly
+    hit-testable via a direct `page.evaluate()` read the whole time such
+    a click hung. **Full root-cause writeup, including the isolating
+    repro, in [[feedback_sandbox_playwright_raf]]** — the short version:
+    this was never an app bug, `stock.test.js` itself later passed
+    completely clean and unpatched too, and the established monkeypatch
+    workaround remains correct (it was always sidestepping this CDP
+    contention, whether or not "rAF never fires" was the precise
+    mechanism).
 - **Wire-contract audit, `maga-web` ↔ `maga-api`**: diffed every
   `api("action_name", …)` call site across every `.html`/`shared-*.js`
   file against every action `maga-api`'s domains actually export.
