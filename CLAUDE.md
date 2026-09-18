@@ -9,6 +9,97 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-19, later): phase 5 — the final test/tidy pass: a full 22-file regression sweep, a wire-contract audit, and the first genuinely live-authenticated exercise of `dashboard_summary`
+
+Closes the app-wide audit (phases 0/1, 2a, 2b, 2c, 3, 4 all shipped —
+see the entries below). Scoped from the plan's own placeholder text ("a
+final test/tidy pass. Not yet scoped in detail," carried unchanged since
+phase 1) rather than a specific user ask — three concrete checks, all
+verification, **no app code changed**: nothing broken was found.
+
+- **Full regression sweep, all 22 `test/*.test.js` files, not just the
+  subset a given phase touched.** Extended the established rAF-sandbox
+  monkeypatch ([[feedback_sandbox_playwright_raf]]) — the 2026-09-17
+  version only patched `page.click`/`waitForSelector`/`waitForFunction`,
+  which missed two other Playwright entry points with the same
+  rAF-blocked actionability wait: `ElementHandle.click()` (an element
+  from `page.$(sel)`, distinct from `page.click(sel)`) and `page.check()`
+  (checkboxes, distinct from both `page.click` and `Locator.check`).
+  Patching both **turned two false-negative timeouts into genuine
+  passes** (`history.test.js`, and `preferencias.test.js` progressed much
+  further before hitting an unrelated known wall) — confirming they were
+  harness gaps, not regressions.
+  - **16 of 22 files genuinely green** (up from 9-of-13 partial coverage
+    in 2c): `a11y`, `clientes`, `css-tokens`, `env-scope`, `eventos`,
+    `financeiro`, `fornecedores`, `history-wiring`, `history`, `index`,
+    `notas`, `oauth`, `produtos`, `receitas`, `shared-inputs`, `sw`.
+  - **3 files hit the same already-known, unpatchable wall**:
+    `shared-menu.js`'s hamburger-drawer animation calls
+    `requestAnimationFrame` directly, so `.menu-panel.open` never appears
+    in this sandbox no matter what the test harness is patched to do.
+    Previously only confirmed on `tarefas.test.js`; this sweep confirms
+    the identical root cause on `hoje.test.js` and, after the `page.check`
+    fix let it run further, `preferencias.test.js` too. Same conclusion
+    as always: flagged for a session with a real browser, not a bug.
+  - **`ingredientes.test.js`**: the same later, unrelated `#back`-
+    navigation hang flagged in phase 2c, unchanged, still not chased
+    further (out of scope here too).
+  - **`compras.test.js`**: the file's own long-documented pre-existing
+    lens-autopick flakiness (present since 2b/2c), not a new issue.
+  - **One genuinely NEW finding, not previously reachable**:
+    `stock.test.js` times out waiting for `#ing-list [data-clear]` to
+    attach after re-opening a row whose ingredient link was set earlier
+    in the same test — `shared-catalog.js`'s `ingredientModal()` only
+    renders that button when `p.ingredient` is truthy, and it isn't
+    coming back set for a reason not yet diagnosed. **Confirmed NOT
+    caused by this audit**: `insumos.html`/`shared-catalog.js` haven't
+    changed since phase 2c (2026-09-17), well before phases 3-4, and
+    `stock.test.js` never reached this deep in any prior session — it
+    always hit the hamburger-menu wall first. Genuinely unverified
+    territory, not a known-and-accepted gap; flagged for a real-browser
+    session, since telling a real app bug from a mock/test artifact needs
+    one. Full detail (including the exact patch) in
+    [[feedback_sandbox_playwright_raf]].
+- **Wire-contract audit, `maga-web` ↔ `maga-api`**: diffed every
+  `api("action_name", …)` call site across every `.html`/`shared-*.js`
+  file against every action `maga-api`'s domains actually export.
+  **Zero frontend calls reference a nonexistent backend action** — no
+  typos, no drift. Three backend actions have no `maga-web` caller
+  (`daily_action_state`, `daily_publish`, `push_notify_daily_summary`) —
+  confirmed **not dead code**: the first two are called from
+  `maga-infra`'s MCP tools (`maga_get_action_state`/the scheduled task's
+  `daily_publish` step), the third fires from a Postgres trigger on
+  `daily_reports`, never from this repo. No stale `cowork`/`checklist-api`
+  naming left in any source file (grepped clean), no `TODO`/`FIXME`
+  markers, no stray `console.log` debug noise outside the test files
+  themselves, no leftover scratch/plan/backup files tracked in git.
+- **`dashboard_summary` (phase 4) genuinely authenticated-verified for
+  the first time**, not just the auth-gate probe every prior deploy note
+  in `maga-api/CLAUDE.md` had to settle for — the user provided the live
+  `maga-dev` passphrase this session specifically so this could happen.
+  Real response, real household data, all five blocks populated with no
+  `<key>_error` anywhere. **The passphrase itself was never written to
+  any file, commit, or memory** — used inline in a `curl` call and
+  discarded, per this project's standing NO SECRETS treatment of
+  `CHECKLIST_PASS`. (Worth a note for future sessions: the value the user
+  gave is literally the old pre-phase-0 hardcoded fallback string — they
+  appear to have kept that as the actual secret value when they set
+  `CHECKLIST_PASS` for real on 2026-08-27, they just never said so
+  explicitly. Not written here either, on the same principle — anyone
+  needing it should read it from the live Supabase project secret, not
+  from this file.)
+- **Deliberately NOT part of this pass, left open on purpose**: the
+  "visual-weight pass" item from phase 1's own original audit notes (the
+  notas "+ Adicionar" button `class="primary"` out-shouting everything on
+  8 pages, the produto pricing card's flat wall of 7 numbers, the
+  dashboard's screen count) was never picked up by any later phase's
+  explicit scope and is still genuinely open — but it's subjective
+  design/taste work across many pages, not a test or a tidy fix, so it
+  doesn't belong in a pass literally named "test/tidy." Worth its own
+  explicit ask if wanted. Also still open, unchanged: no schema/backend
+  badge shows a despesa's "came from a shopping list" origin on
+  `financeiro.html`.
+
 ## Status (2026-09-19): phase 4 — `index.html`'s five busiest tiles gain a live stat line
 
 Continuation of the app audit past phase 3. This page's own header comment
