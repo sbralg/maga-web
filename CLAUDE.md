@@ -17,9 +17,10 @@ reasonable next step once there's something worth summarizing" — phase 3
 and the rest of the audit gave every module something worth summarizing,
 so this is that. Backend half (the new `dashboard_summary` action) is
 `maga-api`'s own CLAUDE.md entry, PR
-[#40](https://github.com/sbralg/maga-api/pull/40) — **not yet merged or
-deployed**, per that repo's own gotcha #20: redeploy is always the user's
-call. `index.html` degrades cleanly meanwhile (see below).
+[#40](https://github.com/sbralg/maga-api/pull/40) — **merged and
+redeployed to both maga-dev and maga-prod the same day**, at the user's
+explicit "redeploy". `index.html` would have degraded cleanly either way
+(see below), but the live stats are now genuinely live.
 
 - **Five tiles, not all fourteen**: `tarefas`, `compras`, `eventos`,
   `estoque`, `financeiro` — the modules that accumulate state day to day.
@@ -45,10 +46,12 @@ call. `index.html` degrades cleanly meanwhile (see below).
   a full error+retry screen) — right for a page whose only content IS the
   data it fetched, wrong for a decorative line on five otherwise-complete
   nav tiles. An expired session (`err.unauthorized`) still bounces to
-  login like any other call; a network hiccup or (today, before PR #40
-  deploys) a 400 "bad action" from an `maga-api` that doesn't know this
-  action yet just leaves all five tiles as plain navigation, same as
-  before this phase shipped.
+  login like any other call; a network hiccup, or a 400 "bad action" from
+  an older `maga-api` deploy that predates this action, still just leaves
+  all five tiles as plain navigation, same as before this phase shipped —
+  no longer the live path since PR #40 deployed, but still the correct
+  behavior if a future rollback or a stale cached deploy ever puts this
+  page ahead of the backend again.
 - **`fmtMoney`/`shared-format.js` newly loaded on this page** — the saldo
   stat is the first thing `index.html` has ever needed to format as
   currency. A small local `ddmm()` renders the next event's date as
