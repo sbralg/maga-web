@@ -74,7 +74,8 @@ const state = {
       image_url: null, ingredient_id: null },
   ],
   // A live recipe line, so the blocking delete has something real to block on.
-  receitaItens: [{ id: 'RI1', ingredient_id: 'I1' }],
+  receitas: [{ id: 'R1', name: 'Brigadeiro' }],
+  receitaItens: [{ id: 'RI1', ingredient_id: 'I1', receita_id: 'R1' }],
   produtoEmbalagens: [],
   notebooks: [],
   notes: [],
@@ -211,15 +212,30 @@ function handleNotesAction(body) {
         i.name = name;
         resp = { ok: true, ingredient: { id: i.id, name: i.name, base_unit: i.base_unit } };
       }
+    } else if (body.action === 'ingredient_usage') {
+      const receitaIds = [...new Set(state.receitaItens
+        .filter(r => r.ingredient_id === body.id).map(r => r.receita_id))];
+      resp = {
+        receitas: state.receitas.filter(r => receitaIds.includes(r.id)).map(r => r.name),
+        produtos: state.produtoEmbalagens
+          .filter(e => e.ingredient_id === body.id).map(e => e.produto_name),
+      };
     } else if (body.action === 'ingredient_delete') {
-      const receitaCount = state.receitaItens.filter(r => r.ingredient_id === body.id).length;
-      const embalagemCount = state.produtoEmbalagens.filter(e => e.ingredient_id === body.id).length;
-      if (receitaCount > 0 || embalagemCount > 0) {
+      // Named blockers, not counts — matches maga-api's own ingredientUsage()
+      // (2026-09-17, B7 "Usado em"): receita_itens/produto_embalagens rows
+      // resolved to their parent receita/produto names.
+      const receitaIds = [...new Set(state.receitaItens
+        .filter(r => r.ingredient_id === body.id).map(r => r.receita_id))];
+      const usedByReceitas = state.receitas
+        .filter(r => receitaIds.includes(r.id)).map(r => r.name);
+      const usedByProdutos = state.produtoEmbalagens
+        .filter(e => e.ingredient_id === body.id).map(e => e.produto_name);
+      if (usedByReceitas.length > 0 || usedByProdutos.length > 0) {
         // Blocking, not force-able: a live formula can't be pulled out from
         // under itself.
         status = 400;
         resp = { error: 'ingredient is in use',
-                 receita_itens: receitaCount, produto_embalagens: embalagemCount };
+                 used_by_receitas: usedByReceitas, used_by_produtos: usedByProdutos };
       } else {
         const unlinked = state.insumos.filter(p => p.ingredient_id === body.id);
         unlinked.forEach(p => { p.ingredient_id = null; });
@@ -311,6 +327,16 @@ function handleNotesAction(body) {
   check('each links to its own insumo',
     (await page.getAttribute('.ins-row', 'data-gtin')) === '7891000100103');
 
+  // --- "Usado em" (B7): a separate round trip (ingredient_usage), fetched
+  // only once the detail sheet is open — waited on separately since it's
+  // not part of the initial render. ---
+  await page.waitForFunction(
+    () => (document.getElementById('usage-card') || {}).textContent !== 'Carregando…',
+    null, { timeout: 6000 });
+  const usageText = norm(await page.textContent('#usage-card'));
+  check('the "Usado em" card names the recipe using this ingredient, got: ' + usageText,
+    usageText.includes('Brigadeiro'));
+
   // --- rename: refused when the name already exists ---
   // (ingredient_rename's fake refusal below deliberately mirrors a raw
   // Postgres unique-constraint message, "duplicate key value" — NOT the
@@ -352,8 +378,8 @@ function handleNotesAction(body) {
   await page.click('#confirm-ok');
   await page.waitForSelector('#confirm-ok', { timeout: 6000 });
   const blockText = norm(await page.textContent('.modal-card'));
-  check('a live receita line blocks the delete and says so, got: ' + blockText,
-    blockText.includes('1 linha de receita'));
+  check('a live receita line blocks the delete and NAMES it, got: ' + blockText,
+    blockText.includes('está em uso por: Brigadeiro'));
   check('the ingredient survives', !!ingredientOf('I1'));
   await page.click('#confirm-ok');
 
