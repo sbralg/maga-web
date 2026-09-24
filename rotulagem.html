@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Rotulagem">
+<meta name="theme-color" content="#17120f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#faf8f4" media="(prefers-color-scheme: light)">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<title>Rotulagem</title>
+<!--
+  Data-free shell for nutrition-label generation (RDC 429/2020 + IN
+  75/2020). Anchored on a produto (kind='manufaturado') rather than a
+  receita — a receita is often a reusable component (a dough shared by
+  several produtos), the produto is the actual sellable/labeled unit.
+
+  With no ?produto=, this page is a picker over every manufaturado
+  produto. With one, it calls maga-api's produto_label action (new
+  domains/rotulagem.ts) and renders the computed table.
+
+  The underlying nutrition data (TACO links, grams_per_unit, allergens,
+  manual overrides) lives on Ingredientes — edited there, not here. This
+  page only ever reads and prints; it never writes anything.
+
+  Same pattern as every other page here: hosted on public GitHub Pages,
+  holds NO keys and NO data, asks for the shared passphrase, then talks
+  only to the gated Supabase Edge Function (maga-api).
+-->
+<link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
+<link rel="stylesheet" href="shared-menu.css">
+<link rel="stylesheet" href="shared-modal.css">
+<link rel="stylesheet" href="shared-toast.css">
+<style>
+  .row{display:flex;align-items:center;gap:10px;padding:12px 14px}
+  .row .body{flex:1;min-width:0}
+  .row .meta{font-size:12.5px;color:var(--muted);margin:3px 0 0}
+
+  /* The data-completeness warning — same amber "this is normal, not an
+     error" treatment ingredientes.html's .cost-warn already established. */
+  .incomplete-card{
+    display:flex;gap:10px;align-items:flex-start;
+    padding:12px 14px;background:rgba(180,83,9,.1);border-radius:12px;margin:0 0 14px;
+  }
+  .incomplete-card .ic{flex:none;font-size:15px;line-height:1.45}
+  .incomplete-card div{font-size:13px;color:var(--warn);line-height:1.5}
+  .incomplete-card p{margin:0 0 4px}
+  .incomplete-card ul{margin:4px 0 0;padding-left:18px}
+  .incomplete-card li{margin:0 0 2px}
+
+  #obs{width:100%;font:inherit;font-size:14px;padding:10px 12px;border-radius:10px;
+    border:1px solid var(--border-strong);background:var(--card);color:var(--text);
+    resize:vertical;min-height:60px;margin:0 0 14px}
+
+  /* ---- the label sheet itself ----
+     RDC 429/2020 requires white background, black text, regardless of the
+     app's own light/dark theme — so every rule below is a literal color,
+     never a --token, on purpose. */
+  .label-sheet{
+    background:#fff;color:#000;border:1px solid #000;border-radius:0;
+    padding:14px;margin:0 0 20px;font-family:Arial,Helvetica,sans-serif;
+  }
+  .label-sheet h4{
+    margin:0 0 4px;font-size:15px;font-weight:800;text-transform:uppercase;
+    border-bottom:3px solid #000;padding-bottom:4px;color:#000;
+  }
+  .label-sheet .porcao-line{font-size:12.5px;margin:6px 0 10px;color:#000}
+  .label-sheet table{width:100%;border-collapse:collapse;font-size:12px;color:#000}
+  .label-sheet thead th{
+    text-align:right;font-size:11px;font-weight:700;padding:3px 4px;
+    border-bottom:1px solid #000;color:#000;
+  }
+  .label-sheet thead th:first-child{text-align:left}
+  .label-sheet tbody td{padding:3px 4px;border-bottom:1px solid #ccc;text-align:right;color:#000}
+  .label-sheet tbody td:first-child{text-align:left;font-weight:600}
+  .label-sheet tbody tr.indent td:first-child{padding-left:14px;font-weight:400}
+  .label-sheet tbody tr:last-child td{border-bottom:1px solid #000}
+  .label-sheet .footnote{font-size:9.5px;color:#000;margin:8px 0 0;line-height:1.35}
+  .label-sheet .ingredients{font-size:11px;color:#000;margin:12px 0 0;line-height:1.4}
+  .label-sheet .ingredients strong{text-transform:uppercase}
+  .label-sheet .allergens{font-size:11px;color:#000;margin:8px 0 0;font-weight:700}
+  .label-sheet .obs-print{font-size:10.5px;color:#000;margin:8px 0 0;white-space:pre-wrap}
+
+  .print-actions{display:flex;gap:8px;margin:0 0 18px}
+
+  @media print{
+    body *{visibility:hidden}
+    #label-sheet, #label-sheet *{visibility:visible}
+    #label-sheet{position:absolute;top:0;left:0;width:100%;margin:0;border:none}
+    body{padding:0}
+  }
+</style>
+</head>
+<body>
+<div id="root" class="wrap"><p class="msg">Carregando…</p></div>
+
+<script>
+const root = document.getElementById("root");
+let produtos = [];
+let searchTerm = "";
+
+const PAGE_LOGIN = {
+  title: "Rotulagem",
+  subtitle: "Faça o seu login para acessar.",
+  onSuccess: () => loadRotulagem(),
+};
+</script>
+<script src="shared-api.js"></script>
+<script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
+<script src="shared-history.js"></script>
+<script src="shared-ui.js"></script>
+<script src="shared-format.js"></script>
+<script src="shared-pwa.js"></script>
+<script>
+
+const CURRENT_PAGE = "rotulagem";
+
+let listLoaded = false;
+
+async function loadRotulagem(){
+  if(!getPass()){ showLogin(); return; }
+  const wanted = new URLSearchParams(location.search).get("produto");
+  root.innerHTML = navHeader(wanted ? null : "Rotulagem", wanted
+    ? { backLabel: "Rotulagem", backAction: route.navToList, listTitle: "Rotulagem" }
+    : undefined) + '<p class="msg">Carregando…</p>';
+  wireNav(wanted ? route.navToList : undefined);
+  try{
+    const res = await api("produtos");
+    // Only manufaturado produtos have a receita to compute a label from —
+    // a comprado item's label (if it ever needs one) would come off the
+    // reselling product's own packaging, a different flow.
+    produtos = (res.produtos || []).filter(p => p.kind === "manufaturado");
+    listLoaded = true;
+    route.routeFromUrl();
+  }catch(e){ handleAuthError(e, loadRotulagem); }
+}
+
+function showList(){
+  if(!listLoaded) return loadRotulagem();
+  renderList();
+}
+
+function matchesFilter(p, term){
+  if(!term) return true;
+  return foldSearchText(p.name).indexOf(foldSearchText(term)) >= 0;
+}
+
+function produtoRowHtml(p){
+  return '<button type="button" class="row" data-id="' + esc(p.id) + '">' +
+    '<span class="body">' +
+      '<span class="nm">' + esc(p.name) + '</span>' +
+      (p.porcao_g == null ? '<span class="meta">⚠️ sem porção declarada</span>' : '') +
+    '</span>' +
+  '</button>';
+}
+
+function renderList(){
+  const shown = produtos.filter(p => matchesFilter(p, searchTerm));
+  const rowsHtml = produtos.length === 0
+    ? '<div class="card"><p class="msg">Nenhum produto manufaturado ainda.<br>' +
+      'Crie um em <a class="link" href="produtos.html">Produtos</a> a partir de uma receita.</p></div>'
+    : (shown.length === 0
+        ? '<p class="msg">Nenhum produto encontrado.</p>'
+        : '<div class="card">' + shown.map(produtoRowHtml).join("") + '</div>');
+
+  root.innerHTML = navHeader("Rotulagem") +
+    '<div class="searchrow"><input type="search" id="search" placeholder="Buscar produto" value="' + esc(searchTerm) + '"></div>' +
+    rowsHtml +
+    '<div class="note-card" style="padding:12px 14px;background:rgba(127,127,127,.08);' +
+      'border:1px solid var(--border-strong);border-radius:12px;margin-top:10px">' +
+      '<p style="font-size:13px;color:var(--muted);line-height:1.45;margin:0">' +
+      'Escolha um produto para ver a tabela nutricional calculada a partir da sua receita. ' +
+      'Os dados de cada ingrediente (vínculo TACO, alérgenos, valores manuais) são editados em ' +
+      '<a class="link" href="ingredientes.html">Ingredientes</a>.</p>' +
+    '</div>';
+
+  wireNav();
+  const search = document.getElementById("search");
+  search.addEventListener("input", () => { searchTerm = search.value.trim(); renderList(); });
+  root.querySelectorAll(".row[data-id]").forEach(row => {
+    row.addEventListener("click", () => route.navToDetail(row.dataset.id));
+  });
+}
+
+function labelRowHtml(row){
+  return '<tr class="indent">' +
+    '<td>' + esc(row.label) + '</td>' +
+    '<td>' + fmtLabelValue(row.key, row.per100) + '</td>' +
+    '<td>' + fmtLabelValue(row.key, row.perPorcao) + '</td>' +
+    '<td>' + (row.vd == null ? "—" : row.vd + "%") + '</td>' +
+  '</tr>';
+}
+
+function fmtLabelValue(key, v){
+  if(v == null) return "—";
+  const unit = key === "energy_kcal" ? " kcal" : (key === "sodium_mg" ? " mg" : " g");
+  return fmtStockQty(v) + unit;
+}
+
+async function openProdutoLabel(id){
+  root.innerHTML = navHeader(null, { backLabel: "Rotulagem", backAction: route.navToList, listTitle: "Rotulagem" }) +
+    '<p class="msg">Calculando…</p>';
+  wireNav(route.navToList);
+  let data;
+  try{
+    data = await api("produto_label", { produto_id: id });
+  }catch(e){
+    if(e.unauthorized) return handleAuthError(e, loadRotulagem);
+    if(e.badRequest){
+      route.routeNotFound("Não foi possível calcular o rótulo" +
+        (e.body && e.body.error ? " (" + e.body.error + ")" : "") + ".");
+      return;
+    }
+    root.innerHTML = navHeader(null, { backLabel: "Rotulagem", backAction: route.navToList, listTitle: "Rotulagem" }) +
+      '<p class="msg err">Não foi possível carregar agora.</p>' +
+      '<p class="msg"><button class="link" id="retry">Tentar novamente</button></p>';
+    wireNav(route.navToList);
+    document.getElementById("retry").addEventListener("click", () => openProdutoLabel(id));
+    return;
+  }
+  renderLabel(data);
+}
+
+function renderLabel(data){
+  const p = data.produto;
+  const incomplete = data.incomplete || [];
+  const rows = data.rows || [];
+  const ingredientes = data.ingredientes || [];
+
+  const incompleteHtml = incomplete.length === 0 ? '' :
+    '<div class="incomplete-card"><span class="ic">⚠️</span><div>' +
+      '<p><strong>Cálculo incompleto.</strong> Os valores abaixo já refletem tudo o que é ' +
+      'conhecido; o que falta está listado aqui e pode ser preenchido em ' +
+      '<a class="link" href="ingredientes.html">Ingredientes</a>:</p>' +
+      '<ul>' + incomplete.map(m => '<li>' + esc(m) + '</li>').join("") + '</ul>' +
+    '</div></div>';
+
+  const porcaoLine = p.porcao_g != null
+    ? 'Porção de ' + fmtStockQty(p.porcao_g) + ' g' + (p.medida_caseira ? ' (' + esc(p.medida_caseira) + ')' : '')
+    : 'Porção não declarada — edite o produto para definir';
+
+  const tableHtml = rows.length === 0 ? '' :
+    '<table>' +
+      '<thead><tr><th>&nbsp;</th><th>100 g</th><th>Porção</th><th>%VD*</th></tr></thead>' +
+      '<tbody>' + rows.map(labelRowHtml).join("") + '</tbody>' +
+    '</table>' +
+    '<p class="footnote">*% Valores Diários de referência com base em uma dieta de 2000 kcal ' +
+      'ou 8400 kJ. Seus valores diários podem ser maiores ou menores dependendo de suas ' +
+      'necessidades energéticas.</p>';
+
+  const ingredientsHtml = ingredientes.length === 0 ? '' :
+    '<p class="ingredients"><strong>Ingredientes:</strong> ' +
+      ingredientes.map(i => esc(i.name)).join(", ") + '.</p>';
+
+  const allergensHtml = data.allergen_statement
+    ? '<p class="allergens">' + esc(data.allergen_statement) + '</p>'
+    : '';
+
+  root.innerHTML = navHeader(p.name, { backLabel: "Rotulagem", backAction: route.navToList, listTitle: "Rotulagem" }) +
+    incompleteHtml +
+    '<textarea id="obs" placeholder="Observações adicionais (opcional) — ex: “pode conter traços de amendoim”. Aparece impresso, mas não é salvo."></textarea>' +
+    '<div class="print-actions">' +
+      '<button class="primary small" id="print-btn">🖨️ Imprimir / salvar PDF</button>' +
+      '<a class="primary small alt" href="produtos.html?id=' + encodeURIComponent(p.id) + '">✎ Editar produto</a>' +
+    '</div>' +
+    '<div class="label-sheet" id="label-sheet">' +
+      '<h4>Informação Nutricional</h4>' +
+      '<p class="porcao-line">' + porcaoLine + '</p>' +
+      tableHtml +
+      ingredientsHtml +
+      allergensHtml +
+      '<p class="obs-print" id="obs-print" hidden></p>' +
+    '</div>';
+
+  wireNav(route.navToList);
+  document.getElementById("print-btn").addEventListener("click", () => {
+    const obs = document.getElementById("obs").value.trim();
+    const obsPrint = document.getElementById("obs-print");
+    obsPrint.hidden = !obs;
+    obsPrint.textContent = obs;
+    window.print();
+  });
+}
+
+const route = wireHistoryRoute({
+  param: "produto",
+  openDetail: openProdutoLabel,
+  renderList: showList,
+});
+
+loadRotulagem();
+</script>
+</body>
+</html>

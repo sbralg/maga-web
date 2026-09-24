@@ -141,6 +141,33 @@
      its own. Inline prose links opt back into inline flow. */
   .note-card .link,.msg .link{display:inline;padding:0;font-size:inherit;color:var(--accent)}
   .note-card .link:hover,.msg .link:hover{color:var(--accent)}
+  /* ---- nutrition labeling (RDC 429/2020 + IN 75/2020) ---- */
+  #taco-picked{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:10px 12px;border-radius:10px;background:rgba(127,127,127,.08);
+    border:1px solid var(--border-strong);margin:0 0 10px;font-size:14px;
+  }
+  #taco-picked .empty{color:var(--muted);font-style:italic}
+  #taco-results{
+    max-height:220px;overflow:auto;border:1px solid var(--border-strong);
+    border-radius:10px;margin:0 0 14px;
+  }
+  #taco-results button{
+    display:block;width:100%;text-align:left;font:inherit;font-size:13.5px;
+    padding:9px 12px;border:none;border-bottom:1px solid var(--border);
+    background:none;color:var(--text);cursor:pointer;
+  }
+  #taco-results button:last-child{border-bottom:none}
+  #taco-results button:hover{background:rgba(127,127,127,.08)}
+  #taco-results .grp{color:var(--muted);font-size:11.5px}
+  .allergen-grid{display:flex;flex-wrap:wrap;gap:8px 14px;margin:0 0 14px}
+  .allergen-grid label{
+    display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--text);
+    margin:0;cursor:pointer;
+  }
+  .allergen-grid input{margin:0}
+  #nutri-override{margin:0 0 6px}
+  #nutri-override summary{font-size:13px;color:var(--muted);cursor:pointer;margin:0 0 10px}
 </style>
 </head>
 <body>
@@ -226,6 +253,36 @@ function kindBadgeHtml(i){
 }
 
 const BASE_UNITS = ["g", "ml", "un", "cm"];
+
+// ---- nutrition labeling (RDC 429/2020 + IN 75/2020) ----
+//
+// Mirrors maga-api's lib/constants.ts NUTRIENT_KEYS/ALLERGENS exactly —
+// two independent copies (frontend validation UI, backend CHECK
+// constraint) by the same convention BASE_UNITS above already follows for
+// ingredients_base_unit_check.
+const NUTRIENT_KEYS = [
+  "energy_kcal", "carb_g", "sugars_total_g", "protein_g", "fat_g",
+  "saturated_fat_g", "trans_fat_g", "fiber_g", "sodium_mg",
+];
+const NUTRIENT_LABELS_PT = {
+  energy_kcal: "Valor energético (kcal)",
+  carb_g: "Carboidratos (g)",
+  sugars_total_g: "Açúcares totais (g)",
+  protein_g: "Proteínas (g)",
+  fat_g: "Gorduras totais (g)",
+  saturated_fat_g: "Gorduras saturadas (g)",
+  trans_fat_g: "Gorduras trans (g)",
+  fiber_g: "Fibra alimentar (g)",
+  sodium_mg: "Sódio (mg)",
+};
+const ALLERGENS = [
+  "gluten", "crustaceos", "ovos", "peixes", "amendoim", "soja",
+  "leite", "nozes", "latex",
+];
+const ALLERGEN_LABELS_PT = {
+  gluten: "Glúten", crustaceos: "Crustáceos", ovos: "Ovos", peixes: "Peixes",
+  amendoim: "Amendoim", soja: "Soja", leite: "Leite", nozes: "Nozes", latex: "Látex natural",
+};
 
 // Whether this ingredient can price a recipe line at all. "No insumo
 // linked" is the hand-created case; "linked but never bought" is the
@@ -487,6 +544,151 @@ function ingredienteModal(existing){
   nameEl.select();
 }
 
+// The TACO link + manual overrides + allergens for this ingredient's
+// nutrition label. Kept as its own dialog rather than folded into
+// ingredienteModal() above — unit/kind is about what the ingredient IS,
+// this is about what it's made of, and the two get edited at genuinely
+// different times (unit/kind is settled once, early; nutrition data gets
+// filled in as Bia works through the catalogue).
+let tacoSearchTimer = null;
+function nutricaoModal(i){
+  let picked = i.taco ? { id: i.taco.id, name: i.taco.name } : null;
+  const needsGramsPerUnit = i.base_unit === "un" || i.base_unit === "cm";
+  const checkedAllergens = new Set(i.allergens || []);
+  const override = i.nutrition_override || {};
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML =
+    '<div class="modal-card">' +
+      '<h3>Rotulagem — ' + esc(i.name) + '</h3>' +
+      '<label>Alimento TACO (base para o cálculo automático)</label>' +
+      '<div id="taco-picked"></div>' +
+      '<input type="text" id="taco-search" placeholder="Buscar na tabela TACO…">' +
+      '<div id="taco-results" hidden></div>' +
+      (needsGramsPerUnit
+        ? '<label for="nutri-gpu">Peso de 1 ' + esc(i.base_unit) + ' (g)</label>' +
+          '<span class="field"><input class="num-input" type="text" inputmode="decimal" id="nutri-gpu" ' +
+            'style="width:100%" value="' + esc(i.grams_per_unit != null ? fmtStockQty(i.grams_per_unit) : "") + '"></span>' +
+          '<p class="hint">Necessário para calcular a receita: quanto pesa 1 ' + esc(i.base_unit) +
+            ' deste ingrediente (ex: 1 ovo médio ≈ 50 g).</p>'
+        : "") +
+      '<label>Alérgenos que este ingrediente contém</label>' +
+      '<div class="allergen-grid">' +
+        ALLERGENS.map(a =>
+          '<label><input type="checkbox" data-allergen="' + a + '"' +
+            (checkedAllergens.has(a) ? " checked" : "") + '> ' + esc(ALLERGEN_LABELS_PT[a]) + '</label>'
+        ).join("") +
+      '</div>' +
+      '<details id="nutri-override">' +
+        '<summary>Valores manuais por 100 g (opcional)</summary>' +
+        '<p class="hint">Preenche ou substitui o que vem da TACO — use para ' +
+          '<strong>açúcares totais</strong> (a TACO nunca traz esse valor) ou para um ' +
+          'ingrediente de marca própria sem correspondência boa na tabela. Deixe em branco ' +
+          'o que deve continuar vindo da TACO.</p>' +
+        NUTRIENT_KEYS.map(k =>
+          '<label for="nov-' + k + '">' + NUTRIENT_LABELS_PT[k] + '</label>' +
+          '<span class="field"><input class="num-input" type="text" inputmode="decimal" id="nov-' + k + '" ' +
+            'style="width:100%" value="' + esc(override[k] != null ? fmtStockQty(override[k]) : "") + '"></span>'
+        ).join("") +
+      '</details>' +
+      '<div class="modal-actions">' +
+        '<button class="cancel" id="nutri-cancel">Cancelar</button>' +
+        '<button class="save" id="nutri-ok">Salvar</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(backdrop);
+
+  const gpuEl = backdrop.querySelector("#nutri-gpu");
+  if(gpuEl) wireQtyInput(gpuEl);
+  const overrideEls = {};
+  NUTRIENT_KEYS.forEach(k => {
+    const el = backdrop.querySelector("#nov-" + k);
+    wireQtyInput(el);
+    overrideEls[k] = el;
+  });
+
+  function drawPicked(){
+    backdrop.querySelector("#taco-picked").innerHTML = picked
+      ? '<span>' + esc(picked.name) + '</span><button type="button" class="link" id="taco-clear">Remover</button>'
+      : '<span class="empty">Nenhum vinculado</span>';
+    const clearBtn = backdrop.querySelector("#taco-clear");
+    if(clearBtn) clearBtn.addEventListener("click", () => { picked = null; drawPicked(); });
+  }
+  drawPicked();
+
+  const searchEl = backdrop.querySelector("#taco-search");
+  const resultsEl = backdrop.querySelector("#taco-results");
+  searchEl.addEventListener("input", () => {
+    clearTimeout(tacoSearchTimer);
+    const q = searchEl.value.trim();
+    if(!q){ resultsEl.hidden = true; resultsEl.innerHTML = ""; return; }
+    tacoSearchTimer = setTimeout(async () => {
+      let res;
+      try{ res = await api("taco_alimentos_search", { q }); }
+      catch(e){
+        if(e.unauthorized) return handleAuthError(e, loadIngredientes);
+        return;
+      }
+      const alimentos = res.alimentos || [];
+      resultsEl.hidden = alimentos.length === 0;
+      resultsEl.innerHTML = alimentos.map(a =>
+        '<button type="button" data-id="' + a.id + '">' + esc(a.name) +
+          (a.food_group ? ' <span class="grp">· ' + esc(a.food_group) + '</span>' : '') + '</button>'
+      ).join("");
+      resultsEl.querySelectorAll("button[data-id]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const a = alimentos.find(x => String(x.id) === btn.dataset.id);
+          picked = a ? { id: a.id, name: a.name } : null;
+          drawPicked();
+          searchEl.value = "";
+          resultsEl.hidden = true;
+          resultsEl.innerHTML = "";
+        });
+      });
+    }, 300);
+  });
+
+  const close = () => { backdrop.remove(); document.removeEventListener("keydown", onKey); };
+  function onKey(e){ if(e.key === "Escape") close(); }
+  document.addEventListener("keydown", onKey);
+  backdrop.addEventListener("click", e => { if(e.target === backdrop) close(); });
+  backdrop.querySelector("#nutri-cancel").addEventListener("click", close);
+
+  backdrop.querySelector("#nutri-ok").addEventListener("click", async () => {
+    const patch = {
+      taco_alimento_id: picked ? picked.id : null,
+      allergens: [...backdrop.querySelectorAll(".allergen-grid input:checked")].map(el => el.dataset.allergen),
+    };
+    if(gpuEl){
+      const g = parseQtyInput(gpuEl.value);
+      if(gpuEl.value.trim() && g === null){ fieldError(gpuEl, "Peso inválido."); return; }
+      patch.grams_per_unit = g;
+    }
+    const nov = {};
+    for(const k of NUTRIENT_KEYS){
+      const el = overrideEls[k];
+      if(!el.value.trim()) continue;
+      const v = parseQtyInput(el.value);
+      if(v === null){ fieldError(el, "Valor inválido."); return; }
+      nov[k] = v;
+    }
+    patch.nutrition_override = Object.keys(nov).length > 0 ? nov : null;
+
+    try{
+      await api("ingredient_update", Object.assign({ id: i.id }, patch));
+      close();
+      listToast("Rotulagem atualizada");
+      await refreshInto(i.id);
+    }catch(e){
+      if(e.unauthorized) return handleAuthError(e, loadIngredientes);
+      listToast("Não foi possível salvar" + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
+    }
+  });
+
+  searchEl.focus();
+}
+
 function renderList(){
   const shown = ingredientes.filter(i => matchesFilters(i, searchTerm, kindFilter));
   const rowsHtml = ingredientes.length === 0
@@ -609,6 +811,33 @@ function renderIngrediente(i){
       '<strong>custo incompleto</strong> até que uma compra seja registrada.' +
     '</p></div>';
 
+  const allergensList = i.allergens || [];
+  const overrideCount = i.nutrition_override ? Object.keys(i.nutrition_override).length : 0;
+  const nutriHtml =
+    '<div class="card pad" id="nutri-card">' +
+      '<div class="infofield">' +
+        '<span class="lbl">Alimento TACO</span>' +
+        '<span class="val' + (i.taco ? '' : ' empty') + '">' + esc(i.taco ? i.taco.name : "não vinculado") + '</span>' +
+      '</div>' +
+      (i.base_unit === "un" || i.base_unit === "cm"
+        ? '<div class="infofield">' +
+            '<span class="lbl">Peso por unidade</span>' +
+            '<span class="val' + (i.grams_per_unit != null ? '' : ' empty') + '">' +
+              (i.grams_per_unit != null ? fmtStockQty(i.grams_per_unit) + ' g' : "não definido") + '</span>' +
+          '</div>'
+        : "") +
+      '<div class="infofield">' +
+        '<span class="lbl">Alérgenos</span>' +
+        '<span class="val' + (allergensList.length ? '' : ' empty') + '">' +
+          (allergensList.length ? allergensList.map(a => esc(ALLERGEN_LABELS_PT[a] || a)).join(", ") : "nenhum declarado") + '</span>' +
+      '</div>' +
+      (overrideCount > 0
+        ? '<div class="infofield"><span class="lbl">Valores manuais</span><span class="val">' +
+            overrideCount + (overrideCount === 1 ? " nutriente" : " nutrientes") + '</span></div>'
+        : "") +
+    '</div>' +
+    '<button class="primary small alt addrow-btn" id="edit-nutri">✎ Editar rotulagem</button>';
+
   root.innerHTML = navHeader(i.name, { backLabel: "Ingredientes", backAction: route.navToList, listTitle: "Ingredientes" }) +
     '<div class="card pad">' +
       '<div class="tagrow" style="margin:0 0 4px">' + kindBadgeHtml(i) + '</div>' +
@@ -628,6 +857,7 @@ function renderIngrediente(i){
     '</div>' +
     costHtml +
     haveHtml +
+    '<h3>Rotulagem nutricional</h3>' + nutriHtml +
     '<h3>Insumos</h3>' + insumosHtml +
     '<h3>Usado em</h3>' +
     '<div id="usage-card"><p class="msg small">Carregando…</p></div>' +
@@ -639,6 +869,7 @@ function renderIngrediente(i){
 
   document.getElementById("edit-ing").addEventListener("click", () => ingredienteModal(i));
   document.getElementById("del-ing").addEventListener("click", () => deleteIngrediente(i));
+  document.getElementById("edit-nutri").addEventListener("click", () => nutricaoModal(i));
 
   root.querySelectorAll(".ins-row[data-gtin]").forEach(row => {
     row.addEventListener("click", () => {

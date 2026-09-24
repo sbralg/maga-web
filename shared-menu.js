@@ -38,6 +38,7 @@ const MENU_ITEMS = [
   { page: "ingredientes", href: "ingredientes.html", emoji: "🧂", label: "Ingredientes", group: "producao" },
   { page: "receitas", href: "receitas.html", emoji: "📖", label: "Receitas", group: "producao" },
   { page: "produtos", href: "produtos.html", emoji: "🏷️", label: "Produtos", group: "producao" },
+  { page: "rotulagem", href: "rotulagem.html", emoji: "📋", label: "Rotulagem", group: "producao" },
   { page: "eventos", href: "eventos.html", emoji: "🥂", label: "Eventos", group: "negocio" },
   { page: "clientes", href: "clientes.html", emoji: "👤", label: "Clientes", group: "negocio" },
   { page: "fornecedores", href: "fornecedores.html", emoji: "🚚", label: "Fornecedores", group: "negocio" },

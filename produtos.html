@@ -382,6 +382,14 @@ function openProdutoModal(p, presetFornecedor){
   let mAtacadoStr = isEdit ? pct(p.margin_atacado) : "65";
   let mDistStr = isEdit ? pct(p.margin_distribuidor) : "30";
   let mVarejoStr = isEdit ? pct(p.margin_varejo) : "40";
+  // Declared serving size for the nutrition label (IN 75/2020) — only
+  // offered while editing a manufaturado (rotulagem.html computes a label
+  // from its receita; a comprado item has no receita to declare a portion
+  // OF), and only after the produto exists at all, since setting a
+  // realistic porção usually means already having the label open to check
+  // against.
+  let porcaoStr = isEdit && p.porcao_g != null ? fmtStockQty(p.porcao_g) : "";
+  let medidaStr = isEdit ? (p.medida_caseira || "") : "";
 
   const backdrop = document.createElement("div");
   backdrop.className = "modal-backdrop";
@@ -444,6 +452,22 @@ function openProdutoModal(p, presetFornecedor){
             '<span class="field"><input class="num-input" type="text" inputmode="decimal" id="pr-m-varejo" ' +
               'value="' + esc(mVarejoStr) + '"></span></div>' +
         '</div>' +
+        (isEdit && kind === "manufaturado"
+          ? '<label for="pr-porcao">Porção declarada no rótulo (g, opcional)</label>' +
+            '<div class="fields-row">' +
+              '<div class="col grow">' +
+                '<span class="field"><input class="num-input" type="text" inputmode="decimal" id="pr-porcao" ' +
+                  'style="width:100%" value="' + esc(porcaoStr) + '"></span>' +
+              '</div>' +
+              '<div class="col grow">' +
+                '<input type="text" id="pr-medida" placeholder="Medida caseira, ex: 1 fatia (40 g)" ' +
+                  'style="width:100%;font:inherit;font-size:14px;padding:8px;border:1px solid var(--border-strong);' +
+                  'border-radius:8px;background:var(--card);color:var(--text)" value="' + esc(medidaStr) + '">' +
+              '</div>' +
+            '</div>' +
+            '<p class="hint">Vem da tabela de porções de referência da Anvisa para esta categoria ' +
+              '— quem decide o número é você. Necessária para calcular %VD no rótulo.</p>'
+          : "") +
         '<div class="modal-actions">' +
           '<button class="cancel" id="pr-cancel">Cancelar</button>' +
           '<button class="save" id="pr-ok">Salvar</button>' +
@@ -466,6 +490,13 @@ function openProdutoModal(p, presetFornecedor){
     mAtacadoEl.addEventListener("input", (e) => { mAtacadoStr = e.target.value; });
     mDistEl.addEventListener("input", (e) => { mDistStr = e.target.value; });
     mVarejoEl.addEventListener("input", (e) => { mVarejoStr = e.target.value; });
+    const porcaoEl = backdrop.querySelector("#pr-porcao");
+    const medidaEl = backdrop.querySelector("#pr-medida");
+    if(porcaoEl){
+      wireQtyInput(porcaoEl);
+      porcaoEl.addEventListener("input", (e) => { porcaoStr = e.target.value; });
+      medidaEl.addEventListener("input", (e) => { medidaStr = e.target.value; });
+    }
     const costEl = backdrop.querySelector("#pr-cost");
     if(costEl){
       wirePriceInput(costEl);
@@ -518,6 +549,10 @@ function openProdutoModal(p, presetFornecedor){
         margin_distribuidor: (parseQtyInput(mDistEl.value) || 0) / 100,
         margin_varejo: (parseQtyInput(mVarejoEl.value) || 0) / 100,
       };
+      if(porcaoEl){
+        payload.porcao_g = parseQtyInput(porcaoEl.value);
+        payload.medida_caseira = medidaEl.value.trim() || null;
+      }
       try{
         if(isEdit){
           await api("produto_update", Object.assign({ id: p.id }, payload));
@@ -594,8 +629,18 @@ function renderProduto(data){
       '<span class="lbl">Itens por pacote</span>' +
       '<span>' + fmtStockQty(p.items_per_package) + '</span>' +
     '</div>' +
+    (p.kind === "manufaturado" && p.porcao_g != null
+      ? '<div class="kind-src">' +
+          '<span class="lbl">Porção do rótulo</span>' +
+          '<span>' + fmtStockQty(p.porcao_g) + ' g' +
+            (p.medida_caseira ? ' (' + esc(p.medida_caseira) + ')' : '') + '</span>' +
+        '</div>'
+      : '') +
     '<div class="detail-actions">' +
       '<button class="primary small alt" id="edit-produto">✎ Editar</button>' +
+      (p.kind === "manufaturado"
+        ? '<a class="primary small alt" href="rotulagem.html?produto=' + encodeURIComponent(p.id) + '">🏷️ Gerar rótulo</a>'
+        : '') +
       '<button class="primary small alt danger" id="del-produto">🗑 Remover</button>' +
     '</div>' +
     '<div id="pp-panel"></div>' +

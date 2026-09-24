@@ -318,6 +318,11 @@ function openReceitaModal(r){
       '<label for="rec-margin">Margem de segurança (%, opcional)</label>' +
       '<input type="text" id="rec-margin" inputmode="decimal" ' +
         'value="' + esc(isEdit && r.safety_margin_pct ? pct(r.safety_margin_pct) : "") + '">' +
+      '<label for="rec-final-weight">Peso final da fornada (g, opcional)</label>' +
+      '<span class="field"><input class="num-input" type="text" inputmode="decimal" id="rec-final-weight" ' +
+        'style="width:100%" value="' + esc(isEdit && r.final_weight_g ? fmtStockQty(r.final_weight_g) : "") + '"></span>' +
+      '<p class="hint">Só é usado para calcular a tabela nutricional quando o rendimento é em ' +
+        '<strong>un</strong> — o peso total já pronto, não a soma dos ingredientes crus.</p>' +
       '<div class="fields-row">' +
         '<div class="col grow">' +
           '<label for="rec-prep-min">Preparo (min, opcional)</label>' +
@@ -342,10 +347,12 @@ function openReceitaModal(r){
   const marginEl = backdrop.querySelector("#rec-margin");
   const prepMinEl = backdrop.querySelector("#rec-prep-min");
   const prepRateEl = backdrop.querySelector("#rec-prep-rate");
+  const finalWeightEl = backdrop.querySelector("#rec-final-weight");
   wireQtyInput(yieldEl);
   wireQtyInput(marginEl);
   wireQtyInput(prepMinEl);
   wirePriceInput(prepRateEl);
+  wireQtyInput(finalWeightEl);
 
   const close = () => { backdrop.remove(); document.removeEventListener("keydown", onKey); };
   function onKey(e){ if(e.key === "Escape") close(); }
@@ -367,6 +374,7 @@ function openReceitaModal(r){
       safety_margin_pct: marginRaw === null ? 0 : marginRaw / 100,
       prep_minutes: parseQtyInput(prepMinEl.value),
       labor_rate_per_hour: centsToPrice(priceDigits(prepRateEl.value)),
+      final_weight_g: parseQtyInput(finalWeightEl.value),
     };
     try{
       if(isEdit){
@@ -634,6 +642,7 @@ function renderReceita(data){
     '<p class="rec-sub">Rende ' + fmtStockQty(r.yield_qty) + ' ' + esc(r.yield_unit) +
       (r.safety_margin_pct ? ' · margem de segurança ' + pct(r.safety_margin_pct) + '%' : '') +
       (r.prep_minutes ? ' · ' + fmtStockQty(r.prep_minutes) + ' min de preparo' : '') +
+      (r.final_weight_g ? ' · ' + fmtStockQty(r.final_weight_g) + ' g prontos (rotulagem)' : '') +
     '</p>' +
     '<div class="detail-actions">' +
       '<button class="primary small alt" id="edit-receita">✎ Editar receita</button>' +
