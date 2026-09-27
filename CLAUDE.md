@@ -9,6 +9,19 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-27): the notification status-bar badge redrawn larger
+
+Reported with a phone screenshot: the Magá "M" in the Android status bar
+read visibly smaller than other apps' icons beside it. Measured, not
+eyeballed: the old `assets/badge-96.png` glyph filled only 70×61 px of
+its 96×96 canvas (~63% of the height), and Android scales the whole
+canvas, padding included, down to ~24dp. The replacement (same "M"
+shape, redrawn in the original session at the user's request) fills
+81×70 px with heavier strokes. `CACHE_NAME` bumped v7 → v8, since the
+badge is in `SHELL_FILES` and an installed PWA would otherwise keep
+serving the old cached file. If it still reads small, the remaining
+headroom is the ~14 px of empty space above and below the glyph.
+
 ## Status (2026-09-19, later): phase 5 — the final test/tidy pass: a full 22-file regression sweep, a wire-contract audit, and the first genuinely live-authenticated exercise of `dashboard_summary`
 
 Closes the app-wide audit (phases 0/1, 2a, 2b, 2c, 3, 4 all shipped —
