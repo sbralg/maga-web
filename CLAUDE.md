@@ -39,6 +39,11 @@ OS's own mask lands on background, not content.
   re-reads the manifest on its own schedule (unlike the notification
   badge two entries below, which took effect on the very next push).
   Worth a follow-up screenshot once it's visible.
+- **Same-day follow-up: replaced with smaller files at the same two
+  paths/dimensions** (512×512 47.6KB→41.4KB, 192×192 20KB→17.8KB) — the
+  user flagged the first pair as too big. No manifest/`SHELL_FILES`
+  change needed since the filenames didn't move; `CACHE_NAME` bumped
+  v11 → v12 since the cached bytes did.
 
 ## Status (2026-09-27, later): the notification badge enlarged a second time
 
