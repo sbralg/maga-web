@@ -9,6 +9,17 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-27, later): the notification badge enlarged a second time
+
+Follow-up the same day: a second phone screenshot, this time next to the
+WhatsApp icon in the status bar, showed the "M" from the entry directly
+below was still noticeably smaller. Replaced again with an even larger
+redraw — 91×80 px of the 96×96 canvas (up from 80×69), now filling almost
+the whole frame with only a few px of margin. `CACHE_NAME` bumped v8 → v9.
+If it still reads small after this, there is very little canvas headroom
+left to grow into — the next lever would be redesigning the glyph itself
+(e.g. a bolder/blockier "M") rather than just scaling it up further.
+
 ## Status (2026-09-27): the notification status-bar badge redrawn larger
 
 Reported with a phone screenshot: the Magá "M" in the Android status bar
