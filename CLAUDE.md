@@ -9,6 +9,37 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-27, even later): maskable app icons added — Android no longer crops the logo into a plain circle
+
+The user regenerated the app icon in another session and picked the
+Samsung-shaped pair from the options it produced. Android (and most
+launchers) apply their OWN mask shape (circle, squircle, rounded square…)
+to any icon that lacks a dedicated `purpose:"maskable"` variant, cropping
+straight into the existing `icon-192`/`icon-512` PNGs — which are already
+circular badges, so a second, tighter circular crop on top was clipping
+the ring/banner. A maskable icon instead ships full-bleed art (safe
+content confined to the inner ~80% "safe zone", per the spec) so the
+OS's own mask lands on background, not content.
+
+- **New `assets/icon-maskable-192.png` / `-512.png`** (opaque, no
+  transparency — correct for maskable: the whole square gets clipped by
+  the OS, so there's no "outside the badge" region to punch through).
+  Added to `manifest.json`'s `icons` array alongside the existing two
+  plain entries — four total, both sizes now covered as both `any`
+  (implicit, no `purpose` key) and `maskable`, matching the standard
+  "ship both" pattern rather than replacing the plain ones (a launcher
+  that ignores `purpose` still gets a correct icon from the originals).
+  Added to `sw.js`'s `SHELL_FILES` too. `CACHE_NAME` landed at v11 —
+  a concurrent session pushed a Tarefas home-screen shortcut
+  (`assets/tarefas-96.png`, `manifest.json`'s new `shortcuts` array) in
+  between, also claiming v10, so this rebased on top and bumped once
+  more; both changes are in the final manifest/SHELL_FILES together.
+- **Not yet verified on a real device** — Android only picks up a new
+  home-screen/launcher icon after the PWA is reinstalled or the OS
+  re-reads the manifest on its own schedule (unlike the notification
+  badge two entries below, which took effect on the very next push).
+  Worth a follow-up screenshot once it's visible.
+
 ## Status (2026-09-27, later): the notification badge enlarged a second time
 
 Follow-up the same day: a second phone screenshot, this time next to the
