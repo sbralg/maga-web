@@ -9,6 +9,16 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-09-28): Supabase's 2026-10-30 "explicit grants for new tables" change does not affect this repo
+
+Assessed from a Supabase notice the user received: from 2026-10-30, new
+tables in `public` get no automatic Data API grants. **No impact here.**
+This front end never calls the Data API (`/rest/v1`); every page goes
+through the `maga-api` Edge Function (`shared-api.js`'s `API`). The work it
+creates lives in `maga-api`: new-table migrations there must `GRANT` to
+`service_role`. That's `maga-api/CLAUDE.md`'s gotcha #23. Don't re-check
+this repo for it.
+
 ## Status (2026-09-27, even later): maskable app icons added — Android no longer crops the logo into a plain circle
 
 The user regenerated the app icon in another session and picked the
