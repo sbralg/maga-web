@@ -83,6 +83,20 @@ const TWO_ENVS = [
   { id: 'prod', label: 'Prod', effective: { menu: { hidden: ['fornecedores'] }, landingPage: 'eventos' } },
 ];
 
+const NEWS_CATEGORIES = [
+  { key: 'brasil', label: 'Brasil' }, { key: 'politica', label: 'Política' }, { key: 'economia', label: 'Economia' },
+  { key: 'mundo', label: 'Mundo' }, { key: 'ciencia', label: 'Ciência & Tecnologia' }, { key: 'saude', label: 'Saúde' },
+  { key: 'cultura', label: 'Cultura & Entretenimento' }, { key: 'esportes', label: 'Esportes' },
+  { key: 'curiosidades', label: 'Curiosidades' }, { key: 'outros', label: 'Outros' },
+];
+const NEWS_DEFAULT_SOURCES = [
+  { key: 'bbc', name: 'BBC', color: '#bb1919', enabled: true, feeds: [
+    { kind: 'rss', url: 'https://feeds.bbci.co.uk/news/rss.xml', lang: 'en' },
+    { kind: 'youtube', handle: '@BBCNews', lang: 'en' } ] },
+  { key: 'cnn', name: 'CNN', color: '#9b2a8a', enabled: true, feeds: [
+    { kind: 'news-sitemap', url: 'https://edition.cnn.com/sitemap/news.xml', label: 'CNN International', lang: 'en' } ] },
+];
+
 function makePrefs(overrides = {}) {
   const base = {
     effective: {
@@ -121,6 +135,15 @@ function makePrefs(overrides = {}) {
         sections: { workSummary: true, watchlist: true, instructions: true },
         roster: [],
         context: '',
+      },
+      // Notícias - presentPerson() always includes this: the saved sources,
+      // or the built-in starter list (usingDefaultSources) until saved.
+      news: {
+        sources: JSON.parse(JSON.stringify(NEWS_DEFAULT_SOURCES)),
+        hiddenCategories: [],
+        priorityCategories: [],
+        usingDefaultSources: true,
+        categories: NEWS_CATEGORIES,
       },
     },
     overrides: {},
@@ -175,6 +198,17 @@ function applyPutToPrefs(prefs, section, body) {
     if (body.excludedGroups) effective.whatsapp.excludedGroups = body.excludedGroups.map(g => g.jid);
     if (body.excludedUsers) effective.whatsapp.excludedUsers = body.excludedUsers.map(u => u.jid);
     if (body.sendAllowlist) effective.whatsapp.sendAllowlist = body.sendAllowlist.map(e => e.number);
+  } else if (section === 'news') {
+    // Real server: the news section is replaced whole; no `sources` key means
+    // the starter list applies again.
+    effective.news = {
+      ...effective.news,
+      sources: body.sources ? JSON.parse(JSON.stringify(body.sources)) : JSON.parse(JSON.stringify(NEWS_DEFAULT_SOURCES)),
+      hiddenCategories: body.hiddenCategories || [],
+      priorityCategories: body.priorityCategories || [],
+      usingDefaultSources: !body.sources,
+    };
+    return { ...prefs, effective, overrides: { ...prefs.overrides, news: body } };
   } else if (section === 'mail' && body.sendAllowlist) {
     effective.mail = { ...effective.mail, sendAllowlist: [...body.sendAllowlist] };
   } else {
@@ -312,6 +346,13 @@ async function withPrefsFake(ctx, opts = {}) {
       const name = url.searchParams.get('name');
       otherCalls.push({ pathname, method, query: name });
       await fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(contactSearchResult(name)) });
+      return;
+    }
+    if (pathname === '/preferences/news/resolve' && method === 'GET') {
+      const input = url.searchParams.get('input');
+      otherCalls.push({ pathname, method, query: input });
+      const r = opts.newsResolve ? opts.newsResolve(input) : { input, title: null, candidates: [], error: 'nenhum feed encontrado nesse endereço' };
+      await fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(r) });
       return;
     }
     if (pathname === '/preferences/sessions' && method === 'GET') {
@@ -1836,6 +1877,123 @@ async function withPrefsFake(ctx, opts = {}) {
     const put = putCalls.find(c => c.section === 'dailySummary');
     check('a removed row is actually sent as an empty roster, got: ' + JSON.stringify(put.body.roster),
       Array.isArray(put.body.roster) && put.body.roster.length === 0);
+    await ctx.close();
+  }
+
+  // --- Notícias tab ---------------------------------------------------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 900 } });
+    const magaCalls = [];
+    await ctx.route('**/functions/v1/maga-api', async route => {
+      magaCalls.push(route.request().postDataJSON().action);
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, requested_at: new Date().toISOString() }) });
+    });
+    const { putCalls, otherCalls } = await withPrefsFake(ctx, {
+      newsResolve: (input) => input === '@CNNBrasil'
+        ? { input, title: 'CNN Brasil', candidates: [{ kind: 'youtube', handle: '@CNNBrasil', channelId: 'UCvdwhh_fDyWccR42-rReZLw', title: 'CNN Brasil' }] }
+        : input === 'g1.globo.com'
+          ? { input, title: 'g1 - O portal de notícias da Globo', candidates: [{ kind: 'rss', url: 'https://g1.globo.com/rss/g1/', title: 'g1' }] }
+          : { input, title: null, candidates: [], error: 'nenhum feed encontrado nesse endereço' },
+    });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="noticias"]');
+    await page.waitForSelector('#news-sources [data-ns]', { timeout: 6000 });
+    check('Notícias tab: one card per starter source', (await page.$$('#news-sources [data-ns]')).length === 2);
+    check('Notícias tab: says it is the default list', (await page.textContent('[data-tab-panel="noticias"]')).includes('lista padrão'));
+    check('Notícias tab: ten category rows', (await page.$$('.cat-row')).length === 10);
+    check('Notícias tab: no reset button while on the default list', !(await page.$('#news-reset')));
+
+    // categories
+    await page.click('.cat-chip[data-cat="mundo"][data-val="prio"]');
+    await page.click('.cat-chip[data-cat="esportes"][data-val="hide"]');
+    check('category chip toggles pressed state',
+      (await page.getAttribute('.cat-chip[data-cat="mundo"][data-val="prio"]', 'aria-pressed')) === 'true' &&
+      (await page.getAttribute('.cat-chip[data-cat="mundo"][data-val="normal"]', 'aria-pressed')) === 'false');
+
+    // edit a source, move it, drop a feed
+    await page.fill('[data-ns="0"] .ns-name', 'BBC News');
+    await page.click('[data-ns="0"] [data-feed="1"] .ns-feed-del'); // drop BBC's YouTube
+    await page.click('[data-ns="0"] .ns-down');                     // BBC below CNN
+    check('moving a source reorders the cards', (await page.inputValue('[data-ns="0"] .ns-name')) === 'CNN');
+
+    // resolve: nothing found
+    await page.fill('#news-input', 'nada.example');
+    await page.click('#news-find');
+    await page.waitForSelector('#news-cands .hint', { timeout: 6000 });
+    check('resolve with no feeds shows the server message', (await page.textContent('#news-cands')).includes('nenhum feed'));
+
+    // resolve @handle -> attach to CNN with a label
+    await page.fill('#news-input', '@CNNBrasil');
+    await page.click('#news-find');
+    await page.waitForSelector('[data-cand="0"]', { timeout: 6000 });
+    await page.selectOption('[data-cand="0"] .cand-target', '0'); // "Juntar a CNN"
+    await page.click('[data-cand="0"] .cand-add');
+    check('attaching adds the feed under CNN', (await page.$$('[data-ns="0"] [data-feed]')).length === 2);
+
+    // resolve a site -> new source
+    await page.fill('#news-input', 'g1.globo.com');
+    await page.press('#news-input', 'Enter');
+    await page.waitForSelector('[data-cand="0"]', { timeout: 6000 });
+    await page.fill('[data-cand="0"] .cand-name', 'g1');
+    await page.click('[data-cand="0"] .cand-add');
+    check('a new source card appears', (await page.$$('#news-sources [data-ns]')).length === 3);
+    check('resolve calls hit the mcp-server route', otherCalls.filter(c => c.pathname === '/preferences/news/resolve').length === 3);
+
+    await page.click('[data-save="news"]');
+    await page.waitForFunction(() => /Salvo/.test((document.getElementById('saved-news') || {}).textContent || ''), null, { timeout: 8000 });
+    const put = putCalls.find(c => c.section === 'news');
+    check('PUT /person/news sent', !!put);
+    if (put) {
+      const keys = put.body.sources.map(s => s.key);
+      check('saved order: cnn, bbc, then the new source, got ' + keys.join(','), keys[0] === 'cnn' && keys[1] === 'bbc' && keys[2] === 'g1');
+      check('the renamed source keeps its key with the new name', put.body.sources[1].name === 'BBC News' && put.body.sources[1].feeds.length === 1);
+      const yt = put.body.sources[0].feeds.find(f => f.kind === 'youtube');
+      check('attached feed carries handle, channel id and its label',
+        yt && yt.handle === '@CNNBrasil' && yt.channelId === 'UCvdwhh_fDyWccR42-rReZLw' && yt.label === 'CNN Brasil');
+      check('new source: rss feed, color assigned, enabled',
+        put.body.sources[2].feeds[0].url === 'https://g1.globo.com/rss/g1/' && /^#[0-9a-f]{6}$/.test(put.body.sources[2].color) && put.body.sources[2].enabled === true);
+      check('categories: priority [mundo], hidden [esportes]',
+        JSON.stringify(put.body.priorityCategories) === '["mundo"]' && JSON.stringify(put.body.hiddenCategories) === '["esportes"]');
+    }
+    check('saving asks the bridge to refresh, got ' + magaCalls.join(','), magaCalls.includes('news_refresh_request'));
+    check('status says it is refreshing', (await page.textContent('#saved-news')).includes('atualizando'));
+    check('after saving, the reset button appears', !!(await page.$('#news-reset')));
+
+    // reset to defaults sends no `sources`
+    await page.click('#news-reset');
+    await page.waitForSelector('#confirm-ok', { timeout: 6000 });
+    await page.click('#confirm-ok');
+    await page.waitForFunction(() => !document.getElementById('news-reset'), null, { timeout: 8000 });
+    const resetPut = putCalls.filter(c => c.section === 'news').pop();
+    check('reset PUT has no sources key (defaults apply again)', resetPut && !('sources' in resetPut.body));
+    check('reset keeps the category choices', resetPut && JSON.stringify(resetPut.body.hiddenCategories) === '["esportes"]');
+    check('the default list is back on screen', (await page.$$('#news-sources [data-ns]')).length === 2);
+    await ctx.close();
+  }
+
+  // --- Notícias tab: a refused source lands under the sources list --------------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 900 } });
+    await ctx.route('**/functions/v1/maga-api', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }));
+    await withPrefsFake(ctx, {
+      putOverride: (section) => section === 'news'
+        ? { status: 400, body: { error: 'invalid_preference', field: 'news.sources', message: "'news.sources[0].feeds[0].url' must be an https URL" } }
+        : null,
+    });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="noticias"]');
+    await page.click('[data-save="news"]');
+    await page.waitForSelector('[data-field="sources"] .err:not([hidden])', { timeout: 6000 });
+    check('a 400 on news.sources shows inline under the sources',
+      (await page.textContent('[data-field="sources"] .err')).includes('https'));
     await ctx.close();
   }
 

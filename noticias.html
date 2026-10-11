@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Notícias">
+<meta name="theme-color" content="#17120f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#faf8f4" media="(prefers-color-scheme: light)">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<title>Notícias</title>
+<!--
+  Data-free shell for the news board ("Notícias"). Plan of record:
+  maga-infra/mcp-server/docs/NEWS-PLAN.md.
+
+  This page only READS. maga-infra's news-bridge (on the jump host) fetches
+  each person's sources, categorizes them, applies their hidden/priority
+  categories, and publishes the finished board to maga-api; `news_board`
+  returns the latest snapshot. Everything about WHAT is on the board
+  (sources, category order, hidden categories) is decided there and in
+  Preferências → Notícias - this page just renders it and filters it.
+
+  ↻ calls `news_refresh_request`, which broadcasts on a private Realtime
+  topic the bridge listens to; the page then re-reads the board until its
+  published_at moves. The bridge holds on-demand refreshes at least 60s
+  apart, so a second tap within a minute legitimately takes longer.
+
+  Env-gated like Hoje/Tarefas: a board belongs to whoever signed in, so it
+  only renders on the account's own default environment.
+-->
+<link rel="stylesheet" href="shared-base.css">
+<link rel="stylesheet" href="shared-page.css">
+<link rel="stylesheet" href="shared-menu.css">
+<link rel="stylesheet" href="shared-toast.css">
+<style>
+  /* Same body/.wrap split as hoje.html: all padding on .wrap. */
+  body{padding:0}
+  .page{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
+  .wrap{
+    flex:1 0 auto;
+    padding:max(16px,env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+  }
+
+  .status-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px;
+    font-size:13px;color:var(--muted)}
+  .status-row .when{min-width:0}
+  .banner{border-radius:12px;padding:10px 12px;margin:0 0 12px;font-size:13.5px;line-height:1.4}
+  .banner.warn{background:rgba(180,83,9,.1);color:var(--warn);border:1px solid rgba(180,83,9,.25)}
+
+  /* Filter bar sticks while scrolling, like the pilot's. Its background is
+     the page's, so rows slide under it cleanly. */
+  .filters{position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0 4px;margin:0 0 6px}
+  .filters .chiprow{margin:0 0 8px}
+  .chip .n{opacity:.75;font-weight:500;margin-left:4px}
+  .chip.dim{opacity:.45}
+  .chip:disabled{cursor:default}
+  .filters .searchrow{margin:0 0 6px}
+  .jump{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding:2px 0 6px;font-size:12.5px}
+  .jump::-webkit-scrollbar{display:none}
+  .jump .lbl{color:var(--muted);flex:none;align-self:center}
+  .jump button{flex:none;border:1px solid var(--border);background:var(--card);color:var(--text);
+    border-radius:999px;padding:4px 10px;font:inherit;cursor:pointer}
+
+  .cat{margin:18px 0 0;scroll-margin-top:150px}
+  .cat h3{display:flex;align-items:baseline;gap:8px}
+  .cat h3 .count{font-size:12.5px;font-weight:500;color:var(--muted)}
+
+  /* One row = one link. Thumbnail left (16:9), meta + headline right. */
+  .news-row{display:flex;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);
+    color:inherit;text-decoration:none;align-items:flex-start}
+  .news-row:last-child{border-bottom:none}
+  .news-row:hover{background:var(--tint)}
+  .thumb{position:relative;flex:none;width:112px;aspect-ratio:16/9;border-radius:8px;overflow:hidden;
+    background:var(--tint)}
+  .thumb img{width:100%;height:100%;object-fit:cover;display:block}
+  .thumb.ph{display:flex;align-items:center;justify-content:center;padding:4px;text-align:center;
+    font-size:12px;font-weight:700;line-height:1.15;
+    color:var(--c);background:color-mix(in srgb, var(--c) 16%, var(--card))}
+  .thumb .play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:28px;height:28px;
+    border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:12px;display:flex;align-items:center;
+    justify-content:center;padding-left:2px}
+  .thumb .dur{position:absolute;right:4px;bottom:4px;background:rgba(0,0,0,.75);color:#fff;font-size:10.5px;
+    font-weight:600;padding:1px 4px;border-radius:4px}
+  .news-body{min-width:0;flex:1}
+  .news-meta{display:block;font-size:12px;color:var(--muted);margin:0 0 3px}
+  .news-meta .src{font-weight:700;color:var(--c)}
+  .news-title{display:block;font-size:15px;line-height:1.35;font-weight:600;word-wrap:break-word}
+  @media (max-width:380px){ .thumb{width:92px} }
+  /* Outlet colors are chosen for a light page; several (BBC's red,
+     Estadão's green) are too dark to read as text on the dark theme, so
+     there the text uses the same hue mixed toward white - the pilot's
+     separate light/dark outlet tokens, derived instead of hand-picked. */
+  @media (prefers-color-scheme: dark){
+    .news-meta .src,.thumb.ph{color:color-mix(in srgb, var(--c) 45%, #ffffff)}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div id="root" class="wrap"><p class="msg">Carregando…</p></div>
+</div>
+
+<script>
+const root = document.getElementById("root");
+const CURRENT_PAGE = "noticias";
+const PAGE_LOGIN = {
+  title: "Notícias",
+  subtitle: "Faça o seu login para ver as notícias.",
+  onSuccess: () => load()
+};
+</script>
+<script src="shared-api.js"></script>
+<script src="shared-menu.js"></script>
+<script src="shared-nav.js"></script>
+<script src="shared-ui.js"></script>
+<script src="shared-format.js"></script>
+<script src="shared-pwa.js"></script>
+<script>
+// A board older than this gets an amber banner - it is also how a silently
+// stopped bridge becomes visible from the page.
+const STALE_MS = 3 * 3600 * 1000;
+const POLL_EVERY_MS = 3000;
+const POLL_FOR_MS = 90 * 1000;
+const FILTERS_KEY = "maga_noticias_filters";
+
+let board = null;        // the published snapshot (payload)
+let publishedAt = null;  // when maga-api stored it
+let filters = loadFilters();
+let refreshing = false;
+
+function loadFilters(){
+  try {
+    const f = JSON.parse(localStorage.getItem(FILTERS_KEY) || "{}");
+    return { type: ["all", "article", "video"].includes(f.type) ? f.type : "all", source: typeof f.source === "string" ? f.source : null };
+  } catch(_) { return { type: "all", source: null }; }
+}
+function saveFilters(){
+  try { localStorage.setItem(FILTERS_KEY, JSON.stringify({ type: filters.type, source: filters.source })); } catch(_) {}
+}
+
+function headerHtml(){ return navHeader("Notícias"); }
+function renderShell(inner){
+  root.innerHTML = headerHtml() + inner;
+  wireNav();
+}
+
+// ---- formatting -----------------------------------------------------------
+
+function relTime(iso){
+  const t = Date.parse(iso);
+  if(Number.isNaN(t)) return "";
+  const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if(min < 1) return "agora";
+  if(min < 60) return "há " + min + " min";
+  const h = Math.round(min / 60);
+  if(h < 24) return "há " + h + " h";
+  return h < 48 ? "ontem" : "há " + Math.round(h / 24) + " dias";
+}
+function fmtDuration(s){
+  s = Math.round(Number(s) || 0);
+  if(!s) return "";
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const mm = h ? String(m).padStart(2, "0") : String(m);
+  return (h ? h + ":" : "") + mm + ":" + String(sec).padStart(2, "0");
+}
+function safeHref(u){
+  try { const url = new URL(u); return (url.protocol === "https:" || url.protocol === "http:") ? url.href : null; }
+  catch(_) { return null; }
+}
+function safeColor(c){ return /^#[0-9a-fA-F]{6}$/.test(String(c || "")) ? c : "#6b7280"; }
+
+// ---- board helpers ----------------------------------------------------------
+
+function sourceMap(){
+  const m = new Map();
+  for(const s of (board.sources || [])) m.set(s.key, s);
+  return m;
+}
+function typeMatches(it){
+  return filters.type === "all" || it.kind === filters.type;
+}
+function chipCounts(){
+  // Counts follow the Type filter but not the text box (the box only hides rows).
+  const counts = new Map();
+  for(const it of (board.items || [])) if(typeMatches(it)) counts.set(it.source, (counts.get(it.source) || 0) + 1);
+  return counts;
+}
+
+// ---- rendering ------------------------------------------------------------------
+
+function statusHtml(){
+  const age = publishedAt ? Date.now() - Date.parse(publishedAt) : null;
+  let html = '<div class="status-row"><span class="when" id="when">' +
+    (publishedAt ? "Atualizado " + esc(relTime(publishedAt)) : "") + '</span>' +
+    '<button class="link" id="refresh-btn"' + (refreshing ? " disabled" : "") + '>' +
+    (refreshing ? "Atualizando…" : "↻ Atualizar") + '</button></div>';
+  if(age !== null && age > STALE_MS){
+    html += '<div class="banner warn" id="stale-banner">Estas notícias têm mais de 3 horas. ' +
+      'A atualização automática pode ter parado — toque em ↻ para tentar agora.</div>';
+  }
+  return html;
+}
+
+function rowHtml(it, src){
+  const href = safeHref(it.url);
+  if(!href) return "";
+  const color = safeColor(src && src.color);
+  const name = (src && src.name) || it.source;
+  const who = it.label || name;
+  const kind = it.kind === "video" ? "Vídeo · YouTube" : "Artigo";
+  const img = safeHref(it.image);
+  const thumb = img
+    ? '<span class="thumb"><img src="' + esc(img) + '" alt="" loading="lazy" referrerpolicy="no-referrer" data-ph="' + esc(name) + '">' +
+      (it.kind === "video" ? '<span class="play" aria-hidden="true">▶</span>' : "") +
+      (it.duration_s ? '<span class="dur">' + esc(fmtDuration(it.duration_s)) + '</span>' : "") + '</span>'
+    : '<span class="thumb ph">' + esc(name) + '</span>';
+  return '<a class="news-row" href="' + esc(href) + '" target="_blank" rel="noopener noreferrer"' +
+    ' style="--c:' + color + '" data-source="' + esc(it.source) + '" data-kind="' + esc(it.kind) + '"' +
+    ' data-search="' + esc(foldSearchText(it.title + " " + who)) + '">' + thumb +
+    '<span class="news-body"><span class="news-meta"><span class="src">' + esc(who) + '</span> · ' + kind +
+    (it.published_at ? ' · ' + esc(relTime(it.published_at)) : "") + '</span>' +
+    '<span class="news-title">' + esc(it.title) + '</span></span></a>';
+}
+
+function filtersHtml(){
+  const counts = chipCounts();
+  const typeChip = (val, label) =>
+    '<button type="button" class="chip type-chip' + (filters.type === val ? " active" : "") + '" data-type="' + val +
+    '" aria-pressed="' + (filters.type === val) + '">' + label + '</button>';
+  let html = '<div class="filters" id="filters">' +
+    '<div class="chiprow" role="group" aria-label="Tipo">' +
+      typeChip("all", "Todos") + typeChip("article", "Artigos") + typeChip("video", "Vídeos") + '</div>';
+
+  const total = [...counts.values()].reduce((a, b) => a + b, 0);
+  html += '<div class="chiprow" role="group" aria-label="Fontes">' +
+    '<button type="button" class="chip src-chip' + (filters.source ? "" : " active") + '" data-source=""' +
+    ' aria-pressed="' + !filters.source + '">Todas as fontes<span class="n">' + total + '</span></button>';
+  for(const s of (board.sources || [])){
+    const n = counts.get(s.key) || 0;
+    const selected = filters.source === s.key;
+    // A source with nothing under the current Type filter is dimmed exactly
+    // like an unselected one, and disabled - unless it IS the selection, so
+    // the person can always click their way back out.
+    const dim = (filters.source && !selected) || n === 0;
+    html += '<button type="button" class="chip src-chip' + (selected ? " active" : "") + (dim && !selected ? " dim" : "") +
+      '" data-source="' + esc(s.key) + '" aria-pressed="' + selected + '"' + (n === 0 && !selected ? " disabled" : "") + '>' +
+      esc(s.name) + '<span class="n">' + n + '</span></button>';
+  }
+  html += '</div>';
+  html += '<div class="searchrow"><input type="search" id="q" placeholder="Filtrar manchetes" aria-label="Filtrar manchetes"></div>';
+  html += '<div class="jump" id="jump"></div></div>';
+  return html;
+}
+
+function sectionsHtml(){
+  const srcs = sourceMap();
+  const byCat = new Map();
+  for(const it of (board.items || [])){
+    if(!typeMatches(it)) continue;
+    if(filters.source && it.source !== filters.source) continue;
+    if(!byCat.has(it.category)) byCat.set(it.category, []);
+    byCat.get(it.category).push(it);
+  }
+  let html = "";
+  const cats = (board.categories || []).slice();
+  // An item whose category isn't in the board's list (shouldn't happen, but
+  // a future bridge could add one) still shows, at the end.
+  for(const key of byCat.keys()) if(!cats.some(c => c.key === key)) cats.push({ key, label: key });
+  for(const c of cats){
+    const items = byCat.get(c.key) || [];
+    if(!items.length) continue;
+    html += '<section class="cat" data-cat="' + esc(c.key) + '" id="cat-' + esc(c.key) + '">' +
+      '<h3><span>' + esc(c.label) + '</span><span class="count"></span></h3>' +
+      '<div class="card">' + items.map(it => rowHtml(it, srcs.get(it.source))).join("") + '</div></section>';
+  }
+  return html || '<p class="msg">Nada com esses filtros.</p>';
+}
+
+function render(){
+  if(!board){
+    renderShell(statusHtml() +
+      '<p class="msg">Nenhuma notícia publicada ainda.</p>' +
+      '<p class="msg small">O quadro aparece aqui depois da primeira atualização. Toque em ↻ para pedir uma agora.</p>');
+    wireStatus();
+    return;
+  }
+  renderShell(statusHtml() + filtersHtml() + '<div id="sections">' + sectionsHtml() + '</div>');
+  wireStatus();
+  wireFilters();
+  applySearch();
+}
+
+function rerenderBody(){
+  const q = document.getElementById("q")?.value || "";
+  const f = document.getElementById("filters");
+  f.outerHTML = filtersHtml();
+  document.getElementById("sections").innerHTML = sectionsHtml();
+  const input = document.getElementById("q");
+  input.value = q;
+  wireFilters();
+  applySearch();
+}
+
+// The text box only hides rows (and sections left empty); chip counts and
+// the Type/source filters don't move. Re-rendering on every keystroke would
+// steal focus from the box.
+function applySearch(){
+  const q = foldSearchText(document.getElementById("q")?.value || "").trim();
+  const jump = [];
+  document.querySelectorAll("section.cat").forEach(sec => {
+    let visible = 0;
+    sec.querySelectorAll(".news-row").forEach(row => {
+      const show = !q || row.dataset.search.includes(q);
+      row.hidden = !show;
+      if(show) visible++;
+    });
+    sec.hidden = visible === 0;
+    sec.querySelector(".count").textContent = visible ? String(visible) : "";
+    if(visible) jump.push({ key: sec.dataset.cat, label: sec.querySelector("h3 span").textContent });
+  });
+  const j = document.getElementById("jump");
+  if(j){
+    j.innerHTML = jump.length > 1
+      ? '<span class="lbl">Ir para</span>' + jump.map(c => '<button type="button" data-jump="' + esc(c.key) + '">' + esc(c.label) + '</button>').join("")
+      : "";
+    j.querySelectorAll("[data-jump]").forEach(b => b.addEventListener("click", () => {
+      document.getElementById("cat-" + b.dataset.jump)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }));
+  }
+}
+
+function wireFilters(){
+  document.querySelectorAll(".type-chip").forEach(b => b.addEventListener("click", () => {
+    filters.type = b.dataset.type;
+    saveFilters();
+    rerenderBody();
+  }));
+  document.querySelectorAll(".src-chip").forEach(b => b.addEventListener("click", () => {
+    const key = b.dataset.source || null;
+    filters.source = (key && filters.source !== key) ? key : null;
+    saveFilters();
+    rerenderBody();
+  }));
+  document.getElementById("q").addEventListener("input", applySearch);
+}
+
+function wireStatus(){
+  document.getElementById("refresh-btn")?.addEventListener("click", refresh);
+}
+
+// A thumbnail that fails to load (hotlink protection, a dead CDN URL) turns
+// into the outlet-tinted placeholder tile instead of a broken image. Capture
+// phase, since image error events don't bubble.
+document.addEventListener("error", (ev) => {
+  const img = ev.target;
+  if(!(img instanceof HTMLImageElement) || !img.closest(".thumb") || !img.dataset.ph) return;
+  const thumb = img.closest(".thumb");
+  thumb.classList.add("ph");
+  thumb.textContent = img.dataset.ph;
+}, true);
+
+// ---- data -----------------------------------------------------------------------
+
+function handleApiError(e, fallbackMsg){
+  if(e.unauthorized){
+    localStorage.removeItem(PASS_KEY);
+    showLogin("Senha incorreta.");
+    return true;
+  }
+  listToast(fallbackMsg + (e.body && e.body.error ? " (" + e.body.error + ")" : ""), true);
+  return false;
+}
+
+async function refresh(){
+  if(refreshing) return;
+  refreshing = true;
+  const btn = document.getElementById("refresh-btn");
+  if(btn){ btn.disabled = true; btn.textContent = "Atualizando…"; }
+  const before = publishedAt;
+  try {
+    await api("news_refresh_request");
+    const deadline = Date.now() + POLL_FOR_MS;
+    while(Date.now() < deadline){
+      await new Promise(r => setTimeout(r, POLL_EVERY_MS));
+      const data = await api("news_board");
+      if(data.published_at && data.published_at !== before){
+        board = data.board;
+        publishedAt = data.published_at;
+        refreshing = false;
+        if(board) rerenderAll(); else render();
+        listToast("Notícias atualizadas");
+        return;
+      }
+    }
+    listToast("A atualização ainda não chegou — tente de novo em instantes.", true);
+  } catch(e) {
+    if(handleApiError(e, "Não foi possível atualizar agora")) { refreshing = false; return; }
+  }
+  refreshing = false;
+  const b = document.getElementById("refresh-btn");
+  if(b){ b.disabled = false; b.textContent = "↻ Atualizar"; }
+}
+
+// A refresh keeps the person's filters and search text, only the board moves.
+function rerenderAll(){
+  const q = document.getElementById("q")?.value || "";
+  render();
+  const input = document.getElementById("q");
+  if(input && q){ input.value = q; applySearch(); }
+}
+
+async function load(){
+  if(!getPass()){ showLogin(); return; }
+  if(!isDefaultEnv()){
+    root.innerHTML = headerHtml() + personalPageBlockedHtml();
+    wireNav();
+    return;
+  }
+  renderShell('<p class="msg">Carregando…</p>');
+  try {
+    const data = await api("news_board");
+    board = data.board || null;
+    publishedAt = data.published_at || null;
+    if(board && filters.source && !(board.sources || []).some(s => s.key === filters.source)) filters.source = null;
+    render();
+  } catch(e) {
+    if(e.unauthorized){
+      localStorage.removeItem(PASS_KEY);
+      showLogin("Senha incorreta.");
+    } else {
+      renderShell('<p class="msg err">Não foi possível carregar agora.' +
+        (e.body && e.body.error ? ' (' + esc(e.body.error) + ')' : '') + '</p>' +
+        '<p class="msg"><button class="link" onclick="load()">Tentar novamente</button></p>');
+    }
+  }
+}
+
+// "Atualizado há X min" ages while the page sits open.
+setInterval(() => {
+  const w = document.getElementById("when");
+  if(w && publishedAt) w.textContent = "Atualizado " + relTime(publishedAt);
+}, 60000);
+
+load();
+</script>
+</body>
+</html>

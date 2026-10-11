@@ -32,6 +32,7 @@ const MENU_ITEMS = [
   { page: "hoje", href: "hoje.html", emoji: "☀️", label: "Hoje", group: "dia" },
   { page: "tarefas", href: "tarefas.html", emoji: "✓", label: "Tarefas", group: "dia" },
   { page: "notas", href: "notas.html", emoji: "🗒️", label: "Notas", group: "dia" },
+  { page: "noticias", href: "noticias.html", emoji: "📰", label: "Notícias", group: "dia" },
   { page: "compras", href: "compras.html", emoji: "🛒", label: "Compras", group: "producao" },
   { page: "estoque", href: "estoque.html", emoji: "📦", label: "Estoque", group: "producao" },
   { page: "insumos", href: "insumos.html", emoji: "🥖", label: "Insumos", group: "producao" },

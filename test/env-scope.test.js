@@ -81,6 +81,8 @@ async function seedEnv(page, { envId, defaultEnv, menuHidden, landingPage } = {}
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ report: null }) });
       } else if (body.action === 'notebooks') {
         await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ notebooks: [] }) });
+      } else if (body.action === 'news_board') {
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ board: null, published_at: null }) });
       } else {
         await route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'bad action' }) });
       }
@@ -151,6 +153,32 @@ async function seedEnv(page, { envId, defaultEnv, menuHidden, landingPage } = {}
     await ctx.close();
   }
 
+  // --- noticias.html: a person's news board is theirs too - blocked with
+  // zero maga-api calls on another environment, normal on their own --------
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const calls = await withApiFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/noticias.html');
+    await seedEnv(page, { envId: 'dev', defaultEnv: 'prod' });
+    await page.reload();
+    await page.waitForSelector('.msg', { timeout: 6000 });
+    check('noticias.html shows the blocked message on a non-default env', /não está disponível para esta conta neste ambiente/.test(await page.textContent('#root')));
+    check('noticias.html never called maga-api at all while blocked', calls.length === 0);
+    await ctx.close();
+  }
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 860 } });
+    const calls = await withApiFake(ctx);
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/noticias.html');
+    await seedEnv(page, { envId: 'prod', defaultEnv: 'prod' });
+    await page.reload();
+    await page.waitForSelector('#refresh-btn', { timeout: 6000 });
+    check('noticias.html loads normally on the default env', calls.includes('news_board'));
+    await ctx.close();
+  }
+
   // --- on the account's OWN default environment: both pages load
   // normally, exactly as before this change --------------------------------
   {
@@ -202,6 +230,7 @@ async function seedEnv(page, { envId, defaultEnv, menuHidden, landingPage } = {}
     check('Hoje is not in the drawer on a non-default env, got: ' + JSON.stringify(labels), !labels.some(l => l.includes('Hoje')));
     check('Tarefas is not in the drawer on a non-default env, got: ' + JSON.stringify(labels), !labels.some(l => l.includes('Tarefas')));
     check('Notas is not in the drawer on a non-default env, got: ' + JSON.stringify(labels), !labels.some(l => l.includes('Notas')));
+    check('Notícias is not in the drawer on a non-default env, got: ' + JSON.stringify(labels), !labels.some(l => l.includes('Notícias')));
     check('Insumos (a non-personal page) is still in the drawer, got: ' + JSON.stringify(labels), labels.some(l => l.includes('Insumos')));
 
     await page.goto(ORIGIN + '/index.html');
@@ -210,6 +239,7 @@ async function seedEnv(page, { envId, defaultEnv, menuHidden, landingPage } = {}
     check('Hoje is not a dashboard tile on a non-default env, got: ' + JSON.stringify(tiles), !tiles.includes('Hoje'));
     check('Tarefas is not a dashboard tile on a non-default env, got: ' + JSON.stringify(tiles), !tiles.includes('Tarefas'));
     check('Notas is not a dashboard tile on a non-default env, got: ' + JSON.stringify(tiles), !tiles.includes('Notas'));
+    check('Notícias is not a dashboard tile on a non-default env, got: ' + JSON.stringify(tiles), !tiles.includes('Notícias'));
     check('Produção-group tiles are unaffected, got: ' + JSON.stringify(tiles), tiles.includes('Insumos'));
     await ctx.close();
   }
@@ -228,6 +258,7 @@ async function seedEnv(page, { envId, defaultEnv, menuHidden, landingPage } = {}
     check('Hoje IS a dashboard tile on the default env, got: ' + JSON.stringify(tiles), tiles.includes('Hoje'));
     check('Tarefas IS a dashboard tile on the default env, got: ' + JSON.stringify(tiles), tiles.includes('Tarefas'));
     check('Notas IS a dashboard tile on the default env, got: ' + JSON.stringify(tiles), tiles.includes('Notas'));
+    check('Notícias IS a dashboard tile on the default env, got: ' + JSON.stringify(tiles), tiles.includes('Notícias'));
     await ctx.close();
   }
 

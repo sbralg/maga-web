@@ -115,6 +115,29 @@
      back to the page's normal font. */
   .entry.roster{align-items:flex-start}
   .entry.roster .who span{font-family:inherit;font-size:12px}
+
+  /* ---- Notícias tab ---- one card per source (a pill on noticias.html),
+     its feeds listed underneath. */
+  .news-src{border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin:0 0 10px;background:var(--card)}
+  .news-src.off{opacity:.6}
+  .ns-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .ns-head input[type=color]{width:30px;height:30px;padding:0;border:none;background:none;cursor:pointer;flex:none}
+  .ns-head input.ns-name{flex:1;min-width:120px;font:inherit;font-weight:600;padding:6px 8px;border:1px solid var(--border);
+    border-radius:8px;background:var(--bg);color:var(--text)}
+  .ns-head label{font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:4px}
+  .ns-feeds{list-style:none;margin:8px 0 0;padding:0}
+  .ns-feeds li{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--border);font-size:13px}
+  .ns-feeds .k{flex:none;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;min-width:62px}
+  .ns-feeds .what{flex:1;min-width:0;overflow-wrap:anywhere}
+  .ns-feeds .what span{display:block;font-size:11.5px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
+  .news-cand{border:1px dashed var(--border-strong);border-radius:10px;padding:8px 10px;margin:8px 0 0;font-size:13px}
+  .news-cand .what{overflow-wrap:anywhere;margin:0 0 6px}
+  .news-cand .what span{display:block;font-size:11.5px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
+  .news-cand .row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .news-cand select,.news-cand input{font:inherit;padding:5px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)}
+  .cat-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)}
+  .cat-row:last-child{border-bottom:none}
+  .cat-row .seg{display:flex;gap:4px;flex:none}
   .ctx{
     font:inherit;font-size:15px;padding:10px 12px;border-radius:10px;
     border:1px solid var(--border-strong);background:var(--card);color:var(--text);
@@ -133,6 +156,7 @@ let prefs = null;        // the whole GET /preferences body
 let prefsStale = false;  // served from cache because the jump host was unreachable
 let groups = null;       // {groups:[{jid,label}], reachable}
 let contacts = null;     // {contacts:[{jid,label}], reachable} - 1:1 counterpart to groups
+let newsState = null;   // Notícias tab working copy: {sources, hidden:Set, priority:Set, usingDefault}
 let rosterState = [];    // dailySummary.roster, mutated in-place by the tab's own add/edit/remove UI
 
 // Mirrors maga-infra's preferencesStore.js exactly (DAILY_SUMMARY_SECTIONS,
@@ -275,6 +299,7 @@ function tabDefs(){
     { id: "limites", label: "Limites" },
     { id: "resumo", label: "Resumo diário" },
   ];
+  if(prefs.effective && prefs.effective.news) defs.push({ id: "noticias", label: "Notícias" });
   if(prefs.environments && prefs.environments.length) defs.push({ id: "aplicativo", label: "Aplicativo" });
   defs.push({ id: "backup", label: "Backup" });
   defs.push({ id: "infra", label: "Infraestrutura" });
@@ -320,6 +345,17 @@ function render(){
     relationship: r.relationship || "", priority: r.priority || "normal",
     relayedByAdult: !!r.relayedByAdult, notes: r.notes || "",
   }));
+
+  // Same reset-on-render rule as rosterState: an unsaved edit never survives
+  // a reload.
+  if(eff.news){
+    newsState = {
+      sources: JSON.parse(JSON.stringify(eff.news.sources || [])),
+      hidden: new Set(eff.news.hiddenCategories || []),
+      priority: new Set(eff.news.priorityCategories || []),
+      usingDefault: !!eff.news.usingDefaultSources,
+    };
+  }
 
   let html = navHeader("Preferências");
 
@@ -444,6 +480,11 @@ function render(){
     saveRow("dailySummary", "Salvar", writable && !prefsStale)
   );
 
+  // --- Notícias ---
+  if(eff.news){
+    html += tabPanel("noticias", false, newsTabHtml(eff.news, writable && !prefsStale));
+  }
+
   // --- Aplicativo (environment tier - phase 3) ---
   if(prefs.environments && prefs.environments.length){
     html += tabPanel("aplicativo", false, appSectionHtml(writable));
@@ -493,7 +534,249 @@ function render(){
   wirePassword();
   wireBackup();
   wireDailySummaryTab();
+  wireNewsTab();
   loadSessionsLater();
+}
+
+// --- Notícias ------------------------------------------------------------------
+//
+// Sources live in mcp-server's preferences overlay (per person); the
+// news-bridge pulls them before every refresh. The working copy is
+// newsState; every control edits it, structural changes (add/remove/move)
+// redraw the list, and Salvar sends it whole. Plan of record:
+// maga-infra/mcp-server/docs/NEWS-PLAN.md.
+
+const NEWS_KIND_LABEL = { "rss": "RSS", "news-sitemap": "Sitemap", "youtube": "YouTube" };
+const NEWS_COLORS = ["#bb1919", "#9b2a8a", "#0f5aa8", "#2d5a3d", "#c2410c", "#0e7490", "#7c3aed", "#b45309"];
+function NEWS_CATEGORY_ORDER(){ return ((prefs.effective.news && prefs.effective.news.categories) || []).map(c => c.key); }
+
+function newsFeedWhat(f){
+  const id = f.kind === "youtube" ? (f.handle || f.channelId) : f.url;
+  return f.label ? esc(f.label) + '<span>' + esc(id) + '</span>' : esc(id);
+}
+
+function newsSourcesHtml(){
+  if(!newsState.sources.length) return '<p class="hint">Nenhuma fonte. Adicione uma abaixo.</p>';
+  return newsState.sources.map((s, i) =>
+    '<div class="news-src' + (s.enabled === false ? " off" : "") + '" data-ns="' + i + '">' +
+      '<div class="ns-head">' +
+        '<input type="color" class="ns-color" value="' + esc(s.color) + '" aria-label="Cor de ' + esc(s.name) + '">' +
+        '<input type="text" class="ns-name" value="' + esc(s.name) + '" maxlength="40" aria-label="Nome da fonte">' +
+        '<label><input type="checkbox" class="ns-on"' + (s.enabled === false ? "" : " checked") + '> ativa</label>' +
+        '<button class="icon-btn ns-up" title="Subir"' + (i === 0 ? " disabled" : "") + '>↑</button>' +
+        '<button class="icon-btn ns-down" title="Descer"' + (i === newsState.sources.length - 1 ? " disabled" : "") + '>↓</button>' +
+        '<button class="icon-btn ns-del" title="Remover fonte">🗑</button>' +
+      '</div>' +
+      '<ul class="ns-feeds">' + (s.feeds || []).map((f, j) =>
+        '<li data-feed="' + j + '"><span class="k">' + esc(NEWS_KIND_LABEL[f.kind] || f.kind) + '</span>' +
+        '<span class="what">' + newsFeedWhat(f) + '</span>' +
+        '<button class="icon-btn ns-feed-del" title="Remover feed">✕</button></li>').join("") +
+      '</ul></div>'
+  ).join("");
+}
+
+function newsCatsHtml(){
+  return ((prefs.effective.news && prefs.effective.news.categories) || []).map(c => {
+    const state = newsState.hidden.has(c.key) ? "hide" : newsState.priority.has(c.key) ? "prio" : "normal";
+    const chip = (val, label) => '<button type="button" class="chip cat-chip' + (state === val ? " active" : "") +
+      '" data-cat="' + esc(c.key) + '" data-val="' + val + '" aria-pressed="' + (state === val) + '">' + label + '</button>';
+    return '<div class="cat-row"><span>' + esc(c.label) + '</span><span class="seg">' +
+      chip("normal", "Normal") + chip("prio", "Prioridade") + chip("hide", "Ocultar") + '</span></div>';
+  }).join("");
+}
+
+function newsTabHtml(news, canSave){
+  return '<h3>Fontes</h3>' +
+    '<p class="hint" style="margin:0 0 10px">Cada fonte vira um filtro na página Notícias. Uma fonte pode reunir vários feeds — ' +
+    'por exemplo, a CNN junta CNN International e CNN Brasil, artigos e vídeos.' +
+    (news.usingDefaultSources ? ' Esta é a lista padrão; ao salvar, ela passa a ser a sua.' : '') + '</p>' +
+    '<div class="field" data-field="sources"><div id="news-sources">' + newsSourcesHtml() + '</div><p class="err" hidden></p></div>' +
+    '<div class="field"><label for="news-input">Adicionar fonte ou feed</label>' +
+      '<div class="addrow" style="margin:0"><input type="text" id="news-input" placeholder="Site, endereço de feed ou @canal do YouTube">' +
+      '<button class="link" id="news-find">Buscar</button></div>' +
+      '<p class="hint">Cole o endereço de um site (ex.: g1.globo.com) ou um canal (@CNNBrasil). Os feeds encontrados aparecem abaixo.</p>' +
+      '<div id="news-cands"></div></div>' +
+    '<h3>Categorias</h3>' +
+    '<p class="hint" style="margin:0 0 10px">"Prioridade" coloca a categoria no topo da página; "Ocultar" tira ela do quadro (e do que a Magá lê para você).</p>' +
+    '<div class="field" data-field="hiddenCategories"><div id="news-cats">' + newsCatsHtml() + '</div><p class="err" hidden></p></div>' +
+    saveRow("news", "Salvar", canSave) +
+    (news.usingDefaultSources ? '' :
+      '<div class="actions" style="margin-top:4px"><button class="link" id="news-reset"' + (canSave ? '' : ' disabled') + '>Voltar às fontes padrão</button></div>');
+}
+
+function rerenderNewsTab(){
+  const panel = document.querySelector('[data-tab-panel="noticias"]');
+  if(!panel || !prefs.effective.news) return;
+  newsState = {
+    sources: JSON.parse(JSON.stringify(prefs.effective.news.sources || [])),
+    hidden: new Set(prefs.effective.news.hiddenCategories || []),
+    priority: new Set(prefs.effective.news.priorityCategories || []),
+    usingDefault: !!prefs.effective.news.usingDefaultSources,
+  };
+  panel.innerHTML = newsTabHtml(prefs.effective.news, prefs.writable !== false && !prefsStale);
+  panel.querySelector('[data-save="news"]').addEventListener("click", (ev) => saveSection("news", ev.currentTarget));
+  wireNewsTab();
+}
+
+function newsSourceKey(name){
+  const base = foldSearchText(name).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 20) || "fonte";
+  let key = base, n = 2;
+  while(newsState.sources.some(s => s.key === key)) key = (base.slice(0, 20) + "-" + n++);
+  return key;
+}
+
+function redrawNewsSources(){
+  document.getElementById("news-sources").innerHTML = newsSourcesHtml();
+  wireNewsSources();
+}
+
+function wireNewsSources(){
+  document.querySelectorAll("[data-ns]").forEach(card => {
+    const i = Number(card.dataset.ns);
+    const s = newsState.sources[i];
+    card.querySelector(".ns-color").addEventListener("input", (e) => { s.color = e.target.value; });
+    card.querySelector(".ns-name").addEventListener("input", (e) => { s.name = e.target.value; });
+    card.querySelector(".ns-on").addEventListener("change", (e) => { s.enabled = e.target.checked; card.classList.toggle("off", !s.enabled); });
+    card.querySelector(".ns-up").addEventListener("click", () => {
+      [newsState.sources[i - 1], newsState.sources[i]] = [newsState.sources[i], newsState.sources[i - 1]];
+      redrawNewsSources();
+    });
+    card.querySelector(".ns-down").addEventListener("click", () => {
+      [newsState.sources[i + 1], newsState.sources[i]] = [newsState.sources[i], newsState.sources[i + 1]];
+      redrawNewsSources();
+    });
+    card.querySelector(".ns-del").addEventListener("click", async () => {
+      if(!(await confirmModal('Remover a fonte "' + s.name + '"?', "Remover"))) return;
+      newsState.sources.splice(i, 1);
+      redrawNewsSources();
+    });
+    card.querySelectorAll(".ns-feed-del").forEach(btn => btn.addEventListener("click", () => {
+      const j = Number(btn.closest("[data-feed]").dataset.feed);
+      s.feeds.splice(j, 1);
+      // A source with no feeds left has nothing to show - drop it too,
+      // rather than saving something the server would refuse.
+      if(!s.feeds.length) newsState.sources.splice(i, 1);
+      redrawNewsSources();
+    }));
+  });
+}
+
+function newsCandidatesHtml(res){
+  if(!res.candidates || !res.candidates.length){
+    return '<p class="hint" style="margin-top:8px">' + esc(res.error || "Nenhum feed encontrado nesse endereço.") + '</p>';
+  }
+  const opts = '<option value="">Nova fonte</option>' +
+    newsState.sources.map((s, i) => '<option value="' + i + '">Juntar a ' + esc(s.name) + '</option>').join("");
+  return res.candidates.map((c, k) => {
+    const id = c.kind === "youtube" ? (c.handle || c.channelId) : c.url;
+    const title = c.title || res.title || "";
+    return '<div class="news-cand" data-cand="' + k + '">' +
+      '<div class="what"><strong>' + esc(NEWS_KIND_LABEL[c.kind] || c.kind) + '</strong>' + (title ? ' · ' + esc(title) : '') +
+      '<span>' + esc(id) + '</span></div>' +
+      '<div class="row2"><select class="cand-target" aria-label="Onde adicionar">' + opts + '</select>' +
+      '<input type="text" class="cand-name" maxlength="40" placeholder="Nome / rótulo" value="' + esc(title) + '">' +
+      '<button class="link cand-add">Adicionar</button></div></div>';
+  }).join("");
+}
+
+function wireNewsTab(){
+  if(!newsState || !document.getElementById("news-sources")) return;
+  wireNewsSources();
+
+  document.querySelectorAll(".cat-chip").forEach(b => b.addEventListener("click", () => {
+    const key = b.dataset.cat;
+    newsState.hidden.delete(key);
+    newsState.priority.delete(key);
+    if(b.dataset.val === "hide") newsState.hidden.add(key);
+    if(b.dataset.val === "prio") newsState.priority.add(key);
+    b.closest(".seg").querySelectorAll(".cat-chip").forEach(x => {
+      const on = x === b;
+      x.classList.toggle("active", on);
+      x.setAttribute("aria-pressed", String(on));
+    });
+  }));
+
+  const input = document.getElementById("news-input");
+  const findBtn = document.getElementById("news-find");
+  const cands = document.getElementById("news-cands");
+  const find = async () => {
+    const q = input.value.trim();
+    if(!q) return;
+    findBtn.disabled = true;
+    cands.innerHTML = '<p class="hint" style="margin-top:8px">Buscando…</p>';
+    try {
+      const res = await resolveNewsFeed(q);
+      cands.innerHTML = newsCandidatesHtml(res);
+      cands.querySelectorAll("[data-cand]").forEach(row => {
+        row.querySelector(".cand-add").addEventListener("click", () => {
+          const c = res.candidates[Number(row.dataset.cand)];
+          const name = row.querySelector(".cand-name").value.trim();
+          const target = row.querySelector(".cand-target").value;
+          const feed = { kind: c.kind };
+          if(c.kind === "youtube"){
+            if(c.handle) feed.handle = c.handle;
+            if(c.channelId) feed.channelId = c.channelId;
+          } else feed.url = c.url;
+          if(target === ""){
+            const srcName = name || res.title || (c.url ? new URL(c.url).hostname : (c.handle || "Fonte"));
+            newsState.sources.push({
+              key: newsSourceKey(srcName), name: srcName.slice(0, 40),
+              color: NEWS_COLORS[newsState.sources.length % NEWS_COLORS.length], enabled: true, feeds: [feed],
+            });
+          } else {
+            const src = newsState.sources[Number(target)];
+            if(name && name !== src.name) feed.label = name.slice(0, 40);
+            src.feeds.push(feed);
+          }
+          redrawNewsSources();
+          row.remove();
+          listToast("Adicionado — toque em Salvar para guardar.");
+        });
+      });
+    } catch(e) {
+      cands.innerHTML = "";
+      if(await handledAuthFailure(e)) return;
+      listToast("Não foi possível buscar: " + e.message, true);
+    } finally {
+      findBtn.disabled = false;
+    }
+  };
+  findBtn.addEventListener("click", find);
+  input.addEventListener("keydown", (e) => { if(e.key === "Enter"){ e.preventDefault(); find(); } });
+
+  const reset = document.getElementById("news-reset");
+  if(reset) reset.addEventListener("click", async () => {
+    if(!(await confirmModal("Voltar às fontes padrão? As fontes que você adicionou ou mudou serão substituídas pela lista padrão.", "Voltar"))) return;
+    reset.disabled = true;
+    try {
+      // No `sources` key: the overlay keeps only the categories, so the
+      // built-in starter list applies again (and follows future fixes).
+      const data = await savePreferenceSection("news", {
+        hiddenCategories: [...newsState.hidden],
+        priorityCategories: NEWS_CATEGORY_ORDER().filter(k => newsState.priority.has(k)),
+      });
+      prefs.effective = data.effective;
+      prefs.overrides = data.overrides;
+      rerenderNewsTab();
+      await requestNewsRefresh();
+      listToast("Fontes padrão restauradas.");
+    } catch(e) {
+      reset.disabled = false;
+      if(await handledAuthFailure(e)) return;
+      listToast("Não foi possível salvar: " + e.message, true);
+    }
+  });
+}
+
+// After a save, ask the news-bridge to rebuild the board now instead of at
+// the next hourly run. Uses the maga-api passphrase this browser already
+// holds, and only on the account's own environment - the board belongs to
+// whoever signed in (same gate as noticias.html). Best-effort: a failure
+// here never fails the save, it just means the change shows up later.
+async function requestNewsRefresh(){
+  if(typeof api !== "function" || !getPass() || !isDefaultEnv()) return false;
+  try { await api("news_refresh_request"); return true; }
+  catch(_) { return false; }
 }
 
 // --- allow-lists -------------------------------------------------------------
@@ -1330,6 +1613,17 @@ function collectSection(section){
     });
     return out;
   }
+  if(section === "news"){
+    // Saves the whole list as shown - starter list included, if the person
+    // never changed it (their call: "save everything"). "Voltar às fontes
+    // padrão" is the one path that sends no `sources`, which hands the
+    // choice back to the built-in list.
+    return {
+      sources: newsState.sources,
+      hiddenCategories: [...newsState.hidden],
+      priorityCategories: NEWS_CATEGORY_ORDER().filter(k => newsState.priority.has(k)),
+    };
+  }
   if(section === "dailySummary"){
     const sections = {};
     DAILY_SUMMARY_SECTIONS.forEach(key => {
@@ -1367,6 +1661,18 @@ async function saveSection(section, btn){
       const data = await savePreferenceSection(serverSection, collectSection(section));
       prefs.effective = data.effective;
       prefs.overrides = data.overrides;
+      if(section === "news"){
+        // The tab redraws from what the server stored, which replaces the
+        // Salvar row - so the status line to update is the NEW one.
+        rerenderNewsTab();
+        const refreshed = await requestNewsRefresh();
+        const fresh = document.getElementById("saved-news");
+        if(fresh){
+          fresh.textContent = refreshed ? "Salvo — atualizando as notícias…" : "Salvo.";
+          setTimeout(() => { fresh.textContent = ""; }, refreshed ? 4000 : 2500);
+        }
+        return;
+      }
     }
     status.textContent = "Salvo.";
     setTimeout(() => { if(status) status.textContent = ""; }, 2500);
