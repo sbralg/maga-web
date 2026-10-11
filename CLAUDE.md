@@ -9,6 +9,75 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-10-11): Notícias — new `noticias.html` + a Preferências → Notícias tab
+
+Front-end half of the news board. Plan of record and every design decision:
+**`maga-infra/mcp-server/docs/NEWS-PLAN.md`**. The backend is live: maga-api
+PR #44 (`news_board`, `news_refresh_request`, `news_publish`), maga-infra
+#23/#24 (mcp-server news preferences + `news-bridge` on the jump host, which
+fetches, categorizes and publishes each person's board).
+
+- **`noticias.html`** (📰, "Dia a dia" group, env-gated like Hoje/Tarefas:
+  `isDefaultEnv()`, blocked message, zero API calls elsewhere). Reads
+  `news_board` and renders the bridge's snapshot as-is: category order,
+  hidden categories and sources were all decided upstream from the person's
+  Preferências, so the page never re-derives them.
+  - Ported from the pilot artifact: sticky filter bar with Type (Todos /
+    Artigos / Vídeos), **single-select** source chips whose counts follow the
+    Type filter (a zero-count chip dims like an unselected one and is
+    disabled unless selected), an accent-folding text box that only hides
+    rows/empty sections (counts don't move, and it never re-renders, so
+    focus stays in the box), an "Ir para" jump row.
+  - Rows are real `<a target="_blank" rel="noopener noreferrer">`. 16:9
+    thumbnails are hotlinked with `loading="lazy"` and
+    `referrerpolicy="no-referrer"` (outlet CDNs that block hotlinks by
+    referrer still serve them); a missing **or failing** image becomes the
+    outlet-tinted placeholder tile (capture-phase `error` listener, since
+    image errors don't bubble). Videos get ▶ and a duration chip.
+  - **Dark mode**: outlet colors are light-page colors; on the dark theme the
+    outlet text mixes the same hue toward white (`color-mix`) - BBC red and
+    Estadão green were unreadable otherwise (checked with screenshots).
+  - **↻**: `news_refresh_request`, then re-read `news_board` every 3s until
+    `published_at` moves (cap 90s - the bridge spaces on-demand refreshes
+    ≥60s apart). Filters and search text survive the refresh.
+  - "Atualizado há X min" ticks while open; a board older than 3h shows an
+    amber banner (how a silently stopped bridge becomes visible).
+  - Type/source filter remembered per device (`maga_noticias_filters`,
+    try/catch'd). Thumbnails are cross-origin, so `sw.js` never caches them.
+- **Preferências → Notícias tab** (talks to mcp-server like every other tab):
+  one card per source (color, name, on/off, ↑/↓ = chip order, remove; feeds
+  listed with kind and removable), "Adicionar fonte ou feed" (paste a site,
+  feed URL or `@canal` → `GET /preferences/news/resolve` via new
+  `resolveNewsFeed()` in `shared-prefs.js` → attach a candidate to an
+  existing source, optionally with a label, or create a new source), and
+  Normal / Prioridade / Ocultar per category.
+  - **Salvar sends the whole list as shown, starter list included** (user's
+    call: "save everything"), so after the first save the person owns the
+    list and later starter-list fixes don't reach them. "Voltar às fontes
+    padrão" is the one path that sends no `sources`, handing it back to the
+    built-in list.
+  - **After a save the page calls `news_refresh_request`** (the maga-api
+    passphrase is already in this browser; own environment only;
+    best-effort) so the board reflects the change in about a minute.
+  - A bug caught while writing it: the tab redraws from the server's stored
+    value after a save, which replaces the Salvar row, so the status text
+    has to go to the NEW `#saved-news`, not the button's old sibling.
+- `shared-menu.js` (+1 item), `index.html` tile description, `sw.js`
+  (`noticias.html` in `SHELL_FILES`, `CACHE_NAME` v12 → v13).
+- **Tests**: new `test/noticias.test.js` (env gate with zero calls, empty
+  board, section order/counts, link attributes, label in meta, duration chip,
+  placeholder for missing and broken images, no-referrer, chip counts per
+  Type, disabled zero-count chip, single-select + clear, search incl. accent
+  folding without touching counts, filter persisted across reload, full ↻
+  loop keeping filters, stale banner, 360px no overflow).
+  `preferencias.test.js` +30 assertions (tab render, category chips,
+  rename/move/drop feed, resolve empty/@handle/site, attach with label, new
+  source, exact PUT body, refresh after save, reset sends no `sources`,
+  inline 400 on `news.sources`). `env-scope.test.js`: Notícias blocked /
+  loads / hidden from drawer and dashboard off the default env. **Full suite:
+  23/23 files exit 0** (Playwright ran cleanly in this sandbox, no rAF
+  workaround needed).
+
 ## Status (2026-09-28): Supabase's 2026-10-30 "explicit grants for new tables" change does not affect this repo
 
 Assessed from a Supabase notice the user received: from 2026-10-30, new
@@ -2860,6 +2929,11 @@ build step, no framework:
   manual task creation with an optional due date, a ⭐ star for importance,
   and an edit modal for text/category/due date/delete). Renamed from
   `index.html` when the dashboard took over that filename.
+- `noticias.html` — the news board: the latest snapshot the maga-infra
+  news-bridge published for this person (headlines + YouTube from their own
+  sources, grouped by category), with Type/source/text filters and a ↻ that
+  asks the bridge to refresh. Env-gated like `hoje.html`. Sources and topic
+  preferences are edited in Preferências → Notícias.
 - `notas.html` — the user's own general-purpose notebooks by default, plus
   a global search across every note's text (object-backed notebooks
   included) for the ones that live on their own object's page instead;

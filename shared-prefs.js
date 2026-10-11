@@ -146,6 +146,12 @@ async function searchWhatsappContacts(name){
   return await mcpFetch("/preferences/whatsapp/contact-search?name=" + encodeURIComponent(name));
 }
 
+/** Notícias tab: candidate feeds behind a pasted URL or @handle
+ *  (maga-infra's GET /preferences/news/resolve - read-only, rate-limited). */
+async function resolveNewsFeed(input){
+  return mcpFetch("/preferences/news/resolve?input=" + encodeURIComponent(input));
+}
+
 async function changePassword(currentPassword, newPassword){
   return await mcpFetch("/preferences/password", {
     method: "POST",
