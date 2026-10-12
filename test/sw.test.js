@@ -68,6 +68,31 @@ for (const js of fs.readdirSync(WEB_DIR).filter(f => f.endsWith('.js'))) {
   }
 }
 
+// manifest.json's own icons and every home-screen shortcut's icon. The OS
+// reads these, not a page, so the scans above never see them — a shortcut
+// added without its icon in SHELL_FILES would be just as silent.
+const manifest = JSON.parse(fs.readFileSync(path.join(WEB_DIR, 'manifest.json'), 'utf8'));
+const manifestIcons = [
+  ...(manifest.icons || []),
+  ...(manifest.shortcuts || []).flatMap(s => s.icons || []),
+].map(i => i.src);
+for (const src of manifestIcons) {
+  if (!referenced.has(src)) referenced.set(src, 'manifest.json');
+}
+check('manifest.json declares its shortcut icons, got: ' + manifestIcons.length,
+  manifestIcons.length > (manifest.icons || []).length);
+
+// Every shortcut opens a real page, and its icon exists on disk.
+const badShortcuts = (manifest.shortcuts || []).filter(s => {
+  const page = String(s.url || '').replace(/^\.\//, '');
+  return !pages.includes(page) ||
+    !(s.icons || []).length ||
+    (s.icons || []).some(i => !fs.existsSync(path.join(WEB_DIR, i.src)));
+});
+check('every manifest shortcut points at a page and has an icon on disk, bad: ' +
+  (badShortcuts.length ? badShortcuts.map(s => s.name).join(', ') : 'none'),
+  badShortcuts.length === 0);
+
 const missing = [...referenced.entries()].filter(([f]) => !shell.has(f));
 check('every file the pages reference is in SHELL_FILES, missing: ' +
   (missing.length ? missing.map(([f, from]) => f + ' (from ' + from + ')').join(', ') : 'none'),

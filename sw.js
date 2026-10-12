@@ -15,7 +15,7 @@
 // from creation through five SHELL_FILES edits) means entries for files
 // that have since been renamed or deleted stay cached forever and are still
 // served offline. v1 -> v2 is the first such purge.
-const CACHE_NAME = "maga-shell-v13";
+const CACHE_NAME = "maga-shell-v14";
 
 const SHELL_FILES = [
   "./",
@@ -81,8 +81,11 @@ const SHELL_FILES = [
   "assets/logo-badge.svg",
   // hoje.html's assistant avatar, beside the daily greeting.
   "assets/avatar-maga.webp",
-  // manifest.json's "shortcuts" icon for the Tarefas home-screen shortcut.
+  // manifest.json's "shortcuts" icons for the Dia a dia home-screen shortcuts.
+  "assets/hoje-96.png",
   "assets/tarefas-96.png",
+  "assets/notas-96.png",
+  "assets/noticias-96.png",
 ];
 
 self.addEventListener("install", (event) => {

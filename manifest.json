@@ -18,10 +18,31 @@
   ],
   "shortcuts": [
     {
+      "name": "Hoje",
+      "url": "./hoje.html",
+      "icons": [
+        { "src": "assets/hoje-96.png", "sizes": "96x96", "type": "image/png", "purpose": "any maskable" }
+      ]
+    },
+    {
       "name": "Tarefas",
       "url": "./tarefas.html",
       "icons": [
         { "src": "assets/tarefas-96.png", "sizes": "96x96", "type": "image/png", "purpose": "any maskable" }
+      ]
+    },
+    {
+      "name": "Notas",
+      "url": "./notas.html",
+      "icons": [
+        { "src": "assets/notas-96.png", "sizes": "96x96", "type": "image/png", "purpose": "any maskable" }
+      ]
+    },
+    {
+      "name": "Notícias",
+      "url": "./noticias.html",
+      "icons": [
+        { "src": "assets/noticias-96.png", "sizes": "96x96", "type": "image/png", "purpose": "any maskable" }
       ]
     }
   ]

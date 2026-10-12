@@ -9,6 +9,30 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-10-12, latest): home-screen shortcuts for every "Dia a dia" page — Hoje, Notas and Notícias join Tarefas
+
+Long-pressing the installed app icon used to offer only Tarefas (added
+alongside the 2026-09-27 maskable icons). `manifest.json`'s `shortcuts`
+now lists **Hoje, Tarefas, Notas, Notícias** — the same order as the
+`dia` group in `shared-menu.js`. New icons `assets/hoje-96.png`,
+`notas-96.png`, `noticias-96.png` (96×96, same style as `tarefas-96.png`,
+supplied by the user) are in `sw.js`'s `SHELL_FILES`; `CACHE_NAME`
+v13 → v14.
+
+- **The shortcuts are static**, so they show for every install, including
+  on a non-default environment where Hoje/Notas/Notícias are blocked. The
+  shortcut still opens, but the page itself shows its blocked message and
+  makes zero API calls. Same trade-off as Tarefas.
+- **`test/sw.test.js` now reads `manifest.json` too.** Its scans only
+  covered HTML and the shared scripts, so a manifest-only asset (an app
+  icon, a shortcut icon) could miss `SHELL_FILES` silently. The test now
+  adds every `icons[]`/`shortcuts[].icons[]` src to the referenced set,
+  and checks that each shortcut points at a real page and has its icon on
+  disk. Before trusting it, I removed `notas-96.png` from `SHELL_FILES`
+  and confirmed the test failed. Full suite: 23/23 files exit 0.
+- **On Android the new shortcuts may need a PWA reinstall** before they
+  appear, same as the maskable icons.
+
 ## Status (2026-10-12, later): Notícias "Ir para" no longer hides the section heading under the filter bar
 
 Reported from a phone screenshot: tapping a section in "Ir para" scrolled the
