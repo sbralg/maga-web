@@ -1997,6 +1997,66 @@ async function withPrefsFake(ctx, opts = {}) {
     await ctx.close();
   }
 
+  // --- Notícias tab: per-feed filters, YouTube cap/Shorts, forced category, suggested filters ---
+  {
+    const ctx = await browser.newContext({ viewport: { width: 414, height: 900 } });
+    await ctx.route('**/functions/v1/maga-api', route => route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }));
+    const eff = makePrefs().effective;
+    eff.news.defaultDailyCap = 10;
+    eff.news.suggestedFilters = {
+      'youtube|@bbcnews': { dailyCap: 10, excludeTitles: ['AO VIVO:'] },
+      'news-sitemap|https://edition.cnn.com/sitemap/news.xml': { excludePaths: ['/cnn-underscored/'] },
+      'rss|https://not-in-this-list.example/feed': { excludeTitles: ['x'] },
+    };
+    const { putCalls } = await withPrefsFake(ctx, { prefsOverrides: { effective: eff } });
+    const page = await ctx.newPage();
+    await page.goto(ORIGIN + '/preferencias.html');
+    await seed(page, { pass: 'x', token: 'tok-1' });
+    await page.reload();
+    await page.waitForSelector('#f-displayName', { timeout: 6000 });
+    await page.click('[data-tab="noticias"]');
+    await page.waitForSelector('#news-sources [data-ns]', { timeout: 6000 });
+
+    check('suggested filters offered for the 2 matching feeds',
+      (await page.textContent('#news-suggest')).includes('2 feeds'));
+    check('YouTube feed shows cap + Shorts, no path field',
+      !!(await page.$('[data-ns="0"] [data-feed="1"] .nf-cap')) && !!(await page.$('[data-ns="0"] [data-feed="1"] .nf-shorts')) &&
+      !(await page.$('[data-ns="0"] [data-feed="1"] .nf-paths')));
+    check('the cap field shows the default as placeholder',
+      (await page.getAttribute('[data-ns="0"] [data-feed="1"] .nf-cap', 'placeholder')) === '10');
+    check('an RSS feed shows the path field, no cap', !!(await page.$('[data-ns="0"] [data-feed="0"] .nf-paths')) && !(await page.$('[data-ns="0"] [data-feed="0"] .nf-cap')));
+
+    await page.click('#news-suggest');
+    check('after applying, the button is gone', !(await page.$('#news-suggest')));
+    check('…and the status asks to review and save', (await page.textContent('#saved-news')).includes('Salvar'));
+    check('the applied filter count shows on the YouTube feed', (await page.textContent('[data-ns="0"] [data-feed="1"] .ns-filters summary')).includes('(2)'));
+
+    // hand edits: titles on BBC RSS, a path without the leading slash, Shorts on, cap 5, BBC always cultura
+    await page.click('[data-ns="0"] [data-feed="0"] .ns-filters summary');
+    await page.fill('[data-ns="0"] [data-feed="0"] .nf-titles', 'Watch: , quiz');
+    await page.fill('[data-ns="0"] [data-feed="0"] .nf-paths', 'sport/, /weather/');
+    await page.click('[data-ns="0"] [data-feed="1"] .ns-filters summary');
+    await page.fill('[data-ns="0"] [data-feed="1"] .nf-cap', '5');
+    await page.check('[data-ns="0"] [data-feed="1"] .nf-shorts');
+    await page.selectOption('[data-ns="0"] .ns-cat', 'cultura');
+
+    await page.click('[data-save="news"]');
+    await page.waitForFunction(() => /Salvo/.test((document.getElementById('saved-news') || {}).textContent || ''), null, { timeout: 8000 });
+    const put = putCalls.find(c => c.section === 'news');
+    check('PUT sent with the filters', !!put);
+    if (put) {
+      const [bbc, cnn] = put.body.sources;
+      check('BBC forced to cultura', bbc.category === 'cultura');
+      check('CNN left automatic (no category key)', !('category' in cnn));
+      check('RSS titles split and trimmed', JSON.stringify(bbc.feeds[0].excludeTitles) === '["Watch:","quiz"]');
+      check('paths get a leading slash', JSON.stringify(bbc.feeds[0].excludePaths) === '["/sport/","/weather/"]');
+      check('YouTube: cap 5 (the hand edit wins), Shorts on, suggested title kept',
+        bbc.feeds[1].dailyCap === 5 && bbc.feeds[1].includeShorts === true && JSON.stringify(bbc.feeds[1].excludeTitles) === '["AO VIVO:"]');
+      check('CNN sitemap got the suggested path', JSON.stringify(cnn.feeds[0].excludePaths) === '["/cnn-underscored/"]');
+    }
+    await ctx.close();
+  }
+
   await browser.close();
   server.close();
 

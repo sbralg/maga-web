@@ -70,6 +70,19 @@
   .news-row{display:flex;gap:12px;padding:12px 14px;border-bottom:1px solid var(--border);
     color:inherit;text-decoration:none;align-items:flex-start}
   .news-row:last-child{border-bottom:none}
+  /* One story = one .story block: the lead row, plus the other coverage
+     behind a "+N coberturas" toggle. Borders move from rows to blocks. */
+  .story{border-bottom:1px solid var(--border)}
+  .story:last-child{border-bottom:none}
+  .story .news-row{border-bottom:none}
+  .more{padding:0 14px 10px 138px;margin-top:-4px}
+  .more summary{cursor:pointer;font-size:12.5px;color:var(--muted);list-style:none;display:inline-block;padding:2px 0}
+  .more summary::-webkit-details-marker{display:none}
+  .more summary::before{content:"▸ "}
+  .more[open] summary::before{content:"▾ "}
+  .more-link{display:block;padding:6px 0;color:inherit;text-decoration:none;font-size:13.5px;line-height:1.35;border-top:1px dashed var(--border)}
+  .more-link:first-of-type{border-top:none}
+  .more-link .news-meta{margin:0 0 1px}
   .news-row:hover{background:var(--tint)}
   .thumb{position:relative;flex:none;width:112px;aspect-ratio:16/9;border-radius:8px;overflow:hidden;
     background:var(--tint)}
@@ -86,7 +99,7 @@
   .news-meta{display:block;font-size:12px;color:var(--muted);margin:0 0 3px}
   .news-meta .src{font-weight:700;color:var(--c)}
   .news-title{display:block;font-size:15px;line-height:1.35;font-weight:600;word-wrap:break-word}
-  @media (max-width:380px){ .thumb{width:92px} }
+  @media (max-width:380px){ .thumb{width:92px} .more{padding-left:118px} }
   /* Outlet colors are chosen for a light page; several (BBC's red,
      Estadão's green) are too dark to read as text on the dark theme, so
      there the text uses the same hue mixed toward white - the pilot's
@@ -180,10 +193,34 @@ function sourceMap(){
 function typeMatches(it){
   return filters.type === "all" || it.kind === filters.type;
 }
+// Items the bridge grouped as one story (same `story` id) become one unit:
+// the lead plus the rest. With a source chip selected, only that outlet's
+// items count, still grouped among themselves. Units keep the order of their
+// newest item.
+function units(sourceKey){
+  const out = [];
+  const byStory = new Map();
+  const items = (board.items || []).slice().sort((a, b) => String(b.published_at || "").localeCompare(String(a.published_at || "")));
+  for(const it of items){
+    if(!typeMatches(it)) continue;
+    if(sourceKey && it.source !== sourceKey) continue;
+    if(!it.story){ out.push({ members: [it] }); continue; }
+    let u = byStory.get(it.story);
+    if(!u){ u = { members: [] }; byStory.set(it.story, u); out.push(u); }
+    u.members.push(it);
+  }
+  for(const u of out){
+    u.lead = u.members.find(m => m.lead) || u.members[0];
+    u.others = u.members.filter(m => m !== u.lead);
+  }
+  return out;
+}
 function chipCounts(){
-  // Counts follow the Type filter but not the text box (the box only hides rows).
+  // Counts are stories, follow the Type filter, and ignore the text box (the
+  // box only hides rows).
   const counts = new Map();
-  for(const it of (board.items || [])) if(typeMatches(it)) counts.set(it.source, (counts.get(it.source) || 0) + 1);
+  for(const s of (board.sources || [])) counts.set(s.key, units(s.key).length);
+  counts.total = units(null).length;
   return counts;
 }
 
@@ -208,7 +245,7 @@ function rowHtml(it, src){
   const color = safeColor(src && src.color);
   const name = (src && src.name) || it.source;
   const who = it.label || name;
-  const kind = it.kind === "video" ? "Vídeo · YouTube" : "Artigo";
+  const kind = it.kind === "video" ? (it.short ? "Short · YouTube" : "Vídeo · YouTube") : "Artigo";
   const img = safeHref(it.image);
   const thumb = img
     ? '<span class="thumb"><img src="' + esc(img) + '" alt="" loading="lazy" referrerpolicy="no-referrer" data-ph="' + esc(name) + '">' +
@@ -216,11 +253,33 @@ function rowHtml(it, src){
       (it.duration_s ? '<span class="dur">' + esc(fmtDuration(it.duration_s)) + '</span>' : "") + '</span>'
     : '<span class="thumb ph">' + esc(name) + '</span>';
   return '<a class="news-row" href="' + esc(href) + '" target="_blank" rel="noopener noreferrer"' +
-    ' style="--c:' + color + '" data-source="' + esc(it.source) + '" data-kind="' + esc(it.kind) + '"' +
-    ' data-search="' + esc(foldSearchText(it.title + " " + who)) + '">' + thumb +
+    ' style="--c:' + color + '" data-source="' + esc(it.source) + '" data-kind="' + esc(it.kind) + '">' + thumb +
     '<span class="news-body"><span class="news-meta"><span class="src">' + esc(who) + '</span> · ' + kind +
     (it.published_at ? ' · ' + esc(relTime(it.published_at)) : "") + '</span>' +
     '<span class="news-title">' + esc(it.title) + '</span></span></a>';
+}
+
+function moreLinkHtml(it, src){
+  const href = safeHref(it.url);
+  if(!href) return "";
+  const name = (src && src.name) || it.source;
+  const kind = it.kind === "video" ? (it.short ? "Short" : "Vídeo") : "Artigo";
+  return '<a class="more-link" href="' + esc(href) + '" target="_blank" rel="noopener noreferrer" style="--c:' + safeColor(src && src.color) + '"' +
+    ' data-source="' + esc(it.source) + '"><span class="news-meta"><span class="src">' + esc(it.label || name) + '</span> · ' + kind +
+    (it.published_at ? ' · ' + esc(relTime(it.published_at)) : "") + '</span>' + esc(it.title) + '</a>';
+}
+
+function storyHtml(u, srcs){
+  const lead = rowHtml(u.lead, srcs.get(u.lead.source));
+  if(!lead) return "";
+  const search = u.members.map(m => m.title + " " + (m.label || (srcs.get(m.source) || {}).name || m.source)).join(" ");
+  let html = '<div class="story" data-search="' + esc(foldSearchText(search)) + '"' + (u.lead.story ? ' data-story="' + esc(u.lead.story) + '"' : "") + '>' + lead;
+  if(u.others.length){
+    const outlets = [...new Set(u.others.map(m => (srcs.get(m.source) || {}).name || m.source))].join(", ");
+    html += '<details class="more"><summary>+' + u.others.length + (u.others.length === 1 ? " cobertura" : " coberturas") +
+      ' · ' + esc(outlets) + '</summary>' + u.others.map(m => moreLinkHtml(m, srcs.get(m.source))).join("") + '</details>';
+  }
+  return html + '</div>';
 }
 
 function filtersHtml(){
@@ -232,7 +291,7 @@ function filtersHtml(){
     '<div class="chiprow" role="group" aria-label="Tipo">' +
       typeChip("all", "Todos") + typeChip("article", "Artigos") + typeChip("video", "Vídeos") + '</div>';
 
-  const total = [...counts.values()].reduce((a, b) => a + b, 0);
+  const total = counts.total;
   html += '<div class="chiprow" role="group" aria-label="Fontes">' +
     '<button type="button" class="chip src-chip' + (filters.source ? "" : " active") + '" data-source=""' +
     ' aria-pressed="' + !filters.source + '">Todas as fontes<span class="n">' + total + '</span></button>';
@@ -256,11 +315,11 @@ function filtersHtml(){
 function sectionsHtml(){
   const srcs = sourceMap();
   const byCat = new Map();
-  for(const it of (board.items || [])){
-    if(!typeMatches(it)) continue;
-    if(filters.source && it.source !== filters.source) continue;
-    if(!byCat.has(it.category)) byCat.set(it.category, []);
-    byCat.get(it.category).push(it);
+  // A story is filed under its lead's category.
+  for(const u of units(filters.source)){
+    const cat = u.lead.category;
+    if(!byCat.has(cat)) byCat.set(cat, []);
+    byCat.get(cat).push(u);
   }
   let html = "";
   const cats = (board.categories || []).slice();
@@ -272,7 +331,7 @@ function sectionsHtml(){
     if(!items.length) continue;
     html += '<section class="cat" data-cat="' + esc(c.key) + '" id="cat-' + esc(c.key) + '">' +
       '<h3><span>' + esc(c.label) + '</span><span class="count"></span></h3>' +
-      '<div class="card">' + items.map(it => rowHtml(it, srcs.get(it.source))).join("") + '</div></section>';
+      '<div class="card">' + items.map(u => storyHtml(u, srcs)).join("") + '</div></section>';
   }
   return html || '<p class="msg">Nada com esses filtros.</p>';
 }
@@ -310,7 +369,7 @@ function applySearch(){
   const jump = [];
   document.querySelectorAll("section.cat").forEach(sec => {
     let visible = 0;
-    sec.querySelectorAll(".news-row").forEach(row => {
+    sec.querySelectorAll(".story").forEach(row => {
       const show = !q || row.dataset.search.includes(q);
       row.hidden = !show;
       if(show) visible++;
