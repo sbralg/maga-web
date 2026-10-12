@@ -14,7 +14,9 @@
 // touching counts, the outlet-tinted placeholder for a missing AND a broken
 // thumbnail, the video duration chip, filters remembered across a reload,
 // the stale banner, the full ↻ loop (request -> poll -> new board, filters
-// kept), and no horizontal overflow at 360px.
+// kept), stories (one row per story, "+N coberturas" with the other
+// outlets, counts per story, a source chip showing that outlet's item, search
+// matching any member), the Short label, and no horizontal overflow at 360px.
 const http = require('http');
 const fs = require('fs');
 const os = require('os');
@@ -202,11 +204,11 @@ function makeBoard(extra = []) {
 
   // text box hides rows and empty sections, counts stay
   await page.fill('#q', 'ibovespa');
-  check('search: one visible row', (await page.$$('a.news-row:not([hidden])')).length === 1);
+  check('search: one visible row', (await page.$$('.story:not([hidden])')).length === 1);
   check('search: other sections hidden', (await page.$$eval('section.cat:not([hidden])', els => els.map(e => e.dataset.cat))).join() === 'economia');
   check('search: chip counts unchanged', (await chipText('')) === '5');
   await page.fill('#q', 'sao paulo'); // accent-insensitive
-  check('search folds accents (sao paulo -> São Paulo)', (await page.$$('a.news-row:not([hidden])')).length === 1);
+  check('search folds accents (sao paulo -> São Paulo)', (await page.$$('.story:not([hidden])')).length === 1);
   await page.fill('#q', '');
 
   // filters remembered
@@ -231,6 +233,42 @@ function makeBoard(extra = []) {
   check('refresh: button back to idle', (await page.textContent('#refresh-btn')).includes('Atualizar'));
   await page.screenshot({ path: path.join(SHOTS, 'noticias.png'), fullPage: true });
   await ctx.close();
+
+  // --- stories ------------------------------------------------------------------------
+  {
+    const saved = state.board;
+    state.board = makeBoard([
+      { id: 's1', source: 'cnn', label: 'CNN Brasil', kind: 'article', title: 'Furacão Simon atinge o México', url: 'https://www.cnnbrasil.com.br/s1', published_at: minsAgo(3), category: 'mundo', story: 's:s3', lead: true },
+      { id: 's2', source: 'bbc', kind: 'video', title: 'Hurricane Simon makes landfall', url: 'https://www.youtube.com/watch?v=BBBBBBBBBBB', published_at: minsAgo(4), category: 'mundo', story: 's:s3', short: true },
+      { id: 's3', source: 'folha', kind: 'article', title: 'Simon deixa milhares sem energia em Acapulco', url: 'https://www1.folha.uol.com.br/s3', published_at: minsAgo(6), category: 'mundo', story: 's:s3' },
+    ]);
+    const c = await newCtx();
+    const p = await c.newPage();
+    await p.goto(ORIGIN + '/noticias.html');
+    await p.waitForSelector('section.cat', { timeout: 8000 });
+    const stories = await p.$$eval('section[data-cat="mundo"] .story', els => els.map(e => e.querySelector('.news-title').textContent));
+    check('a story is one row, led by its lead, got ' + stories.join(' | '), stories.filter(t => /Simon/.test(t)).length === 1 && stories[0] === 'Furacão Simon atinge o México');
+    check('mundo count counts stories (story + 2 items = 3)', (await p.textContent('section[data-cat="mundo"] .count')).trim() === '3');
+    const summary = (await p.textContent('.story[data-story="s:s3"] .more summary')).trim();
+    check('"+2 coberturas" names the other outlets, got ' + summary, summary === '+2 coberturas · BBC, Folha');
+    check('the other coverage is two links in a new tab', (await p.$$eval('.story[data-story="s:s3"] .more-link', els => els.filter(a => a.target === '_blank' && /noopener/.test(a.rel)).length)) === 2);
+    check('a Short is labeled as such', (await p.textContent('.story[data-story="s:s3"] .more-link[data-source="bbc"] .news-meta')).includes('Short'));
+    const n = async (key) => (await p.textContent('.src-chip[data-source="' + key + '"] .n')).trim();
+    check('chip counts are stories: all=6 (5 + 1 story), folha=2', (await n('')) === '6' && (await n('folha')) === '2');
+    await p.click('.src-chip[data-source="bbc"]');
+    const bbc = await p.$$eval('section[data-cat="mundo"] .story', els => els.map(e => [e.querySelector('.news-title').textContent, !!e.querySelector('.more')]));
+    check('a source chip shows that outlet\'s own item, no other coverage, got ' + JSON.stringify(bbc),
+      bbc.some(([t, more]) => t === 'Hurricane Simon makes landfall' && !more));
+    await p.click('.src-chip[data-source="bbc"]');
+    await p.fill('#q', 'acapulco');
+    check('search matches any member and shows the story', (await p.$$('.story:not([hidden])')).length === 1 &&
+      (await p.$eval('.story:not([hidden]) .news-title', e => e.textContent)) === 'Furacão Simon atinge o México');
+    await p.click('.story[data-story="s:s3"] .more summary');
+    check('the toggle opens the other coverage', await p.$eval('.story[data-story="s:s3"] .more', d => d.open));
+    await p.screenshot({ path: path.join(SHOTS, 'noticias-stories.png'), fullPage: true });
+    await c.close();
+    state.board = saved;
+  }
 
   // --- stale banner -----------------------------------------------------------------
   {

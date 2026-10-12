@@ -9,6 +9,34 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-10-12): Notícias v3 — one row per story, per-feed filters in Preferências
+
+Front-end half of maga-infra's v3 (`mcp-server/docs/NEWS-PLAN.md`, decisions
+10 and 16). The bridge now groups headlines about the same story (across
+outlets) and publishes board v2: items may carry `story`, `lead`, `short`.
+
+- **`noticias.html`**: `units()` turns items into stories (lead + others),
+  sorted by their newest member. Each story is one `.story` block: the lead's
+  `.news-row` plus a `<details class="more">` "+N coberturas · BBC, Folha"
+  with the other outlets' links. Section counts and chip counts are stories
+  now. A source chip shows that outlet's own items, grouped among themselves
+  (no other outlets' coverage). The search box matches any member's title and
+  hides the whole `.story`. Shorts are labeled "Short · YouTube". A v1 board
+  (no `story` fields) renders exactly as before.
+- **Preferências → Notícias**: per source, a "Categoria: automática / Sempre
+  X" select (`source.category`). Per feed, a "Filtros" disclosure: headline
+  texts to hide, URL paths to hide (non-YouTube; a missing leading "/" is
+  added), and for YouTube a daily cap (placeholder = server default 10) and
+  "Incluir Shorts". "Aplicar filtros sugeridos (N feeds)" copies the starter
+  list's filters (`effective.news.suggestedFilters`, keyed like
+  `newsFeedIdentity`) onto matching feeds of a saved list, merged, for the
+  person to review and save - never applied silently.
+- **Tests**: `noticias.test.js` gained a stories block (one row per story,
+  summary text, links in a new tab, Short label, story counts, a source chip
+  showing its own item, search over members, the toggle opening);
+  `preferencias.test.js` +18 assertions (field per feed kind, suggested
+  filters merge, exact PUT body). Full suite: 23/23 files exit 0.
+
 ## Status (2026-10-11): Notícias — new `noticias.html` + a Preferências → Notícias tab
 
 Front-end half of the news board. Plan of record and every design decision:

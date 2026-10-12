@@ -130,6 +130,15 @@
   .ns-feeds .k{flex:none;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;min-width:62px}
   .ns-feeds .what{flex:1;min-width:0;overflow-wrap:anywhere}
   .ns-feeds .what span{display:block;font-size:11.5px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
+  .ns-feeds li{flex-wrap:wrap}
+  .ns-cat{font:inherit;font-size:12.5px;padding:4px 6px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:inherit;max-width:100%}
+  .ns-filters{flex-basis:100%;margin:2px 0 0 70px}
+  .ns-filters summary{cursor:pointer;font-size:12px;color:var(--muted);display:inline-block}
+  .ns-filters .frow{display:flex;flex-direction:column;gap:3px;margin:6px 0 0;font-size:12px;color:var(--muted)}
+  .ns-filters .frow input[type=text],.ns-filters .frow input[type=number]{font:inherit;font-size:13px;padding:5px 7px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);width:100%;box-sizing:border-box}
+  .ns-filters .frow.inline{flex-direction:row;align-items:center;gap:8px}
+  .ns-filters .frow.inline input[type=number]{width:72px}
+  @media (max-width:420px){ .ns-filters{margin-left:0} }
   .news-cand{border:1px dashed var(--border-strong);border-radius:10px;padding:8px 10px;margin:8px 0 0;font-size:13px}
   .news-cand .what{overflow-wrap:anywhere;margin:0 0 6px}
   .news-cand .what span{display:block;font-size:11.5px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
@@ -555,9 +564,53 @@ function newsFeedWhat(f){
   return f.label ? esc(f.label) + '<span>' + esc(id) + '</span>' : esc(id);
 }
 
+// A feed's identity, matching mcp-server's newsFeedIdentity(): how a saved
+// feed is matched to the starter list's suggested filters.
+function newsFeedIdentity(f){
+  return f.kind === "youtube" ? "youtube|" + String(f.channelId || f.handle || "").toLowerCase() : f.kind + "|" + f.url;
+}
+const splitList = (v) => String(v || "").split(",").map(x => x.trim()).filter(Boolean);
+
+function newsFeedFiltersHtml(f){
+  const yt = f.kind === "youtube";
+  const active = (f.excludeTitles || []).length + (yt ? 0 : (f.excludePaths || []).length) + (yt && f.dailyCap ? 1 : 0) + (yt && f.includeShorts ? 1 : 0);
+  return '<details class="ns-filters"><summary>Filtros' + (active ? " (" + active + ")" : "") + '</summary>' +
+    '<label class="frow">Ocultar manchetes que contenham (separe por vírgula)' +
+      '<input type="text" class="nf-titles" value="' + esc((f.excludeTitles || []).join(", ")) + '" placeholder="ex.: onde assistir, melhores momentos"></label>' +
+    (yt
+      ? '<label class="frow inline">Máximo de vídeos por dia <input type="number" class="nf-cap" min="1" max="50" value="' + esc(f.dailyCap || "") +
+          '" placeholder="' + esc(String((prefs.effective.news && prefs.effective.news.defaultDailyCap) || 10)) + '"></label>' +
+        '<label class="frow inline"><input type="checkbox" class="nf-shorts"' + (f.includeShorts ? " checked" : "") + '> Incluir Shorts</label>'
+      : '<label class="frow">Ocultar seções do site (caminho, separe por vírgula)' +
+          '<input type="text" class="nf-paths" value="' + esc((f.excludePaths || []).join(", ")) + '" placeholder="ex.: /tecmundo/voxel/"></label>') +
+    '</details>';
+}
+
+/** Feeds in the current list that the starter list has filters for and
+ *  that don't carry all of them yet. */
+function newsPendingSuggestions(){
+  const sug = (prefs.effective.news && prefs.effective.news.suggestedFilters) || {};
+  const out = [];
+  newsState.sources.forEach(s => (s.feeds || []).forEach(f => {
+    const g = sug[newsFeedIdentity(f)];
+    if(!g) return;
+    const missing = (g.excludeTitles || []).some(t => !(f.excludeTitles || []).includes(t)) ||
+      (g.excludePaths || []).some(p => !(f.excludePaths || []).includes(p)) ||
+      (g.dailyCap && !f.dailyCap);
+    if(missing) out.push({ f, g });
+  }));
+  return out;
+}
+
 function newsSourcesHtml(){
   if(!newsState.sources.length) return '<p class="hint">Nenhuma fonte. Adicione uma abaixo.</p>';
-  return newsState.sources.map((s, i) =>
+  const cats = (prefs.effective.news && prefs.effective.news.categories) || [];
+  const pending = newsPendingSuggestions();
+  const sugBtn = pending.length
+    ? '<div class="actions" style="margin:0 0 10px"><button class="link" id="news-suggest">Aplicar filtros sugeridos (' + pending.length + ' feed' + (pending.length === 1 ? '' : 's') + ')</button>' +
+      '<p class="hint" style="margin:4px 0 0">Esconde conteúdo repetitivo das fontes padrão: "onde assistir", segmentos de TV, guias de games, e limita vídeos por dia. Você revisa e salva.</p></div>'
+    : '';
+  return sugBtn + newsState.sources.map((s, i) =>
     '<div class="news-src' + (s.enabled === false ? " off" : "") + '" data-ns="' + i + '">' +
       '<div class="ns-head">' +
         '<input type="color" class="ns-color" value="' + esc(s.color) + '" aria-label="Cor de ' + esc(s.name) + '">' +
@@ -566,11 +619,15 @@ function newsSourcesHtml(){
         '<button class="icon-btn ns-up" title="Subir"' + (i === 0 ? " disabled" : "") + '>↑</button>' +
         '<button class="icon-btn ns-down" title="Descer"' + (i === newsState.sources.length - 1 ? " disabled" : "") + '>↓</button>' +
         '<button class="icon-btn ns-del" title="Remover fonte">🗑</button>' +
+        '<select class="ns-cat" aria-label="Categoria de ' + esc(s.name) + '">' +
+          '<option value="">Categoria: automática</option>' +
+          cats.map(c => '<option value="' + esc(c.key) + '"' + (s.category === c.key ? " selected" : "") + '>Sempre ' + esc(c.label) + '</option>').join("") +
+        '</select>' +
       '</div>' +
       '<ul class="ns-feeds">' + (s.feeds || []).map((f, j) =>
         '<li data-feed="' + j + '"><span class="k">' + esc(NEWS_KIND_LABEL[f.kind] || f.kind) + '</span>' +
         '<span class="what">' + newsFeedWhat(f) + '</span>' +
-        '<button class="icon-btn ns-feed-del" title="Remover feed">✕</button></li>').join("") +
+        '<button class="icon-btn ns-feed-del" title="Remover feed">✕</button>' + newsFeedFiltersHtml(f) + '</li>').join("") +
       '</ul></div>'
   ).join("");
 }
@@ -631,9 +688,34 @@ function redrawNewsSources(){
 }
 
 function wireNewsSources(){
+  document.getElementById("news-suggest")?.addEventListener("click", () => {
+    for(const { f, g } of newsPendingSuggestions()){
+      if(g.excludeTitles) f.excludeTitles = [...new Set([...(f.excludeTitles || []), ...g.excludeTitles])];
+      if(g.excludePaths) f.excludePaths = [...new Set([...(f.excludePaths || []), ...g.excludePaths])];
+      if(g.dailyCap && !f.dailyCap) f.dailyCap = g.dailyCap;
+    }
+    redrawNewsSources();
+    const st = document.getElementById("saved-news");
+    if(st) st.textContent = "Filtros sugeridos aplicados — revise e toque em Salvar.";
+  });
   document.querySelectorAll("[data-ns]").forEach(card => {
     const i = Number(card.dataset.ns);
     const s = newsState.sources[i];
+    card.querySelector(".ns-cat").addEventListener("change", (e) => {
+      if(e.target.value) s.category = e.target.value; else delete s.category;
+    });
+    card.querySelectorAll("[data-feed]").forEach(li => {
+      const f = s.feeds[Number(li.dataset.feed)];
+      const set = (key, val) => { if(val === undefined || (Array.isArray(val) && !val.length)) delete f[key]; else f[key] = val; };
+      li.querySelector(".nf-titles")?.addEventListener("input", (e) => set("excludeTitles", splitList(e.target.value)));
+      li.querySelector(".nf-paths")?.addEventListener("input", (e) =>
+        set("excludePaths", splitList(e.target.value).map(p => p.startsWith("/") ? p : "/" + p)));
+      li.querySelector(".nf-cap")?.addEventListener("input", (e) => {
+        const n = parseInt(e.target.value, 10);
+        set("dailyCap", Number.isFinite(n) && n >= 1 ? Math.min(n, 50) : undefined);
+      });
+      li.querySelector(".nf-shorts")?.addEventListener("change", (e) => set("includeShorts", e.target.checked ? true : undefined));
+    });
     card.querySelector(".ns-color").addEventListener("input", (e) => { s.color = e.target.value; });
     card.querySelector(".ns-name").addEventListener("input", (e) => { s.name = e.target.value; });
     card.querySelector(".ns-on").addEventListener("change", (e) => { s.enabled = e.target.checked; card.classList.toggle("off", !s.enabled); });
