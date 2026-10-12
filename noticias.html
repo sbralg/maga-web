@@ -245,7 +245,7 @@ function rowHtml(it, src){
   const color = safeColor(src && src.color);
   const name = (src && src.name) || it.source;
   const who = it.label || name;
-  const kind = it.kind === "video" ? (it.short ? "Short · YouTube" : "Vídeo · YouTube") : "Artigo";
+  const kind = it.kind === "video" ? (it.short ? "Short" : "Vídeo") : "Artigo";
   const img = safeHref(it.image);
   const thumb = img
     ? '<span class="thumb"><img src="' + esc(img) + '" alt="" loading="lazy" referrerpolicy="no-referrer" data-ph="' + esc(name) + '">' +

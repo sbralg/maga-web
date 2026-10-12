@@ -188,6 +188,7 @@ function makeBoard(extra = []) {
   // Type filter: videos only
   await page.click('.type-chip[data-type="video"]');
   check('Vídeos: only the video row remains', (await page.$$('a.news-row')).length === 1);
+  check('a video row says "Vídeo" without a redundant "YouTube"', await page.$eval('a.news-row .news-meta', m => m.textContent.includes('Vídeo') && !m.textContent.includes('YouTube')));
   check('Vídeos: chip counts follow the type filter (cnn=1, bbc=0)', (await chipText('cnn')) === '1' && (await chipText('bbc')) === '0');
   check('Vídeos: a zero-count source chip is disabled', await page.$eval('.src-chip[data-source="bbc"]', b => b.disabled));
   await page.click('.type-chip[data-type="all"]');

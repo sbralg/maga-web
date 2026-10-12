@@ -36,7 +36,8 @@ outlets) and publishes board v2: items may carry `story`, `lead`, `short`.
   with the other outlets' links. Section counts and chip counts are stories
   now. A source chip shows that outlet's own items, grouped among themselves
   (no other outlets' coverage). The search box matches any member's title and
-  hides the whole `.story`. Shorts are labeled "Short · YouTube". A v1 board
+  hides the whole `.story`. Videos are labeled "Vídeo", Shorts "Short" (no
+  "· YouTube": it pushed the meta line onto two lines on a phone). A v1 board
   (no `story` fields) renders exactly as before.
 - **Preferências → Notícias**: per source, a "Categoria: automática / Sempre
   X" select (`source.category`). Per feed, a "Filtros" disclosure: headline
