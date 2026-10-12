@@ -9,6 +9,19 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-10-12, latest of all): Hoje dropped from the shortcuts — Android shows only 3
+
+The first real-device check (Samsung launcher) showed Hoje, Tarefas, Notas
+and Chrome's own **"Site settings"**, but not Notícias. Android launchers
+show at most 4 long-press shortcuts, and Chrome adds "Site settings" to
+every WebAPK as one of them (a site can't remove it). So on a phone **only
+the first 3 manifest shortcuts ever show**. At the user's call, Hoje came
+out of `shortcuts`: now **Tarefas, Notas, Notícias**. `assets/hoje-96.png`
+was deleted (nothing else used it; it's in git history if wanted back)
+and removed from `SHELL_FILES`. `CACHE_NAME` v14 → v15. **Keep this list
+at 3** unless desktop-only extras are deliberately wanted; order decides
+what a phone shows.
+
 ## Status (2026-10-12, latest): home-screen shortcuts for every "Dia a dia" page — Hoje, Notas and Notícias join Tarefas
 
 Long-pressing the installed app icon used to offer only Tarefas (added
