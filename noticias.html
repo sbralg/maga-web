@@ -62,7 +62,7 @@
   .jump button{flex:none;border:1px solid var(--border);background:var(--card);color:var(--text);
     border-radius:999px;padding:4px 10px;font:inherit;cursor:pointer}
 
-  .cat{margin:18px 0 0;scroll-margin-top:150px}
+  .cat{margin:18px 0 0;scroll-margin-top:150px} /* fallback; jumpTo() sets the measured bar height */
   .cat h3{display:flex;align-items:baseline;gap:8px}
   .cat h3 .count{font-size:12.5px;font-weight:500;color:var(--muted)}
 
@@ -383,10 +383,20 @@ function applySearch(){
     j.innerHTML = jump.length > 1
       ? '<span class="lbl">Ir para</span>' + jump.map(c => '<button type="button" data-jump="' + esc(c.key) + '">' + esc(c.label) + '</button>').join("")
       : "";
-    j.querySelectorAll("[data-jump]").forEach(b => b.addEventListener("click", () => {
-      document.getElementById("cat-" + b.dataset.jump)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }));
+    j.querySelectorAll("[data-jump]").forEach(b => b.addEventListener("click", () => jumpTo(b.dataset.jump)));
   }
+}
+
+// The sticky filter bar's height isn't fixed: the source chips wrap to a
+// second (or third) row depending on how many sources there are, the screen
+// width and the font size. A fixed scroll-margin-top left the section heading
+// under the bar on a phone, so measure the bar at click time.
+function jumpTo(key){
+  const sec = document.getElementById("cat-" + key);
+  if(!sec) return;
+  const bar = document.querySelector(".filters");
+  if(bar) sec.style.scrollMarginTop = Math.ceil(bar.getBoundingClientRect().height) + 8 + "px";
+  sec.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function wireFilters(){

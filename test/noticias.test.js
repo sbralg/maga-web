@@ -293,6 +293,37 @@ function makeBoard(extra = []) {
     await c.close();
   }
 
+  // --- "Ir para" lands the section BELOW the sticky bar, however tall it is --------
+  {
+    // Six sources wrap the chip row at 360px, making the bar taller than the
+    // old fixed 150px scroll-margin (the bug seen on a phone, 2026-10-12).
+    const saved = state.board;
+    const b = makeBoard(Array.from({ length: 30 }, (_, i) => ({
+      id: 'f' + i, source: ['estadao', 'kyrsp33dy', 'folha'][i % 3], kind: 'article',
+      title: 'Filler headline number ' + i, url: 'https://example.com/f' + i,
+      published_at: minsAgo(110 + i), category: ['mundo', 'brasil', 'politica', 'economia', 'outros'][i % 5],
+    })));
+    b.sources.push({ key: 'estadao', name: 'Estadão', color: '#2d5a3d' }, { key: 'kyrsp33dy', name: 'KYRSP33DY', color: '#8a3ffc' });
+    state.board = b;
+    const c = await newCtx(undefined, { width: 360, height: 640 });
+    const p = await c.newPage();
+    await p.goto(ORIGIN + '/noticias.html');
+    await p.waitForSelector('#jump [data-jump]', { timeout: 8000 });
+    const barH = await p.$eval('.filters', el => el.getBoundingClientRect().height);
+    check('fixture makes the bar taller than the old 150px margin (' + Math.round(barH) + 'px)', barH > 150);
+    for (const key of ['politica', 'economia']) {
+      await p.click('#jump [data-jump="' + key + '"]');
+      await p.evaluate(() => new Promise(r => { let last = scrollY, same = 0;
+        const t = setInterval(() => { same = scrollY === last ? same + 1 : 0; last = scrollY; if (same >= 3) { clearInterval(t); r(true); } }, 100); }));
+      const g = await p.evaluate(k => ({ bar: document.querySelector('.filters').getBoundingClientRect().bottom,
+        head: document.querySelector('#cat-' + k + ' h3').getBoundingClientRect().top }), key);
+      check('Ir para ' + key + ': heading top ' + Math.round(g.head) + ' >= bar bottom ' + Math.round(g.bar) + ' (and close to it)',
+        g.head >= g.bar && g.head - g.bar < 40);
+    }
+    await c.close();
+    state.board = saved;
+  }
+
   await browser.close();
   server.close();
   if (process.env.KEEP_SHOTS) console.log('screenshots: ' + SHOTS);

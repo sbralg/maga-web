@@ -9,6 +9,21 @@ Context file for Claude Code / Claude sessions working on this repo.
 > the names were `checklist-api` / `cowork-checklist` /
 > `cowork-assistant-backend`.**
 
+## Status (2026-10-12, later): Notícias "Ir para" no longer hides the section heading under the filter bar
+
+Reported from a phone screenshot: tapping a section in "Ir para" scrolled the
+"Política 54" heading (and the top of its first row) under the sticky
+filter bar. Each `.cat` had a fixed `scroll-margin-top:150px`, picked when the
+source chips fit on one row; with six sources they wrap at phone width and the
+bar is ~200px tall. New `jumpTo()` measures the bar at click time and sets the
+section's `scroll-margin-top` to that height + 8px before the smooth scroll
+(the 150px stays only as a CSS fallback). New `noticias.test.js` block: six
+sources at 360px, bar must be >150px, and after each jump the heading's top
+sits at or just below the bar's bottom. Confirmed failing against the old page
+(heading 150 vs bar 201) before trusting it. Full suite: all files exit 0.
+Pushed straight to `main` at the user's call. No `sw.js` bump needed: the
+service worker fetches from the network first.
+
 ## Status (2026-10-12): Notícias v3 — one row per story, per-feed filters in Preferências
 
 Front-end half of maga-infra's v3 (`mcp-server/docs/NEWS-PLAN.md`, decisions
